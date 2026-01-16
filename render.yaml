@@ -1,0 +1,27 @@
+services:
+  # 1. Flutter Web App (Mobile Client)
+  - type: web
+    name: evaratds-mobile-web
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    branch: main
+    envVars:
+      - key: SUPABASE_URL
+        sync: false # User must input this in Dashboard
+      - key: SUPABASE_ANON_KEY
+        sync: false
+
+  # 2. Admin Dashboard (React)
+  - type: web
+    name: evaratds-admin
+    env: docker
+    root: admin_dashboard
+    dockerfilePath: Dockerfile
+    plan: free
+    branch: main
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
