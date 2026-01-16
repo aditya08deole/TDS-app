@@ -1,138 +1,153 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import type { SensorData, Alert } from '../lib/supabase'
-import { Activity, Droplets, Server, Wifi, AlertTriangle, Clock } from 'lucide-react'
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
-import { useUI } from '../context/UIContext'
-import { Link } from 'react-router-dom'
+import type { Device, SensorData, Alert } from '../lib/supabase'
+import {
+    Activity, Thermometer,
+    CheckCircle, AlertTriangle, XCircle, Clock,
+    Plus, Trash2, X
+} from 'lucide-react'
+import {
+    XAxis, YAxis, CartesianGrid, Tooltip,
+    ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell
+} from 'recharts'
+
+
+// Status colors
+const STATUS_COLORS = {
+    online: '#30D158',
+    warning: '#FF9F0A',
+    critical: '#FF453A',
+    offline: '#8E8E93'
+}
 
 export default function Dashboard() {
-    const { isMobile } = useUI()
-    const [data, setData] = useState<SensorData[]>([])
+    const [devices, setDevices] = useState<Device[]>([])
+    const [sensorData, setSensorData] = useState<Record<string, SensorData[]>>({})
     const [recentAlerts, setRecentAlerts] = useState<Alert[]>([])
-    const [deviceStats, setDeviceStats] = useState({
-        total: 0,
-        online: 0,
-        warning: 0,
-        critical: 0,
-        offline: 0
-    })
-    const [avgTds, setAvgTds] = useState(0)
+    const [selectedLocation, setSelectedLocation] = useState<string>('')
+    const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>('24h')
+    const [showAddModal, setShowAddModal] = useState(false)
+    const [_loading, setLoading] = useState(true)
 
-    const fetchDeviceStats = async () => {
-        const { data: devices } = await supabase.from('devices').select('id, status')
-        const { data: heartbeats } = await supabase.from('device_heartbeat').select('device_id, status')
+    // Device stats
+    const stats = useMemo(() => {
+        const result = { online: 0, warning: 0, critical: 0, offline: 0 }
+        devices.forEach(d => {
+            const status = d.status?.toLowerCase() || 'offline'
+            if (status === 'online') result.online++
+            else if (status === 'warning' || status === 'degraded') result.warning++
+            else if (status === 'critical') result.critical++
+            else result.offline++
+        })
+        return result
+    }, [devices])
 
-        if (devices) {
-            const stats = { total: devices.length, online: 0, warning: 0, critical: 0, offline: 0 }
+    // Pie chart data
+    const pieData = [
+        { name: 'Online', value: stats.online, color: STATUS_COLORS.online },
+        { name: 'Warning', value: stats.warning, color: STATUS_COLORS.warning },
+        { name: 'Critical', value: stats.critical, color: STATUS_COLORS.critical },
+        { name: 'Offline', value: stats.offline, color: STATUS_COLORS.offline },
+    ].filter(d => d.value > 0)
 
-            devices.forEach(d => {
-                const hb = heartbeats?.find(h => h.device_id === d.id)
-                const effStatus = (hb?.status || d.status || 'offline').toUpperCase()
-
-                if (effStatus === 'ONLINE') stats.online++
-                else if (effStatus === 'DEGRADED' || effStatus === 'MAINTENANCE') stats.warning++
-                else if (effStatus === 'CRITICAL') stats.critical++
-                else stats.offline++
-            })
-            setDeviceStats(stats)
-        }
-    }
-
-    const fetchRecentAlerts = async () => {
-        const { data } = await supabase
-            .from('alerts')
-            .select('*, devices(name)')
-            .order('created_at', { ascending: false })
-            .limit(3)
-
-        if (data) setRecentAlerts(data)
-    }
-
+    // Fetch data
     useEffect(() => {
-        const fetchInitialData = async () => {
-            const { data: sensorData } = await supabase
-                .from('sensor_data')
-                .select('*')
-                .order('recorded_at', { ascending: false })
-                .limit(isMobile ? 10 : 30)
+        const fetchData = async () => {
+            setLoading(true)
 
-            if (sensorData) {
-                setData([...sensorData].reverse())
-                const avg = sensorData.reduce((sum, d) => sum + (d.tds || 0), 0) / sensorData.length
-                setAvgTds(Math.round(avg))
+            // Fetch devices
+            const { data: devicesData } = await supabase
+                .from('devices')
+                .select('*')
+                .order('name')
+
+            if (devicesData) {
+                setDevices(devicesData)
+                if (devicesData.length > 0 && !selectedLocation) {
+                    setSelectedLocation(devicesData[0].id)
+                }
+
+                // Fetch sensor data for each device
+                const sensorPromises = devicesData.map(async (device) => {
+                    const { data } = await supabase
+                        .from('sensor_data')
+                        .select('*')
+                        .eq('device_id', device.id)
+                        .order('recorded_at', { ascending: false })
+                        .limit(50)
+                    return { deviceId: device.id, data: data?.reverse() || [] }
+                })
+
+                const sensorResults = await Promise.all(sensorPromises)
+                const sensorMap: Record<string, SensorData[]> = {}
+                sensorResults.forEach(r => {
+                    sensorMap[r.deviceId] = r.data
+                })
+                setSensorData(sensorMap)
             }
 
-            await fetchDeviceStats()
-            await fetchRecentAlerts()
+            // Fetch recent alerts
+            const { data: alertsData } = await supabase
+                .from('alerts')
+                .select('*, devices(name)')
+                .order('created_at', { ascending: false })
+                .limit(5)
+
+            if (alertsData) setRecentAlerts(alertsData)
+
+            setLoading(false)
         }
 
-        fetchInitialData()
+        fetchData()
 
-        const sensorSub = supabase
-            .channel('dashboard_sensor')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sensor_data' }, (payload) => {
-                setData(prev => [...prev, payload.new as SensorData].slice(isMobile ? -10 : -30))
-                fetchDeviceStats()
+        // Real-time subscriptions
+        const deviceSub = supabase
+            .channel('dashboard_devices')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, () => {
+                fetchData()
             })
             .subscribe()
 
-        const hbSub = supabase
-            .channel('dashboard_heartbeat')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'device_heartbeat' }, () => {
-                fetchDeviceStats()
+        const sensorSub = supabase
+            .channel('dashboard_sensor')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sensor_data' }, () => {
+                fetchData()
             })
             .subscribe()
 
         return () => {
+            deviceSub.unsubscribe()
             sensorSub.unsubscribe()
-            hbSub.unsubscribe()
         }
-    }, [isMobile])
+    }, [])
 
-    const StatCard = ({ title, value, icon: Icon, color, subtitle }: {
-        title: string
-        value: number | string
-        icon: React.ElementType
-        color: 'cyan' | 'emerald' | 'orange' | 'red' | 'slate'
-        subtitle?: string
-    }) => {
-        const colorClasses = {
-            cyan: 'from-cyan-500/20 to-cyan-600/5 border-cyan-500/30',
-            emerald: 'from-emerald-500/20 to-emerald-600/5 border-emerald-500/30',
-            orange: 'from-orange-500/20 to-orange-600/5 border-orange-500/30',
-            red: 'from-red-500/20 to-red-600/5 border-red-500/30',
-            slate: 'from-slate-500/20 to-slate-600/5 border-slate-500/30',
-        }
-
-        const iconColors = {
-            cyan: 'text-cyan-400',
-            emerald: 'text-emerald-400',
-            orange: 'text-orange-400',
-            red: 'text-red-400',
-            slate: 'text-slate-400',
-        }
-
-        return (
-            <div className={`stat-card bg-gradient-to-br ${colorClasses[color]} pressable cursor-pointer`}>
-                <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs text-slate-400 font-medium uppercase tracking-wide">{title}</span>
-                    <Icon className={`h-4 w-4 ${iconColors[color]}`} />
-                </div>
-                <p className="text-3xl font-bold text-white">{value}</p>
-                {subtitle && <p className="text-xs text-slate-500 mt-1">{subtitle}</p>}
-            </div>
-        )
+    // Get latest reading for a device
+    const getLatestReading = (deviceId: string) => {
+        const readings = sensorData[deviceId]
+        return readings?.[readings.length - 1]
     }
 
-    const getAlertColor = (severity: string) => {
-        switch (severity) {
-            case 'critical': return 'bg-red-500/20 border-red-500/30 text-red-400'
-            case 'warning': return 'bg-orange-500/20 border-orange-500/30 text-orange-400'
-            default: return 'bg-blue-500/20 border-blue-500/30 text-blue-400'
-        }
+    // Add device
+    const handleAddDevice = async (name: string, location: string) => {
+        const { error } = await supabase.from('devices').insert({
+            name,
+            location,
+            status: 'offline',
+            latitude: 0,
+            longitude: 0,
+            api_key: crypto.randomUUID()
+        })
+        if (!error) setShowAddModal(false)
     }
 
+    // Delete device
+    const handleDeleteDevice = async (deviceId: string) => {
+        if (!confirm('Delete this device? This will also delete all its sensor data.')) return
+        await supabase.from('sensor_data').delete().eq('device_id', deviceId)
+        await supabase.from('devices').delete().eq('id', deviceId)
+    }
+
+    // Time ago helper
     const getTimeAgo = (dateStr: string) => {
         const diff = Date.now() - new Date(dateStr).getTime()
         const mins = Math.floor(diff / 60000)
@@ -142,98 +157,173 @@ export default function Dashboard() {
         return `${Math.floor(hours / 24)}d ago`
     }
 
+    // Selected device chart data
+    const selectedChartData = sensorData[selectedLocation] || []
+
     return (
-        <div className="space-y-6">
-            {/* Stats Grid - 2x2 on mobile */}
-            <div className="grid grid-cols-2 gap-3 lg:gap-4">
-                <StatCard
-                    title="Total Devices"
-                    value={deviceStats.total}
-                    icon={Server}
-                    color="slate"
-                />
-                <StatCard
-                    title="Online"
-                    value={deviceStats.online}
-                    icon={Wifi}
-                    color="emerald"
-                    subtitle="Active now"
-                />
-                <StatCard
-                    title="Critical Alerts"
-                    value={deviceStats.critical + deviceStats.offline}
-                    icon={AlertTriangle}
-                    color="red"
-                    subtitle="Action required"
-                />
-                <StatCard
-                    title="Avg TDS"
-                    value={`${avgTds} ppm`}
-                    icon={Droplets}
-                    color="cyan"
-                    subtitle="Good quality"
-                />
+        <div className="space-y-4">
+            {/* Page Title */}
+            <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-bold text-[var(--text-primary)]">Dashboard</h1>
+                <button
+                    onClick={() => setShowAddModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white rounded-full text-sm font-medium"
+                >
+                    <Plus className="h-4 w-4" />
+                    Add Device
+                </button>
             </div>
 
-            {/* Recent Alerts Section */}
+            {/* Status Row */}
+            <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
+                {[
+                    { label: 'Online', value: stats.online, color: 'bg-[#30D158]', icon: CheckCircle },
+                    { label: 'Warning', value: stats.warning, color: 'bg-[#FF9F0A]', icon: AlertTriangle },
+                    { label: 'Critical', value: stats.critical, color: 'bg-[#FF453A]', icon: XCircle },
+                    { label: 'Offline', value: stats.offline, color: 'bg-[#8E8E93]', icon: Clock },
+                ].map(item => (
+                    <div
+                        key={item.label}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${item.color}/20 whitespace-nowrap`}
+                    >
+                        <item.icon className={`h-3.5 w-3.5 ${item.color.replace('bg-', 'text-')}`} />
+                        <span className="text-sm font-medium text-[var(--text-primary)]">{item.label}</span>
+                        <span className={`text-sm font-bold ${item.color.replace('bg-', 'text-')}`}>{item.value}</span>
+                    </div>
+                ))}
+            </div>
+
+            {/* Current Readings */}
             <div>
-                <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-semibold text-slate-300">Recent Alerts</h2>
-                    <Link to="/alerts" className="text-xs text-cyan-400 hover:text-cyan-300">View All</Link>
-                </div>
-                <div className="space-y-2">
-                    {recentAlerts.length > 0 ? recentAlerts.map(alert => (
-                        <div
-                            key={alert.id}
-                            className={`glass-card p-3 border ${getAlertColor(alert.severity)} pressable`}
-                        >
-                            <div className="flex items-start gap-3">
-                                <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-white truncate">
-                                        {alert.devices?.name || 'Device'} - {alert.message}
-                                    </p>
-                                    <div className="flex items-center gap-2 mt-1 text-xs text-slate-400">
-                                        <Clock className="h-3 w-3" />
-                                        <span>{getTimeAgo(alert.created_at)}</span>
-                                    </div>
+                <h2 className="text-sm font-semibold text-[var(--text-secondary)] mb-3">Current Readings</h2>
+                <div className="bento-grid">
+                    {devices.slice(0, 4).map(device => {
+                        const reading = getLatestReading(device.id)
+                        const data = sensorData[device.id] || []
+                        const statusColor = device.status === 'online' ? '#30D158' :
+                            device.status === 'warning' ? '#FF9F0A' : '#FF453A'
+
+                        return (
+                            <div key={device.id} className="ios-card relative group">
+                                {/* Delete button */}
+                                <button
+                                    onClick={() => handleDeleteDevice(device.id)}
+                                    className="absolute top-2 right-2 p-1.5 rounded-full bg-[var(--danger)]/20 text-[var(--danger)] opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    <Trash2 className="h-3 w-3" />
+                                </button>
+
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span
+                                        className="w-2 h-2 rounded-full"
+                                        style={{ backgroundColor: statusColor }}
+                                    />
+                                    <span className="text-xs text-[var(--text-secondary)] truncate">
+                                        {device.name || device.location}
+                                    </span>
                                 </div>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="stat-value-md text-cyan-400">
+                                        {reading?.tds ?? '--'}
+                                    </span>
+                                    <span className="text-sm text-[var(--text-secondary)]">ppm</span>
+                                </div>
+                                <div className="flex items-center gap-1 mt-1 text-xs text-[var(--text-tertiary)]">
+                                    <Thermometer className="h-3 w-3" />
+                                    {reading?.temperature ?? '--'}°C
+                                </div>
+                                {/* Mini sparkline */}
+                                {data.length > 0 && (
+                                    <div className="h-8 mt-2 -mx-2">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={data.slice(-10)}>
+                                                <defs>
+                                                    <linearGradient id={`spark-${device.id}`} x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.3} />
+                                                        <stop offset="100%" stopColor="#22d3ee" stopOpacity={0} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <Area
+                                                    type="monotone"
+                                                    dataKey="tds"
+                                                    stroke="#22d3ee"
+                                                    strokeWidth={1.5}
+                                                    fill={`url(#spark-${device.id})`}
+                                                />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    )) : (
-                        <div className="glass-card p-4 text-center text-sm text-slate-500">
-                            No recent alerts
-                        </div>
-                    )}
+                        )
+                    })}
                 </div>
             </div>
 
-            {/* Live Chart */}
-            <div className="glass-card p-4">
-                <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-cyan-400" />
-                    Live TDS Trend
-                </h3>
-                <div className="h-[200px] lg:h-[300px] w-full">
+            {/* TDS Trend Chart */}
+            <div className="ios-card">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <Activity className="h-4 w-4 text-cyan-400" />
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">TDS Trend</h3>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {/* Location selector */}
+                        <select
+                            value={selectedLocation}
+                            onChange={(e) => setSelectedLocation(e.target.value)}
+                            className="bg-[var(--card)] text-[var(--text-primary)] text-xs rounded-lg px-2 py-1 border-none outline-none"
+                        >
+                            {devices.map(d => (
+                                <option key={d.id} value={d.id}>{d.name || d.location}</option>
+                            ))}
+                        </select>
+                        {/* Time range */}
+                        <div className="flex bg-[var(--bg-secondary)] rounded-lg p-0.5">
+                            {(['24h', '7d', '30d'] as const).map(range => (
+                                <button
+                                    key={range}
+                                    onClick={() => setTimeRange(range)}
+                                    className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${timeRange === range
+                                        ? 'bg-[var(--accent)] text-white'
+                                        : 'text-[var(--text-secondary)]'
+                                        }`}
+                                >
+                                    {range}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+                <div className="h-[200px] lg:h-[280px]">
                     <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={data}>
+                        <AreaChart data={selectedChartData}>
                             <defs>
                                 <linearGradient id="colorTds" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.4} />
-                                    <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
+                                    <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.4} />
+                                    <stop offset="100%" stopColor="#22d3ee" stopOpacity={0} />
                                 </linearGradient>
                             </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#2a3142" vertical={false} />
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--separator)" vertical={false} />
                             <XAxis
                                 dataKey="recorded_at"
-                                tick={{ fill: '#64748b', fontSize: 10 }}
+                                tick={{ fill: 'var(--text-tertiary)', fontSize: 10 }}
                                 tickFormatter={(time) => new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                minTickGap={30}
+                                axisLine={false}
+                                tickLine={false}
                             />
-                            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} domain={[0, 'auto']} />
+                            <YAxis
+                                tick={{ fill: 'var(--text-tertiary)', fontSize: 10 }}
+                                axisLine={false}
+                                tickLine={false}
+                            />
                             <Tooltip
-                                contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--bg-elevated)', color: '#f8fafc', borderRadius: '12px' }}
-                                itemStyle={{ color: '#22d3ee' }}
+                                contentStyle={{
+                                    backgroundColor: 'var(--card)',
+                                    border: 'none',
+                                    borderRadius: '12px',
+                                    boxShadow: 'var(--card-shadow)'
+                                }}
                                 labelFormatter={(label) => new Date(label).toLocaleString()}
                             />
                             <Area
@@ -241,29 +331,148 @@ export default function Dashboard() {
                                 dataKey="tds"
                                 stroke="#22d3ee"
                                 strokeWidth={2}
-                                fillOpacity={1}
                                 fill="url(#colorTds)"
-                                animationDuration={500}
                             />
                         </AreaChart>
                     </ResponsiveContainer>
                 </div>
             </div>
 
-            {/* Mobile Scan FAB */}
-            {isMobile && (
-                <Link
-                    to="/scan"
-                    className="fixed bottom-20 right-4 p-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full shadow-lg shadow-cyan-500/30 text-white z-40 pressable"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-                        <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-                        <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-                        <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-                    </svg>
-                </Link>
+            {/* Status Distribution & Recent Activity */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Status Distribution */}
+                <div className="ios-card">
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4">Status Distribution</h3>
+                    <div className="flex items-center gap-4">
+                        <div className="w-32 h-32">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={pieData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={30}
+                                        outerRadius={50}
+                                        dataKey="value"
+                                        stroke="none"
+                                    >
+                                        {pieData.map((entry, index) => (
+                                            <Cell key={index} fill={entry.color} />
+                                        ))}
+                                    </Pie>
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <div className="flex-1 space-y-2">
+                            {pieData.map(item => (
+                                <div key={item.name} className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                                        <span className="text-xs text-[var(--text-secondary)]">{item.name}</span>
+                                    </div>
+                                    <span className="text-sm font-semibold text-[var(--text-primary)]">{item.value}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Recent Activity */}
+                <div className="ios-card">
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4">Recent Activity</h3>
+                    <div className="space-y-3">
+                        {recentAlerts.length > 0 ? recentAlerts.slice(0, 4).map(alert => (
+                            <div key={alert.id} className="flex items-start gap-3">
+                                <span
+                                    className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                                    style={{
+                                        backgroundColor: alert.severity === 'critical' ? '#FF453A' :
+                                            alert.severity === 'warning' ? '#FF9F0A' : '#0A84FF'
+                                    }}
+                                />
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm text-[var(--text-primary)] truncate">
+                                        {alert.devices?.name}
+                                    </p>
+                                    <p className="text-xs text-[var(--text-tertiary)]">
+                                        {alert.message?.slice(0, 40)}...
+                                    </p>
+                                </div>
+                                <span className="text-xs text-[var(--text-tertiary)]">
+                                    {getTimeAgo(alert.created_at)}
+                                </span>
+                            </div>
+                        )) : (
+                            <p className="text-sm text-[var(--text-tertiary)] text-center py-4">
+                                No recent activity
+                            </p>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Add Device Modal */}
+            {showAddModal && (
+                <AddDeviceModal
+                    onClose={() => setShowAddModal(false)}
+                    onAdd={handleAddDevice}
+                />
             )}
+        </div>
+    )
+}
+
+// Add Device Modal Component
+function AddDeviceModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: string, location: string) => void }) {
+    const [name, setName] = useState('')
+    const [location, setLocation] = useState('')
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault()
+        if (name && location) {
+            onAdd(name, location)
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative w-full max-w-md ios-card animate-fade-in">
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Add New Device</h2>
+                    <button onClick={onClose} className="p-2 rounded-full hover:bg-[var(--card-hover)]">
+                        <X className="h-5 w-5 text-[var(--text-secondary)]" />
+                    </button>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm text-[var(--text-secondary)] mb-2">Device Name</label>
+                        <input
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="e.g., NodeMCU-01"
+                            className="w-full px-4 py-3 bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-xl outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm text-[var(--text-secondary)] mb-2">Location</label>
+                        <input
+                            type="text"
+                            value={location}
+                            onChange={(e) => setLocation(e.target.value)}
+                            placeholder="e.g., Himalaya Mess"
+                            className="w-full px-4 py-3 bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-xl outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        className="w-full py-3 bg-[var(--accent)] text-white font-semibold rounded-xl"
+                    >
+                        Add Device
+                    </button>
+                </form>
+            </div>
         </div>
     )
 }
