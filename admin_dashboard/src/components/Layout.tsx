@@ -1,10 +1,11 @@
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import BottomNav from './BottomNav'
-import { WifiOff, Moon, Sun, Bell } from 'lucide-react'
+import { WifiOff, Bell } from 'lucide-react'
 import { useUI } from '../context/UIContext'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
+import ParticleBackground from './ParticleBackground'
 
 export default function Layout() {
     const { isDesktop, isOffline } = useUI()
@@ -13,6 +14,9 @@ export default function Layout() {
 
     return (
         <div className={`min-h-screen bg-[var(--bg)] text-[var(--text-primary)] flex relative ${resolvedTheme === 'light' ? 'light' : ''}`}>
+            {/* 3D Background */}
+            <ParticleBackground />
+
             {/* Sidebar (Desktop) */}
             <Sidebar />
 
@@ -36,11 +40,7 @@ export default function Layout() {
                                     onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
                                     className="p-2 rounded-full hover:bg-[var(--card)] transition-colors"
                                 >
-                                    {resolvedTheme === 'dark' ? (
-                                        <Sun className="h-5 w-5 text-[var(--text-secondary)]" />
-                                    ) : (
-                                        <Moon className="h-5 w-5 text-[var(--text-secondary)]" />
-                                    )}
+                                    {resolvedTheme === 'dark' ? '☀️' : '🌙'}
                                 </button>
                                 {/* Notifications */}
                                 <button className="relative p-2 rounded-full hover:bg-[var(--card)] transition-colors">
