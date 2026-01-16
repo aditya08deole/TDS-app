@@ -14,7 +14,7 @@ services:
 
   # 2. Admin Dashboard (React)
   - type: web
-    name: evaratds-admin
+    name: evaratds-admin-dashboard
     env: docker
     dockerContext: admin_dashboard
     dockerfilePath: Dockerfile
