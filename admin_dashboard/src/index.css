@@ -1,21 +1,189 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+    /* Lighter dark mode palette */
+    --bg-primary: #1a1f2e;
+    --bg-secondary: #242b3d;
+    --bg-card: #2a3142;
+    --bg-elevated: #343d52;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --accent-cyan: #22d3ee;
+    --accent-blue: #3b82f6;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --error: #ef4444;
+}
+
+body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    overflow-x: hidden;
+}
+
+/* Floating background elements */
+.floating-bg {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.floating-bg::before,
+.floating-bg::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.15;
+    animation: float 20s ease-in-out infinite;
+}
+
+.floating-bg::before {
+    width: 400px;
+    height: 400px;
+    background: linear-gradient(135deg, #3b82f6, #22d3ee);
+    top: -100px;
+    right: -100px;
+    animation-delay: 0s;
+}
+
+.floating-bg::after {
+    width: 350px;
+    height: 350px;
+    background: linear-gradient(135deg, #10b981, #22d3ee);
+    bottom: -50px;
+    left: -100px;
+    animation-delay: -10s;
+}
+
+@keyframes float {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    25% { transform: translate(30px, -30px) scale(1.05); }
+    50% { transform: translate(0, 20px) scale(0.95); }
+    75% { transform: translate(-20px, -10px) scale(1.02); }
+}
+
+/* Third floating element */
+.floating-orb {
+    position: fixed;
+    width: 250px;
+    height: 250px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    filter: blur(100px);
+    opacity: 0.1;
+    top: 40%;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    z-index: 0;
+    animation: pulse-orb 15s ease-in-out infinite;
+}
+
+@keyframes pulse-orb {
+    0%, 100% { opacity: 0.08; transform: translateX(-50%) scale(1); }
+    50% { opacity: 0.15; transform: translateX(-50%) scale(1.2); }
+}
+
+/* Glassmorphism card */
+.glass-card {
+    background: rgba(42, 49, 66, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+}
+
+.glass-card-hover:hover {
+    background: rgba(52, 61, 82, 0.7);
+    border-color: rgba(255, 255, 255, 0.12);
+    transform: translateY(-2px);
+    transition: all 0.2s ease;
+}
+
+/* Stat cards */
+.stat-card {
+    background: linear-gradient(135deg, rgba(42, 49, 66, 0.8), rgba(36, 43, 61, 0.6));
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 20px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+}
+
+/* Press effect */
+.pressable {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pressable:active {
+    transform: scale(0.97);
+}
+
+/* Bottom nav styling */
+.bottom-nav {
+    background: rgba(26, 31, 46, 0.95);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bottom-nav-item {
+    transition: all 0.2s ease;
+}
+
+.bottom-nav-item.active {
+    color: var(--accent-cyan);
+}
+
+.bottom-nav-item.active::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+}
+
+/* Safe areas */
 @layer utilities {
     .pb-safe {
         padding-bottom: env(safe-area-inset-bottom);
     }
+    .pt-safe {
+        padding-top: env(safe-area-inset-top);
+    }
 }
 
+/* Leaflet popup styling */
 .custom-popup .leaflet-popup-content-wrapper {
-    @apply bg-slate-900/90 backdrop-blur-md border border-slate-700 text-slate-100 rounded-xl p-0 shadow-2xl;
+    @apply bg-slate-800/90 backdrop-blur-md border border-slate-600 text-slate-100 rounded-xl p-0 shadow-2xl;
 }
 
 .custom-popup .leaflet-popup-tip {
-    @apply bg-slate-900/90 border-slate-700;
+    @apply bg-slate-800/90 border-slate-600;
 }
 
+/* Marker clusters */
 .marker-cluster-small,
 .marker-cluster-medium,
 .marker-cluster-large {
@@ -28,16 +196,10 @@
     @apply bg-transparent;
 }
 
+/* Animations */
 @keyframes slide-up {
-    from {
-        transform: translateY(100%);
-        opacity: 0;
-    }
-
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
 }
 
 .animate-slide-up {
@@ -45,17 +207,50 @@
 }
 
 @keyframes slide-in-right {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
 }
 
 .animate-slide-in-right {
     animation: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.animate-fade-in {
+    animation: fade-in 0.3s ease;
+}
+
+/* Skeleton loading */
+.skeleton {
+    background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-elevated) 50%, var(--bg-card) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-elevated);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #4a5568;
 }
