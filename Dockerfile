@@ -3,14 +3,11 @@ FROM ghcr.io/cirruslabs/flutter:stable AS build
 
 WORKDIR /app
 
-# Copy dependency definitions
-COPY pubspec.yaml ./
+# Copy source code (Copying everything first to solve context issues)
+COPY . .
 
 # Get dependencies
 RUN flutter pub get
-
-# Copy source code
-COPY . .
 
 # Argument for Secrets (Passed from Render)
 ARG SUPABASE_URL
