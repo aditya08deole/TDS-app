@@ -1,25 +1,24 @@
 services:
   # 1. Flutter Web App (Mobile Client)
   - type: web
-    name: evaratds-mobile-web
-    env: docker
-    rootDir: .
-    dockerContext: .
-    dockerfilePath: Dockerfile
+    name: evaratds-flutter-app
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
     branch: main
+    buildCommand: ""
     envVars:
       - key: SUPABASE_URL
-        sync: false # User must input this in Dashboard
+        sync: false
       - key: SUPABASE_ANON_KEY
         sync: false
 
-  # 2. Admin Dashboard (React)
+  # 2. Admin Dashboard (React/Vite) - Static Site is simpler for React
   - type: web
-    name: evaratds-admin-dashboard
-    env: docker
-    dockerContext: admin_dashboard
-    dockerfilePath: Dockerfile
+    name: evaratds-admin-panel
+    runtime: static
+    buildCommand: cd admin_dashboard && npm ci && npm run build
+    staticPublishPath: admin_dashboard/dist
     plan: free
     branch: main
     envVars:

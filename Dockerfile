@@ -1,33 +1,41 @@
-# Stage# 1. Build Phase
+# ==========================================
+# Flutter Web App Docker Build
+# ==========================================
 FROM ghcr.io/cirruslabs/flutter:stable AS build
 
+# Set working directory
 WORKDIR /app
 
-# Copy source code (Copying everything first to solve context issues)
-COPY . .
+# Copy pubspec files first for better caching
+COPY pubspec.yaml pubspec.lock* ./
 
-# Get dependencies
+# Get Flutter dependencies
 RUN flutter pub get
 
-# Argument for Secrets (Passed from Render)
+# Copy the rest of the source code
+COPY . .
+
+# Build arguments for secrets
 ARG SUPABASE_URL
 ARG SUPABASE_ANON_KEY
 
-# Create .env file from Arguments
-RUN echo "SUPABASE_URL=$SUPABASE_URL" > .env
-RUN echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> .env
+# Create .env file from build arguments
+RUN echo "SUPABASE_URL=${SUPABASE_URL}" > .env && \
+    echo "SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}" >> .env
 
-# Build Web
+# Build Flutter web app
 RUN flutter build web --release --no-tree-shake-icons
 
-# Stage 2: Serve with Nginx
+# ==========================================
+# Production Stage - Serve with Nginx
+# ==========================================
 FROM nginx:alpine
 
-# Copy built assets to Nginx html folder
+# Copy built web files to nginx
 COPY --from=build /app/build/web /usr/share/nginx/html
 
-# Expose Port
+# Expose port 80
 EXPOSE 80
 
-# Start Nginx
+# Start nginx
 CMD ["nginx", "-g", "daemon off;"]
