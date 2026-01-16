@@ -19,12 +19,18 @@ export type Profile = {
 
 export type Device = {
     id: string
+    device_id?: string
     organization_id: string | null
     name: string
+    location?: string
     latitude: number
     longitude: number
     api_key: string
-    status: 'online' | 'offline' | 'warning' | 'critical'
+    status: 'online' | 'offline' | 'warning' | 'critical' | 'degraded' | 'maintenance'
+    battery_level?: number
+    signal_strength?: number
+    firmware_version?: string
+    installed_at?: string
     last_seen: string | null
     created_at: string
 }
