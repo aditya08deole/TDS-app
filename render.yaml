@@ -3,7 +3,6 @@ services:
   - type: web
     name: evaratds-mobile-web
     env: docker
-    dockerContext: .
     dockerfilePath: Dockerfile
     plan: free
     branch: main
