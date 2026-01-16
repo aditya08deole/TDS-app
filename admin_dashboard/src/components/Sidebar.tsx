@@ -53,10 +53,14 @@ export default function Sidebar() {
             </nav>
 
             <div className="p-4 border-t border-slate-800 space-y-2">
-                <button className="flex w-full items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors">
-                    <Settings className="h-5 w-5" />
+                <Link
+                    to="/settings"
+                    className={`flex w-full items-center gap-3 px-4 py-3 rounded-lg transition-all ${pathname === '/settings' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shadow-lg shadow-cyan-500/5' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                        }`}
+                >
+                    <Settings className={`h-5 w-5 ${pathname === '/settings' ? 'text-cyan-400' : 'text-slate-500 group-hover:text-white'}`} />
                     <span className="font-medium">Settings</span>
-                </button>
+                </Link>
                 <Link
                     to="/audit"
                     className={`flex w-full items-center gap-3 px-4 py-3 rounded-lg transition-all ${pathname === '/audit' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shadow-lg shadow-cyan-500/5' : 'text-slate-400 hover:bg-slate-800 hover:text-white'

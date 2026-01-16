@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Map, Radio, Bell } from 'lucide-react'
+import { LayoutDashboard, Map, Radio, Bell, Settings } from 'lucide-react'
 import { useUI } from '../context/UIContext'
 
 export default function BottomNav() {
@@ -11,6 +11,7 @@ export default function BottomNav() {
         { icon: Map, label: 'Map', path: '/map' },
         { icon: Radio, label: 'Devices', path: '/devices' },
         { icon: Bell, label: 'Alerts', path: '/alerts' },
+        { icon: Settings, label: 'Settings', path: '/settings' },
     ]
 
     if (!isMobile) return null

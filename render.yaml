@@ -1,19 +1,8 @@
 services:
-  # 1. Flutter Web App
+  # EvaraTDS Unified Dashboard
+  # Single static site deployment - No Docker needed!
   - type: web
-    name: evaratds-flutter-web
-    runtime: docker
-    plan: free
-    branch: main
-    envVars:
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-
-  # 2. Admin Dashboard (React/Vite Static Site)
-  - type: web
-    name: evaratds-admin-site
+    name: evaratds-dashboard
     runtime: static
     buildCommand: cd admin_dashboard && npm ci && npm run build
     staticPublishPath: admin_dashboard/dist

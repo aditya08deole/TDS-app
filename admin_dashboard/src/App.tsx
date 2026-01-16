@@ -16,6 +16,7 @@ const DeviceList = lazy(() => import('./pages/Devices'))
 const Alerts = lazy(() => import('./pages/Alerts'))
 const ScanDevice = lazy(() => import('./pages/ScanDevice'))
 const AuditLog = lazy(() => import('./pages/AuditLog'))
+const Settings = lazy(() => import('./pages/Settings'))
 
 // Loading Component
 const PageLoader = () => (
@@ -67,6 +68,11 @@ function App() {
                                 <Route path="audit" element={
                                     <Suspense fallback={<PageLoader />}>
                                         <AuditLog />
+                                    </Suspense>
+                                } />
+                                <Route path="settings" element={
+                                    <Suspense fallback={<PageLoader />}>
+                                        <Settings />
                                     </Suspense>
                                 } />
                             </Route>
