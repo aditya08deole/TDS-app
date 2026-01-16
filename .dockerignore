@@ -1,0 +1,17 @@
+.git
+.gitignore
+.idea
+.dart_tool
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+android/
+ios/
+linux/
+macos/
+windows/
+test/
+admin_dashboard/node_modules/
+admin_dashboard/dist/
+*.iml
+.env
