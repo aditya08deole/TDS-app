@@ -16,7 +16,7 @@ services:
   - type: web
     name: evaratds-admin
     env: docker
-    root: admin_dashboard
+    dockerContext: admin_dashboard
     dockerfilePath: Dockerfile
     plan: free
     branch: main
