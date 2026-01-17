@@ -16,6 +16,7 @@ import {
     RefreshCw
 } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import HealthTimeline from './HealthTimeline'
 
 interface Device {
     id: string
@@ -229,6 +230,9 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                     <p className="text-xl font-bold text-white">{device.signal_strength ?? '--'} dBm</p>
                                 </div>
                             </div>
+
+                            {/* Health Timeline */}
+                            <HealthTimeline deviceId={device.id} />
 
                             {/* Location */}
                             <div className="bg-slate-800/50 rounded-xl p-3">
