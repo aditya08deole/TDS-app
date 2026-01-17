@@ -4,6 +4,8 @@ import type { Device } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useUI } from '../context/UIContext'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
+import { QRCodeGenerator } from '../components/QRCodeGenerator'
+import { QRCodeScanner } from '../components/QRCodeScanner'
 import {
     Plus,
     Trash2,
@@ -37,7 +39,8 @@ export default function Devices() {
     })
     const [loading, setLoading] = useState(false)
     const [refreshing, setRefreshing] = useState(false)
-    // const [showQRScanner, setShowQRScanner] = useState(false) // TODO: Implement QR scanner modal
+    const [showQRGenerator, setShowQRGenerator] = useState(false)
+    const [showQRScanner, setShowQRScanner] = useState(false)
 
     // Search and Filter State
     const [searchQuery, setSearchQuery] = useState('')
@@ -348,7 +351,7 @@ export default function Devices() {
                         <div className="flex gap-2">
                             <button
                                 type="button"
-                                onClick={() => alert('QR Scanner feature coming soon!')}
+                                onClick={() => setShowQRScanner(true)}
                                 className="flex items-center gap-2 px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 font-medium rounded-lg transition-all text-sm"
                             >
                                 <ScanLine className="h-4 w-4" />
@@ -356,7 +359,7 @@ export default function Devices() {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => alert('Generate QR for this device form data')}
+                                onClick={() => setShowQRGenerator(true)}
                                 className="flex items-center gap-2 px-3 py-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 font-medium rounded-lg transition-all text-sm"
                             >
                                 <QrCode className="h-4 w-4" />
@@ -541,6 +544,30 @@ export default function Devices() {
             </div>
 
             {/* Device Detail Modal REMOVED - using Global Inspector */}
+
+            {/* QR Code Generator Modal */}
+            <QRCodeGenerator
+                deviceData={newDevice}
+                isOpen={showQRGenerator}
+                onClose={() => setShowQRGenerator(false)}
+            />
+
+            {/* QR Code Scanner Modal */}
+            <QRCodeScanner
+                isOpen={showQRScanner}
+                onClose={() => setShowQRScanner(false)}
+                onScan={(data) => {
+                    setNewDevice({
+                        name: data.name,
+                        location_name: data.location_name,
+                        latitude: data.latitude,
+                        longitude: data.longitude,
+                        sim_number: data.sim_number,
+                        node_number: data.node_number,
+                        thingspeak_read_key: data.thingspeak_read_key
+                    })
+                }}
+            />
         </div>
     )
 }

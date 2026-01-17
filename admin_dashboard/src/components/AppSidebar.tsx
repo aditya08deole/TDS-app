@@ -24,7 +24,6 @@ import {
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
-    SidebarMenuSub,
     SidebarRail,
 } from "@/components/ui/sidebar"
 import {
@@ -133,33 +132,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     <SidebarMenu>
                         {navMain.map((item) => (
                             <SidebarMenuItem key={item.title}>
-                                {item.items ? (
-                                    // Collapsible item would require `Collapsible` component which I didn't create wrapper for in Sidebar.tsx explicitly?
-                                    // The generic sidebar.tsx supports nested menus via sidebar-menu-sub
-                                    // For simplicity, let's just make them links for now or use the Collapsible pattern if I had it.
-                                    // I'll stick to simple flat links if no sub-items, or just render sub-items always if active.
-                                    // Actuallly I'll just render it as a button for now.
-                                    <>
-                                        <SidebarMenuButton tooltip={item.title}>
-                                            {item.icon && <item.icon />}
-                                            <span>{item.title}</span>
-                                        </SidebarMenuButton>
-                                        <SidebarMenuSub>
-                                            {/* Placeholder for sub items */}
-                                        </SidebarMenuSub>
-                                    </>
-                                ) : (
-                                    <SidebarMenuButton
-                                        asChild
-                                        tooltip={item.title}
-                                        isActive={item.isActive}
-                                    >
-                                        <Link to={item.url}>
-                                            {item.icon && <item.icon />}
-                                            <span>{item.title}</span>
-                                        </Link>
-                                    </SidebarMenuButton>
-                                )}
+                                <SidebarMenuButton
+                                    asChild
+                                    tooltip={item.title}
+                                    isActive={item.isActive}
+                                >
+                                    <Link to={item.url}>
+                                        {item.icon && <item.icon />}
+                                        <span>{item.title}</span>
+                                    </Link>
+                                </SidebarMenuButton>
                             </SidebarMenuItem>
                         ))}
                     </SidebarMenu>
