@@ -137,19 +137,19 @@ export default function Dashboard() {
 
     return (
         <div className="space-y-5 max-w-[1600px] mx-auto pb-10">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground">Overview</h1>
-                    <p className="text-sm text-muted-foreground mt-0.5">Real-time water quality monitoring</p>
-                </div>
-                <TabsList className="bg-white/5 backdrop-blur-lg border border-white/10">
-                    <TabsTrigger value="default" className="gap-2 data-[state=active]:bg-white/10 transition-all duration-300"><LayoutGrid className="w-4 h-4" /> Default</TabsTrigger>
-                    <TabsTrigger value="all" className="gap-2 data-[state=active]:bg-white/10 transition-all duration-300"><AreaChartIcon className="w-4 h-4" /> All Devices</TabsTrigger>
-                </TabsList>
-            </div>
-
             <Tabs defaultValue="default" className="w-full">
+                {/* Header */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight text-foreground">Overview</h1>
+                        <p className="text-sm text-muted-foreground mt-0.5">Real-time water quality monitoring</p>
+                    </div>
+                    <TabsList className="bg-white/5 backdrop-blur-lg border border-white/10">
+                        <TabsTrigger value="default" className="gap-2 data-[state=active]:bg-white/10 transition-all duration-300"><LayoutGrid className="w-4 h-4" /> Default</TabsTrigger>
+                        <TabsTrigger value="all" className="gap-2 data-[state=active]:bg-white/10 transition-all duration-300"><AreaChartIcon className="w-4 h-4" /> All Devices</TabsTrigger>
+                    </TabsList>
+                </div>
+
                 <TabsContent value="default" className="space-y-5 mt-0">
                     {/* Row 1: Status Cards (Left) + Pie Chart (Center) + Activity (Right) */}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
