@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import {
-    Activity,
     AlertTriangle,
     FileText,
     LayoutDashboard,
@@ -111,12 +110,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                                     size="lg"
                                     className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                                 >
-                                    <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                                        <Activity className="size-4" />
-                                    </div>
+                                    <img
+                                        src="/pwa-512x512.png"
+                                        alt="EvaraTDS"
+                                        className="size-8 rounded-lg"
+                                    />
                                     <div className="grid flex-1 text-left text-sm leading-tight">
-                                        <span className="truncate font-semibold">Evara TDS</span>
-                                        <span className="truncate text-xs">Admin Console</span>
+                                        <span className="truncate font-semibold">EvaraTDS</span>
+                                        <span className="truncate text-xs opacity-60">Water Quality Monitor</span>
                                     </div>
                                     {/* <ChevronsUpDown className="ml-auto" /> */}
                                 </SidebarMenuButton>

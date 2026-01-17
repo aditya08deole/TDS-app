@@ -21,7 +21,7 @@ export function TopBar() {
                 {/* Breadcrumbs could go here */}
             </div>
 
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-3">
                 <div className="relative w-full max-w-sm hidden md:flex">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -34,6 +34,15 @@ export function TopBar() {
                             <span className="text-xs">⌘</span>K
                         </kbd>
                     </div>
+                </div>
+
+                {/* IIITH Logo */}
+                <div className="hidden lg:flex items-center">
+                    <img
+                        src="/iiith-logo.png"
+                        alt="IIIT Hyderabad"
+                        className="h-8 object-contain bg-white/90 rounded px-2 py-0.5"
+                    />
                 </div>
 
                 <Tooltip>
