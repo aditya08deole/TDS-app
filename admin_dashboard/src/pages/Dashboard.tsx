@@ -3,7 +3,7 @@ import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, LineChart, Line
 } from 'recharts'
-import { Activity, Clock, Droplets, Thermometer, LayoutGrid } from 'lucide-react'
+import { Activity, Clock, Droplets, Thermometer, LayoutGrid, TrendingUp, TrendingDown, Zap } from 'lucide-react'
 import type { Device, SensorData } from '../lib/supabase'
 
 import { GlassCard } from '@/components/GlassCard'
@@ -20,7 +20,25 @@ const STATUS_COLORS = {
     offline: '#8e8e93'
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+// Custom tooltip for pie chart - shows devices count
+const PieTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+        const data = payload[0]
+        return (
+            <div className="px-3 py-2 rounded-lg border border-white/10 shadow-xl backdrop-blur-xl bg-black/90">
+                <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: data.payload.fill }} />
+                    <span className="text-white text-sm font-medium">{data.name}</span>
+                </div>
+                <p className="text-white/80 text-xs mt-1">{data.value} devices</p>
+            </div>
+        )
+    }
+    return null
+}
+
+// Custom tooltip for chart data
+const ChartTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         return (
             <div className="p-3 rounded-xl border border-white/10 shadow-2xl backdrop-blur-xl bg-black/90">
@@ -120,9 +138,18 @@ export default function Dashboard() {
     }, [selectedLocation, devices, sensorData])
 
     const latestTDS = trendData.length > 0 ? trendData[trendData.length - 1].tds : 0
+    const prevTDS = trendData.length > 1 ? trendData[trendData.length - 2].tds : latestTDS
+    const tdsChange = latestTDS - prevTDS
     const avgTemp = trendData.length > 0
         ? (trendData.reduce((s, d) => s + d.temp, 0) / trendData.length).toFixed(1)
         : '--'
+
+    // Calculate system health score
+    const systemHealth = useMemo(() => {
+        const total = devices.length
+        if (total === 0) return 0
+        return Math.round(((stats.online * 100) + (stats.warning * 50) + (stats.critical * 10)) / total)
+    }, [stats, devices.length])
 
     if (loading) return (
         <div className="flex items-center justify-center h-64">
@@ -138,55 +165,62 @@ export default function Dashboard() {
                     <h1 className="text-xl font-semibold tracking-tight">Overview</h1>
                     <p className="text-xs text-muted-foreground mt-0.5">Real-time water quality monitoring</p>
                 </div>
-                <TabsList className="bg-white/5 border border-white/10 h-9">
-                    <TabsTrigger
-                        value="default"
-                        className="text-xs gap-1.5 h-7 px-3 data-[state=active]:bg-white/10 transition-all duration-300"
-                    >
-                        <LayoutGrid className="w-3.5 h-3.5" /> Default
-                    </TabsTrigger>
-                    <TabsTrigger
-                        value="all"
-                        className="text-xs gap-1.5 h-7 px-3 data-[state=active]:bg-white/10 transition-all duration-300"
-                    >
-                        <AreaChartIcon className="w-3.5 h-3.5" /> All Devices
-                    </TabsTrigger>
-                </TabsList>
+                <div className="flex items-center gap-3">
+                    {/* System Health Badge - NEW FEATURE */}
+                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
+                        <Zap className="w-3.5 h-3.5 text-green-500" />
+                        <span className="text-xs font-medium text-green-500">{systemHealth}% Healthy</span>
+                    </div>
+                    <TabsList className="bg-white/5 border border-white/10 h-9">
+                        <TabsTrigger
+                            value="default"
+                            className="text-xs gap-1.5 h-7 px-3 data-[state=active]:bg-white/10 transition-all duration-300"
+                        >
+                            <LayoutGrid className="w-3.5 h-3.5" /> Default
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="all"
+                            className="text-xs gap-1.5 h-7 px-3 data-[state=active]:bg-white/10 transition-all duration-300"
+                        >
+                            <AreaChartIcon className="w-3.5 h-3.5" /> All Devices
+                        </TabsTrigger>
+                    </TabsList>
+                </div>
             </div>
 
             {/* Default View */}
             <TabsContent value="default" className="space-y-4 mt-0">
-                {/* Row 1: Status Cards + Pie Chart + Activity */}
+                {/* Row 1: Status Cards (WIDER) + Pie Chart (NARROWER) + Activity */}
                 <div className="grid grid-cols-12 gap-4">
-                    {/* Status Cards - Vertical Stack */}
-                    <div className="col-span-12 lg:col-span-3 space-y-2">
+                    {/* Status Cards - WIDER (4 cols instead of 3) */}
+                    <div className="col-span-12 lg:col-span-4 grid grid-cols-2 gap-2">
                         {[
-                            { label: 'Online', value: stats.online, color: '#30d158', bg: 'bg-green-500/10' },
-                            { label: 'Warning', value: stats.warning, color: '#ff9f0a', bg: 'bg-orange-500/10' },
-                            { label: 'Critical', value: stats.critical, color: '#ff453a', bg: 'bg-red-500/10' },
-                            { label: 'Offline', value: stats.offline, color: '#8e8e93', bg: 'bg-slate-500/10' },
+                            { label: 'Online', value: stats.online, color: '#30d158', bg: 'bg-green-500/10', icon: Activity },
+                            { label: 'Warning', value: stats.warning, color: '#ff9f0a', bg: 'bg-orange-500/10', icon: Activity },
+                            { label: 'Critical', value: stats.critical, color: '#ff453a', bg: 'bg-red-500/10', icon: Activity },
+                            { label: 'Offline', value: stats.offline, color: '#8e8e93', bg: 'bg-slate-500/10', icon: Activity },
                         ].map((s, idx) => (
                             <div
                                 key={s.label}
-                                className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] hover:scale-[1.01] transition-all duration-300 cursor-pointer"
+                                className="flex flex-col justify-between p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] hover:scale-[1.02] transition-all duration-300 cursor-pointer min-h-[100px]"
                                 style={{ animationDelay: `${idx * 50}ms` }}
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-9 h-9 rounded-lg ${s.bg} flex items-center justify-center transition-transform duration-300 hover:scale-110`}>
-                                        <Activity className="w-4 h-4" style={{ color: s.color }} />
+                                <div className="flex items-center justify-between">
+                                    <div className={`w-10 h-10 rounded-xl ${s.bg} flex items-center justify-center transition-transform duration-300 hover:scale-110`}>
+                                        <s.icon className="w-5 h-5" style={{ color: s.color }} />
                                     </div>
-                                    <span className="text-sm text-white/70">{s.label}</span>
+                                    <span className="text-3xl font-bold font-mono">{s.value}</span>
                                 </div>
-                                <span className="text-2xl font-bold font-mono">{s.value}</span>
+                                <span className="text-sm text-white/60 mt-2">{s.label}</span>
                             </div>
                         ))}
                     </div>
 
-                    {/* Pie Chart - Center */}
-                    <div className="col-span-12 lg:col-span-5">
-                        <GlassCard className="p-5 h-full transition-all duration-500 hover:shadow-xl">
-                            <h3 className="text-sm font-medium mb-2">Device Status</h3>
-                            <div className="h-[200px]">
+                    {/* Pie Chart - NARROWER (4 cols instead of 5) */}
+                    <div className="col-span-12 lg:col-span-4">
+                        <GlassCard className="p-4 h-full transition-all duration-500 hover:shadow-xl">
+                            <h3 className="text-sm font-medium mb-1">Device Status</h3>
+                            <div className="h-[180px] relative">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <PieChart>
                                         <Pie
@@ -197,7 +231,7 @@ export default function Dashboard() {
                                                 { name: 'Offline', value: stats.offline }
                                             ]}
                                             cx="50%" cy="50%"
-                                            innerRadius={55} outerRadius={80}
+                                            innerRadius={45} outerRadius={70}
                                             paddingAngle={3} dataKey="value" strokeWidth={0}
                                         >
                                             <Cell fill={STATUS_COLORS.online} />
@@ -205,27 +239,32 @@ export default function Dashboard() {
                                             <Cell fill={STATUS_COLORS.critical} />
                                             <Cell fill={STATUS_COLORS.offline} />
                                         </Pie>
-                                        <Tooltip content={<CustomTooltip />} />
+                                        <Tooltip content={<PieTooltip />} />
                                     </PieChart>
                                 </ResponsiveContainer>
+                                {/* Center Label - NEW FEATURE */}
+                                <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
+                                    <span className="text-2xl font-bold">{devices.length}</span>
+                                    <span className="text-[10px] text-white/50">Total</span>
+                                </div>
                             </div>
-                            <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-white/50 mt-2">
-                                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#30d158]" />Online ({stats.online})</span>
-                                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#ff9f0a]" />Warning ({stats.warning})</span>
-                                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#ff453a]" />Critical ({stats.critical})</span>
-                                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-[#8e8e93]" />Offline ({stats.offline})</span>
+                            <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[10px] text-white/50">
+                                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#30d158]" />Online ({stats.online})</span>
+                                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ff9f0a]" />Warning ({stats.warning})</span>
+                                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ff453a]" />Critical ({stats.critical})</span>
+                                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#8e8e93]" />Offline ({stats.offline})</span>
                             </div>
                         </GlassCard>
                     </div>
 
-                    {/* Recent Activity - Right */}
+                    {/* Recent Activity - Same (4 cols) */}
                     <div className="col-span-12 lg:col-span-4">
-                        <GlassCard className="p-5 h-full transition-all duration-500 hover:shadow-xl">
-                            <div className="flex items-center justify-between mb-3">
+                        <GlassCard className="p-4 h-full transition-all duration-500 hover:shadow-xl">
+                            <div className="flex items-center justify-between mb-2">
                                 <h3 className="text-sm font-medium">Recent Activity</h3>
-                                <span className="text-[10px] text-white/40">{devices.length} devices</span>
+                                <span className="text-[10px] text-white/40 bg-white/5 px-2 py-0.5 rounded-full">{devices.length} devices</span>
                             </div>
-                            <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-1 custom-scrollbar">
+                            <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
                                 {devices.map((d, idx) => {
                                     const latest = sensorData[d.id]?.[sensorData[d.id]?.length - 1]
                                     return (
@@ -259,7 +298,17 @@ export default function Dashboard() {
 
                 {/* Controls Row */}
                 <div className="flex items-center justify-between py-1">
-                    <h2 className="text-lg font-semibold">{locationLabel}</h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-semibold">{locationLabel}</h2>
+                        {/* TDS Change Indicator - NEW FEATURE */}
+                        {tdsChange !== 0 && (
+                            <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${tdsChange > 0 ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'
+                                }`}>
+                                {tdsChange > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                {Math.abs(tdsChange)} ppm
+                            </div>
+                        )}
+                    </div>
                     <div className="flex items-center gap-3">
                         <div className="flex gap-0.5 bg-white/[0.03] rounded-lg p-0.5 border border-white/[0.06]">
                             {['24h', '7d', '30d'].map((r) => (
@@ -310,11 +359,12 @@ export default function Dashboard() {
                                         <p className="text-[11px] text-white/40">{locationLabel}</p>
                                     </div>
                                 </div>
-                                <span className="text-xl font-bold font-mono text-green-500">
-                                    {latestTDS} <span className="text-xs font-normal text-white/40">ppm</span>
-                                </span>
+                                <div className="text-right">
+                                    <span className="text-xl font-bold font-mono text-green-500">{latestTDS}</span>
+                                    <span className="text-xs text-white/40 ml-1">ppm</span>
+                                </div>
                             </div>
-                            <div className="h-[280px]">
+                            <div className="h-[300px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={trendData} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
                                         <defs>
@@ -326,7 +376,7 @@ export default function Dashboard() {
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
                                         <XAxis dataKey="time" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
                                         <YAxis stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
-                                        <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)' }} />
+                                        <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)' }} />
                                         <Area
                                             type="monotone"
                                             dataKey="tds"
@@ -355,17 +405,18 @@ export default function Dashboard() {
                                         <p className="text-[11px] text-white/40">{locationLabel}</p>
                                     </div>
                                 </div>
-                                <span className="text-xl font-bold font-mono text-orange-500">
-                                    {avgTemp}<span className="text-xs font-normal text-white/40">°C</span>
-                                </span>
+                                <div className="text-right">
+                                    <span className="text-xl font-bold font-mono text-orange-500">{avgTemp}</span>
+                                    <span className="text-xs text-white/40 ml-1">°C avg</span>
+                                </div>
                             </div>
-                            <div className="h-[280px]">
+                            <div className="h-[300px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={trendData} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
                                         <XAxis dataKey="time" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
                                         <YAxis stroke="#555" fontSize={9} tickLine={false} axisLine={false} domain={['dataMin - 2', 'dataMax + 2']} />
-                                        <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)' }} />
+                                        <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)' }} />
                                         <Line
                                             type="monotone"
                                             dataKey="temp"
