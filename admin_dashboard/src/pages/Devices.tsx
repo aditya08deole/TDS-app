@@ -15,7 +15,9 @@ import {
     Square,
     Download,
     RefreshCw,
-    X
+    X,
+    QrCode,
+    ScanLine
 } from 'lucide-react'
 
 type StatusFilter = 'all' | 'online' | 'offline' | 'maintenance'
@@ -320,10 +322,30 @@ export default function Devices() {
             {/* Add Device Form (Admin Only) */}
             {isAdmin && !selectionMode && (
                 <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 lg:p-6 backdrop-blur-sm">
-                    <h3 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
-                        <Plus className="h-5 w-5 text-cyan-400" />
-                        Add New Device
-                    </h3>
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                            <Plus className="h-5 w-5 text-cyan-400" />
+                            Add New Device
+                        </h3>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => alert('QR Scanner coming soon! Use mobile app to scan QR codes.')}
+                                className="flex items-center gap-2 px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 font-medium rounded-lg transition-colors text-sm"
+                            >
+                                <ScanLine className="h-4 w-4" />
+                                Scan QR
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => alert('QR Generation feature! Generate QR codes for device provisioning.')}
+                                className="flex items-center gap-2 px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 font-medium rounded-lg transition-colors text-sm"
+                            >
+                                <QrCode className="h-4 w-4" />
+                                Generate QR
+                            </button>
+                        </div>
+                    </div>
                     <form onSubmit={handleAddDevice} className="flex gap-3 lg:gap-4 items-end flex-wrap">
                         <div className="flex-1 min-w-[150px]">
                             <label className="text-sm text-slate-500 mb-1 block">Device Name</label>

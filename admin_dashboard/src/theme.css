@@ -1,90 +1,138 @@
 @layer base {
     :root {
         --font-size: 16px;
-        --background: #ffffff;
-        --foreground: oklch(0.145 0 0);
-        --card: #ffffff;
-        --card-foreground: oklch(0.145 0 0);
-        --popover: oklch(1 0 0);
-        --popover-foreground: oklch(0.145 0 0);
-        --primary: #030213;
-        --primary-foreground: oklch(1 0 0);
-        --secondary: oklch(0.95 0.0058 264.53);
-        --secondary-foreground: #030213;
-        --muted: #ececf0;
-        --muted-foreground: #717182;
-        --accent: #e9ebef;
-        --accent-foreground: #030213;
-        --destructive: #d4183d;
-        --destructive-foreground: #ffffff;
-        --border: rgba(0, 0, 0, 0.1);
-        --input: transparent;
-        --input-background: #f3f3f5;
-        --switch-background: #cbced4;
-        --ring: oklch(0.708 0 0);
-        --radius: 0.625rem;
+        /* Pure Apple White Theme */
+        --background: 247 247 247;
+        /* #F7F7F7 - Off-white like iOS */
+        --foreground: 28 28 30;
+        /* Apple text color */
 
-        --sidebar: oklch(0.985 0 0);
-        --sidebar-foreground: oklch(0.145 0 0);
-        --sidebar-primary: #030213;
-        --sidebar-primary-foreground: oklch(0.985 0 0);
-        --sidebar-accent: oklch(0.97 0 0);
-        --sidebar-accent-foreground: oklch(0.205 0 0);
-        --sidebar-border: oklch(0.922 0 0);
-        --sidebar-ring: oklch(0.708 0 0);
+        --card: 255 255 255;
+        /* Pure white cards */
+        --card-foreground: 28 28 30;
 
-        /* Charts */
-        --chart-1: oklch(0.646 0.222 41.116);
-        --chart-2: oklch(0.6 0.118 184.704);
-        --chart-3: oklch(0.398 0.07 227.392);
-        --chart-4: oklch(0.828 0.189 84.429);
-        --chart-5: oklch(0.769 0.188 70.08);
+        --popover: 255 255 255;
+        --popover-foreground: 28 28 30;
+
+        --primary: 0 122 255;
+        /* Apple Blue */
+        --primary-foreground: 255 255 255;
+
+        --secondary: 242 242 247;
+        /* Light gray background */
+        --secondary-foreground: 28 28 30;
+
+        --muted: 242 242 247;
+        --muted-foreground: 142 142 147;
+        /* Apple gray */
+
+        --accent: 0 122 255;
+        /* Apple Blue */
+        --accent-foreground: 255 255 255;
+
+        --destructive: 255 59 48;
+        /* Apple Red */
+        --destructive-foreground: 255 255 255;
+
+        --border: 0 0 0 / 0.1;
+        /* Light border */
+        --input: 0 0 0 / 0.05;
+        --input-background: 242 242 247;
+        --switch-background: 203 206 212;
+        --ring: 0 122 255 / 0.5;
+        --radius: 0.75rem;
+        /* 12px - Apple style */
+
+        /* Sidebar - Light */
+        --sidebar: 255 255 255;
+        /* White sidebar */
+        --sidebar-foreground: 28 28 30;
+        --sidebar-primary: 0 122 255;
+        --sidebar-primary-foreground: 255 255 255;
+        --sidebar-accent: 242 242 247;
+        --sidebar-accent-foreground: 28 28 30;
+        --sidebar-border: 0 0 0 / 0.08;
+        --sidebar-ring: 0 122 255 / 0.4;
+
+        /* Charts - Light */
+        --chart-1: 52 199 89;
+        /* Apple Green */
+        --chart-2: 0 122 255;
+        /* Apple Blue */
+        --chart-3: 255 149 0;
+        /* Apple Orange */
+        --chart-4: 175 82 222;
+        /* Apple Purple */
+        --chart-5: 255 59 48;
+        /* Apple Red */
 
         --font-weight-medium: 500;
         --font-weight-normal: 400;
     }
 
     .dark {
-        /* Apple-inspired true black to deep graphite background */
-        --background: #000000;
-        --foreground: #f5f5f7;
-        --card: rgba(28, 28, 30, 0.7);
-        --card-foreground: #f5f5f7;
-        --popover: rgba(28, 28, 30, 0.95);
-        --popover-foreground: #f5f5f7;
-        --primary: #f5f5f7;
-        --primary-foreground: #1c1c1e;
-        --secondary: rgba(58, 58, 60, 0.6);
-        --secondary-foreground: #f5f5f7;
-        --muted: rgba(58, 58, 60, 0.5);
-        --muted-foreground: #8e8e93;
-        --accent: rgba(72, 72, 74, 0.5);
-        --accent-foreground: #f5f5f7;
-        --destructive: #ff453a;
-        --destructive-foreground: #f5f5f7;
-        --border: rgba(255, 255, 255, 0.08);
-        --input: rgba(255, 255, 255, 0.08);
-        --input-background: rgba(255, 255, 255, 0.05);
-        /* Added fallback for dark input bg */
-        --switch-background: rgba(120, 120, 128, 0.32);
-        /* Added fallback */
-        --ring: rgba(255, 255, 255, 0.2);
+        /* True Apple Black Theme - Like iOS */
+        --background: 0 0 0;
+        /* Pure Black #000000 */
+        --foreground: 245 245 247;
+        /* Apple White */
 
-        /* Sidebar */
-        --sidebar: rgba(20, 20, 22, 0.85);
-        --sidebar-foreground: #f5f5f7;
-        --sidebar-primary: rgba(10, 132, 255, 0.15);
-        --sidebar-primary-foreground: #0a84ff;
-        --sidebar-accent: rgba(72, 72, 74, 0.5);
-        --sidebar-accent-foreground: #f5f5f7;
-        --sidebar-border: rgba(255, 255, 255, 0.08);
-        --sidebar-ring: rgba(10, 132, 255, 0.4);
+        /* Glass Cards with proper transparency */
+        --card: 28 28 30 / 0.7;
+        /* Transparent dark gray */
+        --card-foreground: 245 245 247;
 
-        /* Apple-style system colors - softened */
-        --chart-1: oklch(0.55 0.15 140);
-        --chart-2: oklch(0.6 0.12 220);
-        --chart-3: oklch(0.7 0.13 80);
-        --chart-4: oklch(0.6 0.15 300);
-        --chart-5: oklch(0.65 0.14 30);
+        --popover: 28 28 30 / 0.95;
+        --popover-foreground: 245 245 247;
+
+        --primary: 10 132 255;
+        /* Apple Blue Dark Mode */
+        --primary-foreground: 245 245 247;
+
+        --secondary: 58 58 60 / 0.6;
+        /* Transparent gray */
+        --secondary-foreground: 245 245 247;
+
+        --muted: 58 58 60 / 0.5;
+        --muted-foreground: 142 142 147;
+        /* Apple gray */
+
+        --accent: 10 132 255;
+        /* Apple Blue */
+        --accent-foreground: 245 245 247;
+
+        --destructive: 255 69 58;
+        /* Apple Red Dark */
+        --destructive-foreground: 245 245 247;
+
+        --border: 255 255 255 / 0.08;
+        /* Subtle white border */
+        --input: 255 255 255 / 0.08;
+        --input-background: 255 255 255 / 0.05;
+        --switch-background: 120 120 128 / 0.32;
+        --ring: 255 255 255 / 0.2;
+
+        /* Sidebar - Dark */
+        --sidebar: 20 20 22 / 0.85;
+        /* Transparent dark */
+        --sidebar-foreground: 245 245 247;
+        --sidebar-primary: 10 132 255 / 0.15;
+        --sidebar-primary-foreground: 10 132 255;
+        --sidebar-accent: 72 72 74 / 0.5;
+        --sidebar-accent-foreground: 245 245 247;
+        --sidebar-border: 255 255 255 / 0.08;
+        --sidebar-ring: 10 132 255 / 0.4;
+
+        /* Apple System Colors - Dark Mode */
+        --chart-1: 48 209 88;
+        /* Green Dark */
+        --chart-2: 10 132 255;
+        /* Blue Dark */
+        --chart-3: 255 159 10;
+        /* Orange Dark */
+        --chart-4: 191 90 242;
+        /* Purple Dark */
+        --chart-5: 255 69 58;
+        /* Red Dark */
     }
 }
