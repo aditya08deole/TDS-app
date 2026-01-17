@@ -4,6 +4,9 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from "path"
 
 export default defineConfig({
+    server: {
+        port: 8080,
+    },
     resolve: {
         alias: {
             "@": path.resolve(__dirname, "./src"),
