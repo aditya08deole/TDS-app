@@ -60,7 +60,7 @@ export default function Login() {
                 <img
                     src="/iiith-logo.png"
                     alt="IIIT Hyderabad"
-                    className="h-14 md:h-16 object-contain opacity-90 hover:opacity-100 transition-opacity bg-white/90 rounded-lg px-3 py-1"
+                    className="h-10 md:h-12 object-contain opacity-90 hover:opacity-100 transition-opacity invert"
                 />
             </div>
 

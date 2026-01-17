@@ -41,7 +41,7 @@ export function TopBar() {
                     <img
                         src="/iiith-logo.png"
                         alt="IIIT Hyderabad"
-                        className="h-8 object-contain bg-white/90 rounded px-2 py-0.5"
+                        className="h-7 object-contain dark:invert opacity-80"
                     />
                 </div>
 
