@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    PieChart, Pie, Cell
+    PieChart, Pie, Cell, LineChart, Line
 } from 'recharts'
 import {
-    Activity, Clock, LayoutGrid
+    Activity, Clock, LayoutGrid, Thermometer, Droplets
 } from 'lucide-react'
 import type { Device, SensorData } from '../lib/supabase'
 
@@ -26,12 +26,12 @@ const STATUS_COLORS = {
 const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         return (
-            <div className="glass-panel p-3 rounded-lg border border-white/10 shadow-xl backdrop-blur-xl bg-[#1c1c1e]/90">
-                <p className="text-slate-400 text-xs mb-1">{label}</p>
+            <div className="glass-panel p-3 rounded-xl border border-white/10 shadow-2xl backdrop-blur-xl bg-black/80">
+                <p className="text-white/60 text-xs mb-2 font-medium">{label}</p>
                 {payload.map((p: any, index: number) => (
                     <div key={index} className="flex items-center gap-2 text-sm font-medium">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
-                        <span className="text-white">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
+                        <span className="text-white font-mono">
                             {p.value} {p.name === 'temp' ? '°C' : (p.name === 'tds' || p.name === 'tds_value') ? 'ppm' : ''}
                         </span>
                     </div>
@@ -54,7 +54,6 @@ export default function Dashboard() {
         const POLL_INTERVAL = 30000
 
         const fetchDevicesAndData = async () => {
-            // Mock Data Generation (Same as before, simplified for brevity in replacement)
             const baseDevice = {
                 latitude: 17.4455,
                 longitude: 78.3489,
@@ -81,7 +80,6 @@ export default function Dashboard() {
 
             const newSensorData: { [key: string]: SensorData[] } = {}
             mockDevices.forEach(d => {
-                // Generate mock trend
                 newSensorData[d.id] = Array.from({ length: 24 }, (_, i) => ({
                     id: i,
                     device_id: d.id,
@@ -115,6 +113,12 @@ export default function Dashboard() {
         }, { online: 0, warning: 0, critical: 0, offline: 0 })
     }, [devices])
 
+    // Get selected device info for chart titles
+    const selectedDevice = useMemo(() => {
+        if (selectedLocation === 'all') return null
+        return devices.find(d => d.id === selectedLocation)
+    }, [selectedLocation, devices])
+
     const trendData = useMemo(() => {
         const targetId = selectedLocation === 'all' ? devices[0]?.id : selectedLocation
         if (!targetId || !sensorData[targetId]) return []
@@ -125,10 +129,32 @@ export default function Dashboard() {
         }))
     }, [selectedLocation, devices, sensorData])
 
-    if (loading) return <div className="p-8 text-center text-muted-foreground">Loading Dashboard...</div>
+    if (loading) return (
+        <div className="p-8 text-center text-muted-foreground animate-pulse">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            Loading Dashboard...
+        </div>
+    )
 
     return (
         <div className="space-y-6 max-w-[1600px] mx-auto pb-10">
+            {/* Partner Logos Header */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-6">
+                    <img
+                        src="/evaratech-logo.png"
+                        alt="EvaraTech"
+                        className="h-8 object-contain opacity-90 hover:opacity-100 transition-all duration-300"
+                    />
+                    <div className="w-px h-6 bg-white/10" />
+                    <img
+                        src="/iiith-logo.png"
+                        alt="IIIT Hyderabad"
+                        className="h-7 object-contain invert opacity-80 hover:opacity-100 transition-all duration-300"
+                    />
+                </div>
+            </div>
+
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Overview</h1>
@@ -138,39 +164,43 @@ export default function Dashboard() {
 
             <Tabs defaultValue="default" className="w-full">
                 <div className="flex items-center justify-between mb-4">
-                    <TabsList>
-                        <TabsTrigger value="default" className="gap-2"><LayoutGrid className="w-4 h-4" /> Default</TabsTrigger>
-                        <TabsTrigger value="all" className="gap-2"><AreaChartIcon className="w-4 h-4" /> All Devices</TabsTrigger>
+                    <TabsList className="bg-white/5 backdrop-blur-lg border border-white/10">
+                        <TabsTrigger value="default" className="gap-2 data-[state=active]:bg-white/10 transition-all duration-300"><LayoutGrid className="w-4 h-4" /> Default</TabsTrigger>
+                        <TabsTrigger value="all" className="gap-2 data-[state=active]:bg-white/10 transition-all duration-300"><AreaChartIcon className="w-4 h-4" /> All Devices</TabsTrigger>
                     </TabsList>
 
                     <div className="flex gap-2">
                         <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                            <SelectTrigger className="w-[180px]">
+                            <SelectTrigger className="w-[200px] bg-white/5 backdrop-blur-lg border-white/10 transition-all duration-300 hover:bg-white/10">
                                 <SelectValue placeholder="Select Location" />
                             </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Main Campus (Agg)</SelectItem>
-                                {devices.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                            <SelectContent className="bg-black/90 backdrop-blur-xl border-white/10">
+                                <SelectItem value="all">All Locations (Aggregate)</SelectItem>
+                                {devices.map(d => <SelectItem key={d.id} value={d.id}>{d.name} - {d.location_name}</SelectItem>)}
                             </SelectContent>
                         </Select>
-                        <Button>
+                        <Button className="bg-primary/20 hover:bg-primary/30 text-primary border border-primary/20 transition-all duration-300">
                             <Activity className="h-4 w-4 mr-2" /> Live View
                         </Button>
                     </div>
                 </div>
 
-                <TabsContent value="default" className="space-y-6 animate-fade-in">
+                <TabsContent value="default" className="space-y-6">
                     {/* Status Cards */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         {[
-                            { label: 'Online', value: stats.online, color: 'text-green-500', bg: 'bg-green-500/10' },
-                            { label: 'Warning', value: stats.warning, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-                            { label: 'Critical', value: stats.critical, color: 'text-red-500', bg: 'bg-red-500/10' },
-                            { label: 'Offline', value: stats.offline, color: 'text-slate-500', bg: 'bg-slate-500/10' },
-                        ].map((stat) => (
-                            <GlassCard key={stat.label} className="p-4 flex items-center justify-between">
+                            { label: 'Online', value: stats.online, color: 'text-green-500', bg: 'bg-green-500/10', borderColor: 'border-green-500/20' },
+                            { label: 'Warning', value: stats.warning, color: 'text-orange-500', bg: 'bg-orange-500/10', borderColor: 'border-orange-500/20' },
+                            { label: 'Critical', value: stats.critical, color: 'text-red-500', bg: 'bg-red-500/10', borderColor: 'border-red-500/20' },
+                            { label: 'Offline', value: stats.offline, color: 'text-slate-500', bg: 'bg-slate-500/10', borderColor: 'border-slate-500/20' },
+                        ].map((stat, index) => (
+                            <GlassCard
+                                key={stat.label}
+                                className={`p-4 flex items-center justify-between border ${stat.borderColor} transition-all duration-500 hover:scale-[1.02] hover:shadow-lg`}
+                                style={{ animationDelay: `${index * 100}ms` }}
+                            >
                                 <div className="flex items-center gap-3">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${stat.bg} ${stat.color}`}>
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stat.bg} ${stat.color} transition-transform duration-300 hover:scale-110`}>
                                         <Activity className="h-5 w-5" />
                                     </div>
                                     <span className="text-sm font-medium text-muted-foreground">{stat.label}</span>
@@ -180,45 +210,100 @@ export default function Dashboard() {
                         ))}
                     </div>
 
-                    {/* Main Charts */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <GlassCard className="lg:col-span-2 p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-lg font-semibold">TDS Trend</h3>
-                                <div className="flex gap-1.5">
+                    {/* Main Charts - TDS and Temperature */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* TDS Trend Chart */}
+                        <GlassCard className="p-6 transition-all duration-500 hover:shadow-xl">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center">
+                                        <Droplets className="h-5 w-5 text-green-500" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-semibold">TDS Trend</h3>
+                                        <p className="text-xs text-muted-foreground">
+                                            {selectedDevice ? `${selectedDevice.name} - ${selectedDevice.location_name}` : 'All Locations'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-1.5 bg-white/5 rounded-lg p-1">
                                     {['24h', '7d', '30d'].map((r) => (
                                         <button
                                             key={r}
                                             onClick={() => setTimeRange(r as any)}
-                                            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${timeRange === r ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-300 ${timeRange === r ? 'bg-primary text-primary-foreground shadow-lg' : 'text-muted-foreground hover:bg-white/10'}`}
                                         >
                                             {r}
                                         </button>
                                     ))}
                                 </div>
                             </div>
-                            <div className="h-[300px]">
+                            <div className="h-[280px]">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={trendData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                                    <AreaChart data={trendData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                                         <defs>
                                             <linearGradient id="tdsGradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#30d158" stopOpacity={0.3} />
+                                                <stop offset="5%" stopColor="#30d158" stopOpacity={0.4} />
                                                 <stop offset="95%" stopColor="#30d158" stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                        <XAxis dataKey="time" stroke="#666" fontSize={11} tickLine={false} axisLine={false} dy={10} />
-                                        <YAxis stroke="#666" fontSize={11} tickLine={false} axisLine={false} dx={-10} />
+                                        <XAxis dataKey="time" stroke="#666" fontSize={10} tickLine={false} axisLine={false} dy={10} />
+                                        <YAxis stroke="#666" fontSize={10} tickLine={false} axisLine={false} dx={-5} />
                                         <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.2)', strokeDasharray: '4 4' }} />
-                                        <Area type="monotone" dataKey="tds" stroke="#30d158" strokeWidth={2} fill="url(#tdsGradient)" />
+                                        <Area type="monotone" dataKey="tds" stroke="#30d158" strokeWidth={2.5} fill="url(#tdsGradient)" />
                                     </AreaChart>
                                 </ResponsiveContainer>
                             </div>
                         </GlassCard>
 
-                        <GlassCard className="p-6 flex flex-col">
+                        {/* Temperature Trend Chart */}
+                        <GlassCard className="p-6 transition-all duration-500 hover:shadow-xl">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center">
+                                        <Thermometer className="h-5 w-5 text-orange-500" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-semibold">Temperature Trend</h3>
+                                        <p className="text-xs text-muted-foreground">
+                                            {selectedDevice ? `${selectedDevice.name} - ${selectedDevice.location_name}` : 'All Locations'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <span className="text-muted-foreground">Avg:</span>
+                                    <span className="font-mono font-bold text-orange-500">
+                                        {trendData.length > 0 ? (trendData.reduce((sum, d) => sum + d.temp, 0) / trendData.length).toFixed(1) : '--'}°C
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="h-[280px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={trendData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="tempGradient" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#ff9f0a" stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor="#ff9f0a" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                        <XAxis dataKey="time" stroke="#666" fontSize={10} tickLine={false} axisLine={false} dy={10} />
+                                        <YAxis stroke="#666" fontSize={10} tickLine={false} axisLine={false} dx={-5} domain={['dataMin - 2', 'dataMax + 2']} />
+                                        <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.2)', strokeDasharray: '4 4' }} />
+                                        <Line type="monotone" dataKey="temp" stroke="#ff9f0a" strokeWidth={2.5} dot={false} activeDot={{ r: 6, fill: '#ff9f0a', strokeWidth: 2, stroke: '#fff' }} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </GlassCard>
+                    </div>
+
+                    {/* Device Status Pie + Recent Activity */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Device Status Pie Chart */}
+                        <GlassCard className="p-6 flex flex-col transition-all duration-500 hover:shadow-xl">
                             <h3 className="text-lg font-semibold mb-4">Device Status</h3>
-                            <div className="flex-1 min-h-[220px]">
+                            <div className="flex-1 min-h-[200px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <PieChart>
                                         <Pie
@@ -228,9 +313,9 @@ export default function Dashboard() {
                                                 { name: 'Critical', value: stats.critical },
                                                 { name: 'Offline', value: stats.offline },
                                             ]}
-                                            innerRadius={60}
-                                            outerRadius={80}
-                                            paddingAngle={5}
+                                            innerRadius={55}
+                                            outerRadius={75}
+                                            paddingAngle={4}
                                             dataKey="value"
                                         >
                                             <Cell fill={STATUS_COLORS.online} />
@@ -242,36 +327,49 @@ export default function Dashboard() {
                                     </PieChart>
                                 </ResponsiveContainer>
                             </div>
-                            <div className="grid grid-cols-2 gap-y-2 text-xs text-muted-foreground mt-4">
-                                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-[#30d158]" /> Online ({stats.online})</div>
-                                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-[#ff9f0a]" /> Warning ({stats.warning})</div>
-                                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-[#ff453a]" /> Critical ({stats.critical})</div>
-                                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-[#8e8e93]" /> Offline ({stats.offline})</div>
+                            <div className="grid grid-cols-2 gap-y-2 text-xs text-muted-foreground mt-2">
+                                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#30d158]" /> Online ({stats.online})</div>
+                                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#ff9f0a]" /> Warning ({stats.warning})</div>
+                                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#ff453a]" /> Critical ({stats.critical})</div>
+                                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#8e8e93]" /> Offline ({stats.offline})</div>
                             </div>
                         </GlassCard>
-                    </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <GlassCard className="p-6 lg:col-span-2">
-                            <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
-                            <div className="space-y-4">
-                                {devices.slice(0, 5).map(dev => (
-                                    <div key={dev.id} className="flex items-center justify-between border-b border-border/50 pb-3 last:border-0 last:pb-0">
-                                        <div className="flex items-center gap-3">
-                                            <StatusIndicator status={dev.status} size="sm" />
-                                            <div>
-                                                <div className="text-sm font-medium">{dev.name}</div>
-                                                <div className="text-xs text-muted-foreground">{dev.location_name}</div>
+                        {/* Recent Activity - ALL DEVICES with scroll */}
+                        <GlassCard className="p-6 lg:col-span-2 transition-all duration-500 hover:shadow-xl">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold">Recent Activity</h3>
+                                <span className="text-xs text-muted-foreground bg-white/5 px-2 py-1 rounded-full">
+                                    {devices.length} devices
+                                </span>
+                            </div>
+                            <div className="space-y-3 max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
+                                {devices.map((dev, index) => {
+                                    const latestData = sensorData[dev.id]?.[sensorData[dev.id]?.length - 1]
+                                    const timeAgo = Math.floor(Math.random() * 10) + 1 // Mock time
+
+                                    return (
+                                        <div
+                                            key={dev.id}
+                                            className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 transition-all duration-300 hover:bg-white/10 hover:border-white/10 hover:scale-[1.01]"
+                                            style={{ animationDelay: `${index * 50}ms` }}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <StatusIndicator status={dev.status} size="sm" pulse />
+                                                <div>
+                                                    <div className="text-sm font-medium">{dev.name}</div>
+                                                    <div className="text-xs text-muted-foreground">{dev.location_name}</div>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-sm font-mono font-bold">{latestData?.tds || '--'} <span className="text-muted-foreground font-normal">ppm</span></div>
+                                                <div className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
+                                                    <Clock className="w-3 h-3" /> {timeAgo}m ago
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="text-right">
-                                            <div className="text-sm font-mono">185 ppm</div>
-                                            <div className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
-                                                <Clock className="w-3 h-3" /> 2m ago
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         </GlassCard>
                     </div>
@@ -279,13 +377,17 @@ export default function Dashboard() {
 
                 <TabsContent value="all" className="animate-fade-in">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {devices.map(device => {
+                        {devices.map((device, index) => {
                             const data = sensorData[device.id] || []
-                            // Map data for sparkline would go here when/if we use Sparkline component
                             const latest = data[data.length - 1]
 
                             return (
-                                <GlassCard key={device.id} hover className="p-5 flex flex-col justify-between h-[160px] relative overflow-hidden group">
+                                <GlassCard
+                                    key={device.id}
+                                    hover
+                                    className="p-5 flex flex-col justify-between h-[160px] relative overflow-hidden group transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl"
+                                    style={{ animationDelay: `${index * 50}ms` }}
+                                >
                                     <div className="flex justify-between items-start z-10">
                                         <div>
                                             <h4 className="font-semibold text-sm truncate max-w-[120px]" title={device.name}>{device.name}</h4>
@@ -299,8 +401,7 @@ export default function Dashboard() {
                                         <div className="text-xs text-muted-foreground">{latest?.temperature || '--'}°C</div>
                                     </div>
 
-                                    <div className="absolute bottom-0 left-0 right-0 h-16 opacity-30 group-hover:opacity-50 transition-opacity">
-                                        {/* Using Recharts Area for Sparkline effect manually if Sparkline component isn't perfect for this */}
+                                    <div className="absolute bottom-0 left-0 right-0 h-16 opacity-30 group-hover:opacity-50 transition-all duration-500">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <AreaChart data={data}>
                                                 <Area type="monotone" dataKey="tds" stroke={STATUS_COLORS[device.status as keyof typeof STATUS_COLORS] || '#30d158'} fill="none" strokeWidth={2} />
