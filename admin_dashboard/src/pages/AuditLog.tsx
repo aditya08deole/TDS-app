@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Search, User, Clock, ShieldAlert } from 'lucide-react'
 import { useRole } from '../context/RoleContext'
+import { GlassCard } from '@/components/GlassCard'
 
 interface AuditLogEntry {
     id: string
@@ -56,7 +57,7 @@ export default function AuditLog() {
             </div>
 
             {/* Log List */}
-            <div className="glass-panel rounded-xl overflow-hidden border border-white/5">
+            <GlassCard className="overflow-hidden">
                 <div className="p-4 border-b border-white/5 bg-white/5 flex items-center gap-2">
                     <Search className="h-4 w-4 text-slate-400" />
                     <input
@@ -105,7 +106,7 @@ export default function AuditLog() {
                         ))
                     )}
                 </div>
-            </div>
+            </GlassCard>
         </div>
     )
 }

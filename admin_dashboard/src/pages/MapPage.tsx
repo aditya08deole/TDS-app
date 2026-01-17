@@ -6,8 +6,9 @@ import { supabase } from '../lib/supabase'
 import type { Device } from '../lib/supabase'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { Maximize2, Minimize2, Map as MapIcon, Layers, Activity, Wifi } from 'lucide-react'
+import { Maximize2, Minimize2, Map as MapIcon, Layers, Activity, Wifi, Search } from 'lucide-react'
 import { useUI } from '../context/UIContext'
+import { StatusIndicator } from '@/components/StatusIndicator'
 
 // Using DivIcon exclusively
 import icon from 'leaflet/dist/images/marker-icon.png'
@@ -192,13 +193,41 @@ export default function MapPage() {
 
             {/* Map Container - Glass effect container */}
             <div className={`flex-1 overflow-hidden relative z-0 shadow-2xl ${isFullscreen ? 'rounded-none' : 'rounded-2xl border border-white/10'}`}>
-                <MapContainer center={[17.4455, 78.3489]} zoom={15} scrollWheelZoom={true} className="h-full w-full bg-[#000000]">
-                    {/* Dark Mode Tiles */}
+                <MapContainer center={[17.4455, 78.3489]} zoom={15} scrollWheelZoom={true} className="h-full w-full bg-slate-900/10">
+                    {/* OpenStreetMap Tiles */}
                     <TileLayer
-                        attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                        maxZoom={20}
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        maxZoom={19}
+                        className="map-tiles"
                     />
+
+                    {/* Floating Search Panel */}
+                    <div className="absolute top-4 left-4 z-[400] w-[300px]">
+                        <div className="bg-white/90 backdrop-blur-md rounded-xl border border-white/20 shadow-xl overflow-hidden">
+                            <div className="p-3 border-b border-gray-200/50 flex items-center gap-2">
+                                <Search className="w-4 h-4 text-gray-500" />
+                                <input
+                                    type="text"
+                                    placeholder="Search devices..."
+                                    className="bg-transparent border-none outline-none text-sm text-gray-800 w-full placeholder:text-gray-400"
+                                    onChange={() => {
+                                        // Simple local search filter could go here or trigger a state
+                                        // For now just visual
+                                    }}
+                                />
+                            </div>
+                            {/* Quick Results or Suggestions could go here */}
+                            <div className="max-h-[200px] overflow-y-auto hidden group-focus-within:block">
+                                {devices.slice(0, 3).map(d => (
+                                    <button key={d.id} onClick={() => openInspector(d.id)} className="w-full text-left px-4 py-2 text-sm hover:bg-black/5 flex items-center justify-between text-gray-700">
+                                        <span>{d.name}</span>
+                                        <StatusIndicator status={d.status} size="sm" />
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Find active device coords for flyTo */}
                     <MapController center={inspectorDeviceId ?

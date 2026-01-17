@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { FileText, Download, BarChart3, TrendingUp, AlertTriangle, Activity, Server, Database } from 'lucide-react'
 import { useUI } from '../context/UIContext'
 
+
 interface UptimeStat {
     device_id: string
     device_name: string
@@ -139,7 +140,7 @@ export default function Reports() {
 
                     {/* KPI Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="glass-panel p-5 rounded-xl flex items-center gap-4">
+                        <div className="glass-card p-5 rounded-xl flex items-center gap-4">
                             <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
                                 <TrendingUp className="w-6 h-6" />
                             </div>
@@ -148,7 +149,7 @@ export default function Reports() {
                                 <p className="text-xs text-[#86868b] font-medium uppercase tracking-wider">Avg Fleet Availability</p>
                             </div>
                         </div>
-                        <div className="glass-panel p-5 rounded-xl flex items-center gap-4">
+                        <div className="glass-card p-5 rounded-xl flex items-center gap-4">
                             <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-500">
                                 <AlertTriangle className="w-6 h-6" />
                             </div>
@@ -157,7 +158,7 @@ export default function Reports() {
                                 <p className="text-xs text-[#86868b] font-medium uppercase tracking-wider">Total Outage Events</p>
                             </div>
                         </div>
-                        <div className="glass-panel p-5 rounded-xl flex items-center gap-4">
+                        <div className="glass-card p-5 rounded-xl flex items-center gap-4">
                             <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
                                 <BarChart3 className="w-6 h-6" />
                             </div>
@@ -169,7 +170,7 @@ export default function Reports() {
                     </div>
 
                     {/* Data Table */}
-                    <div className="glass-panel rounded-xl overflow-hidden border border-white/5">
+                    <div className="glass-card rounded-xl overflow-hidden border border-white/5">
                         <div className="p-4 border-b border-white/5 flex items-center justify-between">
                             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                                 <FileText className="h-4 w-4 text-slate-400" /> Availability Report
@@ -236,7 +237,7 @@ export default function Reports() {
             )}
 
             {activeTab === 'health' && (
-                <div className="glass-panel rounded-xl overflow-hidden border border-white/5">
+                <div className="glass-card rounded-xl overflow-hidden border border-white/5">
                     <div className="p-4 border-b border-white/5 flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                             <Server className="h-4 w-4 text-slate-400" /> Infrastructure Status

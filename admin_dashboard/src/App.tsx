@@ -7,7 +7,7 @@ import { ThemeProvider } from './context/ThemeContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import AuthGuard from './components/AuthGuard'
-import ReloadPrompt from './components/ReloadPrompt'
+// import ReloadPrompt from './components/ReloadPrompt' // PWA disabled
 import NotificationManager from './components/NotificationManager'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { initOfflineSync } from './lib/syncQueue'
@@ -105,7 +105,7 @@ function App() {
                                             <Route path="*" element={<Navigate to="/" replace />} />
                                         </Route>
                                     </Routes>
-                                    <ReloadPrompt />
+                                    {/* <ReloadPrompt /> */} {/* PWA disabled */}
                                     <NotificationManager />
                                 </AppWrapper>
                             </RoleProvider>

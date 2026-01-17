@@ -7,6 +7,8 @@ import { offlineStore } from '../lib/offlineStore'
 import { useUI } from '../context/UIContext'
 
 import { useRole } from '../context/RoleContext'
+import { GlassCard } from '@/components/GlassCard'
+import { Button } from '@/components/ui/button'
 
 export default function Alerts() {
     const [alerts, setAlerts] = useState<Alert[]>([])
@@ -152,7 +154,7 @@ export default function Alerts() {
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="glass-panel p-5 rounded-xl flex items-center gap-4">
+                <GlassCard className="p-5 flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-500">
                         <AlertCircle className="w-6 h-6" />
                     </div>
@@ -160,8 +162,8 @@ export default function Alerts() {
                         <p className="text-2xl font-bold text-white">{stats.critical}</p>
                         <p className="text-xs text-[#86868b] font-medium uppercase tracking-wider">Critical Active</p>
                     </div>
-                </div>
-                <div className="glass-panel p-5 rounded-xl flex items-center gap-4">
+                </GlassCard>
+                <GlassCard className="p-5 flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-500">
                         <AlertTriangle className="w-6 h-6" />
                     </div>
@@ -169,8 +171,8 @@ export default function Alerts() {
                         <p className="text-2xl font-bold text-white">{stats.warning}</p>
                         <p className="text-xs text-[#86868b] font-medium uppercase tracking-wider">Warnings Active</p>
                     </div>
-                </div>
-                <div className="glass-panel p-5 rounded-xl flex items-center gap-4">
+                </GlassCard>
+                <GlassCard className="p-5 flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
                         <Bell className="w-6 h-6" />
                     </div>
@@ -178,25 +180,25 @@ export default function Alerts() {
                         <p className="text-2xl font-bold text-white">{stats.total}</p>
                         <p className="text-xs text-[#86868b] font-medium uppercase tracking-wider">Total logged</p>
                     </div>
-                </div>
+                </GlassCard>
             </div>
 
             {/* Alert List */}
             <div className="space-y-4">
                 {filteredAlerts.length === 0 ? (
-                    <div className="text-center py-20 glass-card rounded-2xl border-dashed border-white/10">
+                    <GlassCard className="text-center py-20 border-dashed border-white/10 flex flex-col items-center">
                         <CheckCircle className="h-12 w-12 text-green-500/50 mx-auto mb-4" />
                         <p className="text-slate-400 text-lg">All systems normal. No active alerts.</p>
-                    </div>
+                    </GlassCard>
                 ) : (
                     filteredAlerts.map(alert => (
-                        <div
+                        <GlassCard
                             key={alert.id}
                             className={`
-                                group relative p-5 rounded-xl border transition-all duration-300
+                                relative p-5 transition-all duration-300
                                 ${alert.severity === 'critical' && alert.status === 'open' ? 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10' :
                                     alert.severity === 'warning' && alert.status === 'open' ? 'bg-orange-500/5 border-orange-500/20 hover:bg-orange-500/10' :
-                                        'glass-card hover:bg-white/5'}
+                                        'hover:bg-white/5'}
                             `}
                         >
                             <div className="flex items-start gap-4">
@@ -228,32 +230,32 @@ export default function Alerts() {
                                     <div className="flex items-center justify-between mt-4">
                                         <div className="flex items-center gap-4">
                                             <div className="flex gap-2">
-                                                <button className="flex items-center gap-1.5 text-xs font-medium text-cyan-400 hover:text-cyan-300 transition-colors bg-cyan-500/10 px-2.5 py-1.5 rounded-md hover:bg-cyan-500/20">
-                                                    <Camera className="h-3.5 w-3.5" /> Attach Photo
-                                                </button>
-                                                <button className="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-white transition-colors bg-white/5 px-2.5 py-1.5 rounded-md hover:bg-white/10">
-                                                    <FileText className="h-3.5 w-3.5" /> Add Note
-                                                </button>
+                                                <Button variant="ghost" size="sm" className="h-7 text-xs text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20">
+                                                    <Camera className="h-3.5 w-3.5 mr-1.5" /> Attach Photo
+                                                </Button>
+                                                <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-400 hover:text-white bg-white/5 hover:bg-white/10">
+                                                    <FileText className="h-3.5 w-3.5 mr-1.5" /> Add Note
+                                                </Button>
                                             </div>
                                             {alert.acknowledged_at && <span className="text-emerald-500 text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Acknowledged</span>}
                                         </div>
 
                                         <div className="flex gap-2">
                                             {hasPermission('maintenance_mode') && alert.status === 'open' && (
-                                                <button
+                                                <Button
                                                     onClick={() => acknowledgeAlert(alert.id)}
-                                                    className="px-4 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs font-semibold shadow-lg shadow-blue-500/20 transition-all hover:scale-105"
+                                                    className="bg-blue-500 hover:bg-blue-600 text-xs font-semibold shadow-lg shadow-blue-500/20 h-8"
                                                 >
                                                     Acknowledge
-                                                </button>
+                                                </Button>
                                             )}
                                             {hasPermission('maintenance_mode') && alert.status === 'acknowledged' && (
-                                                <button
+                                                <Button
                                                     onClick={() => resolveAlert(alert.id)}
-                                                    className="px-4 py-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 text-xs font-semibold shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
+                                                    className="bg-emerald-500 hover:bg-emerald-600 text-xs font-semibold shadow-lg shadow-emerald-500/20 h-8"
                                                 >
                                                     Resolve
-                                                </button>
+                                                </Button>
                                             )}
                                             {alert.status === 'resolved' && (
                                                 <span className="text-emerald-500 text-xs font-bold px-3 py-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20 flex items-center gap-1">
@@ -264,7 +266,7 @@ export default function Alerts() {
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </GlassCard>
                     ))
                 )}
             </div>

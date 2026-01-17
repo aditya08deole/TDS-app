@@ -6,6 +6,9 @@ import {
     User, Bell, Shield, LogOut, Moon, Mail, ChevronRight, Save, Loader2, CheckCircle,
     Globe, Lock, Layout, BellRing, UserCircle
 } from 'lucide-react'
+import { GlassCard } from '@/components/GlassCard'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 
 interface UserSettings {
     notifications_enabled: boolean
@@ -109,7 +112,7 @@ export default function Settings() {
                     <p className="text-[#86868b] text-sm mt-1">System Preferences</p>
                 </div>
 
-                <div className="glass-panel p-2 rounded-xl flex flex-col gap-1">
+                <GlassCard className="p-2 flex flex-col gap-1">
                     {menuItems.map(item => (
                         <button
                             key={item.id}
@@ -123,9 +126,9 @@ export default function Settings() {
                             {item.label}
                         </button>
                     ))}
-                </div>
+                </GlassCard>
 
-                <div className="glass-panel p-4 rounded-xl">
+                <GlassCard className="p-4">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
                             {user?.email?.charAt(0).toUpperCase()}
@@ -135,18 +138,19 @@ export default function Settings() {
                             <p className="text-xs text-[#86868b]">Administrator</p>
                         </div>
                     </div>
-                    <button
+                    <Button
+                        variant="destructive"
                         onClick={handleLogout}
-                        className="w-full py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold rounded-lg border border-red-500/20 transition-colors flex items-center justify-center gap-2"
+                        className="w-full h-9 text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20"
                     >
-                        <LogOut className="h-3.5 w-3.5" />
+                        <LogOut className="h-3.5 w-3.5 mr-2" />
                         Sign Out
-                    </button>
-                </div>
+                    </Button>
+                </GlassCard>
             </div>
 
             {/* Content (Right Panel) */}
-            <div className="flex-1 glass-card rounded-2xl p-6 lg:p-8 overflow-y-auto">
+            <GlassCard className="flex-1 p-6 lg:p-8 overflow-y-auto">
                 <div className="max-w-2xl mx-auto space-y-8">
 
                     {activeTab === 'general' && (
@@ -165,9 +169,10 @@ export default function Settings() {
                                             <p className="text-xs text-[#86868b]">Force application wide dark theme</p>
                                         </div>
                                     </div>
-                                    <button onClick={() => toggleSetting('dark_mode')} className={`w-11 h-6 rounded-full transition-colors relative ${settings.dark_mode ? 'bg-[#30d158]' : 'bg-[#3a3a3c]'}`}>
-                                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.dark_mode ? 'translate-x-5' : 'translate-x-0'}`} />
-                                    </button>
+                                    <Switch
+                                        checked={settings.dark_mode}
+                                        onCheckedChange={() => toggleSetting('dark_mode')}
+                                    />
                                 </div>
                                 <div className="p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-4">
@@ -199,9 +204,10 @@ export default function Settings() {
                                             <p className="text-xs text-[#86868b]">Receive critical alerts on device</p>
                                         </div>
                                     </div>
-                                    <button onClick={() => toggleSetting('notifications_enabled')} className={`w-11 h-6 rounded-full transition-colors relative ${settings.notifications_enabled ? 'bg-[#30d158]' : 'bg-[#3a3a3c]'}`}>
-                                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.notifications_enabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                                    </button>
+                                    <Switch
+                                        checked={settings.notifications_enabled}
+                                        onCheckedChange={() => toggleSetting('notifications_enabled')}
+                                    />
                                 </div>
                                 <div className="p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-4">
@@ -211,9 +217,10 @@ export default function Settings() {
                                             <p className="text-xs text-[#86868b]">Weekly digest and critical errors</p>
                                         </div>
                                     </div>
-                                    <button onClick={() => toggleSetting('email_alerts')} className={`w-11 h-6 rounded-full transition-colors relative ${settings.email_alerts ? 'bg-[#30d158]' : 'bg-[#3a3a3c]'}`}>
-                                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.email_alerts ? 'translate-x-5' : 'translate-x-0'}`} />
-                                    </button>
+                                    <Switch
+                                        checked={settings.email_alerts}
+                                        onCheckedChange={() => toggleSetting('email_alerts')}
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -262,18 +269,18 @@ export default function Settings() {
                     )}
 
                     <div className="pt-6 border-t border-white/10">
-                        <button
+                        <Button
                             onClick={saveSettings}
                             disabled={saving}
-                            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-all shadow-lg shadow-blue-500/25 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-lg shadow-blue-500/25 min-w-[140px]"
                         >
-                            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <CheckCircle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-                            {saved ? 'Saved Successfully' : 'Save Changes'}
-                        </button>
+                            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : saved ? <CheckCircle className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                            {saved ? 'Saved' : 'Save Changes'}
+                        </Button>
                     </div>
 
                 </div>
-            </div>
+            </GlassCard>
         </div>
     )
 }
