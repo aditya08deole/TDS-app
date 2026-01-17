@@ -19,7 +19,7 @@ import {
     X
 } from 'lucide-react'
 
-type StatusFilter = 'all' | 'online' | 'offline' | 'degraded' | 'maintenance'
+type StatusFilter = 'all' | 'online' | 'offline' | 'maintenance'
 
 export default function Devices() {
     const { isAdmin } = useAuth()
@@ -77,7 +77,7 @@ export default function Devices() {
             const matchesSearch = searchQuery === '' ||
                 device.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 device.id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                device.device_id?.toLowerCase().includes(searchQuery.toLowerCase())
+                (device.thingspeak_channel_id?.toString() || '').includes(searchQuery)
 
             // Status filter
             const deviceStatus = device.status?.toLowerCase() || 'offline'
@@ -92,13 +92,17 @@ export default function Devices() {
         if (!isAdmin) return
         setLoading(true)
 
-        const apiKey = 'ev_' + Math.random().toString(36).substr(2, 9) + Math.random().toString(36).substr(2, 9)
+        // Mock keys for now
+        const readKey = 'ts_' + Math.random().toString(36).substr(2, 9)
+        const channelId = Math.floor(Math.random() * 1000000)
 
         const { error } = await supabase.from('devices').insert([{
             name: newDevice.name,
             latitude: parseFloat(newDevice.latitude),
             longitude: parseFloat(newDevice.longitude),
-            api_key: apiKey
+            thingspeak_read_key: readKey,
+            thingspeak_channel_id: channelId,
+            status: 'offline'
         }])
 
         if (!error) {
@@ -169,14 +173,15 @@ export default function Devices() {
     }
 
     const exportToCSV = () => {
-        const headers = ['ID', 'Name', 'Status', 'Latitude', 'Longitude', 'API Key', 'Created At']
+        const headers = ['ID', 'Name', 'Status', 'Latitude', 'Longitude', 'TS Channel', 'TS Read Key', 'Created At']
         const rows = filteredDevices.map(d => [
             d.id,
             d.name,
             d.status,
             d.latitude,
             d.longitude,
-            d.api_key,
+            d.thingspeak_channel_id,
+            d.thingspeak_read_key,
             d.created_at
         ])
 
@@ -193,7 +198,7 @@ export default function Devices() {
         { value: 'all', label: 'All', color: 'bg-slate-500' },
         { value: 'online', label: 'Online', color: 'bg-emerald-500' },
         { value: 'offline', label: 'Offline', color: 'bg-red-500' },
-        { value: 'degraded', label: 'Degraded', color: 'bg-orange-500' },
+        // { value: 'degraded', label: 'Degraded', color: 'bg-orange-500' }, // Removed
         { value: 'maintenance', label: 'Maintenance', color: 'bg-blue-500' },
     ]
 
@@ -404,12 +409,12 @@ export default function Devices() {
                             )}
                         </div>
                         <h3 className="text-lg lg:text-xl font-bold text-slate-100 mb-1 truncate">{device.name}</h3>
-                        <p className="text-slate-500 text-xs mb-3 truncate">ID: {device.id}</p>
+                        <p className="text-slate-500 text-xs mb-3 truncate">CH: {device.thingspeak_channel_id || 'N/A'}</p>
 
                         <div className="space-y-2">
                             <div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-950/50 p-2 rounded-lg border border-slate-800/50">
                                 <Key className="h-4 w-4 text-emerald-500 flex-shrink-0" />
-                                <code className="font-mono text-xs truncate">{device.api_key || 'No Key'}</code>
+                                <code className="font-mono text-xs truncate max-w-[150px]">{device.thingspeak_read_key || 'No Key'}</code>
                             </div>
                             <div className="flex justify-between items-center text-xs text-slate-500">
                                 <div className="flex gap-2 lg:gap-4 truncate">
@@ -417,9 +422,8 @@ export default function Devices() {
                                     <span>Lng: {device.longitude?.toFixed(2)}</span>
                                 </div>
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase border flex-shrink-0 ${device.status === 'online' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
-                                    device.status === 'degraded' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
-                                        device.status === 'maintenance' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
-                                            'bg-slate-500/10 text-slate-500 border-slate-500/20'
+                                    device.status === 'maintenance' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
+                                        'bg-slate-500/10 text-slate-500 border-slate-500/20'
                                     }`}>
                                     {device.status || 'offline'}
                                 </span>

@@ -19,19 +19,26 @@ export type Profile = {
 
 export type Device = {
     id: string
-    device_id?: string
-    organization_id: string | null
     name: string
-    location?: string
+    location_name?: string
+    description?: string
     latitude: number
     longitude: number
-    api_key: string
-    status: 'online' | 'offline' | 'warning' | 'critical' | 'degraded' | 'maintenance'
-    battery_level?: number
-    signal_strength?: number
-    firmware_version?: string
-    installed_at?: string
-    last_seen: string | null
+
+    // ThingSpeak integration
+    thingspeak_channel_id: number
+    thingspeak_read_key?: string
+    thingspeak_write_key?: string
+
+    // Hardware Identity
+    sim_number?: string
+    serial_number?: string
+
+    status: 'online' | 'offline' | 'warning' | 'critical' | 'maintenance'
+    last_seen_at?: string
+    deployment_date?: string
+    metadata?: Record<string, any>
+
     created_at: string
 }
 
@@ -45,17 +52,19 @@ export type SensorData = {
 }
 
 export type Alert = {
-    id: number
+    id: string
     device_id: string
-    message: string
+    type: string
     severity: 'info' | 'warning' | 'critical'
+    message: string
+    value_at_time: number
+    threshold_snapshot?: Record<string, any>
     status: 'open' | 'acknowledged' | 'resolved'
     created_at: string
-    acknowledged_by: string | null
-    acknowledged_at: string | null
-    resolved_at: string | null
-    resolved_by: string | null
-    escalation_level: number
+    acknowledged_at?: string
+    resolved_at?: string
+    resolved_by?: string
+    escalation_level?: number
     devices?: {
         name: string
     }

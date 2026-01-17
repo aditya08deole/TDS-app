@@ -3,17 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import {
-    User,
-    Bell,
-    Shield,
-    LogOut,
-    Moon,
-    Smartphone,
-    Mail,
-    ChevronRight,
-    Save,
-    Loader2,
-    CheckCircle
+    User, Bell, Shield, LogOut, Moon, Mail, ChevronRight, Save, Loader2, CheckCircle,
+    Globe, Lock, Layout, BellRing, UserCircle
 } from 'lucide-react'
 
 interface UserSettings {
@@ -22,12 +13,16 @@ interface UserSettings {
     dark_mode: boolean
 }
 
+type SettingsTab = 'general' | 'notifications' | 'data' | 'account'
+
 export default function Settings() {
     const { user, signOut } = useAuth()
     const navigate = useNavigate()
+    const [activeTab, setActiveTab] = useState<SettingsTab>('general')
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
+
     const [settings, setSettings] = useState<UserSettings>({
         notifications_enabled: true,
         email_alerts: false,
@@ -82,191 +77,202 @@ export default function Settings() {
         setSaving(false)
     }
 
-    // Handle logout
     const handleLogout = async () => {
         await signOut()
         navigate('/login')
     }
 
-    // Toggle setting
     const toggleSetting = (key: keyof UserSettings) => {
-        setSettings(prev => ({
-            ...prev,
-            [key]: !prev[key]
-        }))
+        setSettings(prev => ({ ...prev, [key]: !prev[key] }))
     }
+
+    const menuItems = [
+        { id: 'general', label: 'General', icon: Layout },
+        { id: 'notifications', label: 'Notifications', icon: Bell },
+        { id: 'account', label: 'Account & Security', icon: UserCircle },
+    ]
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
+            <div className="flex items-center justify-center h-[calc(100vh-140px)]">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
             </div>
         )
     }
 
     return (
-        <div className="space-y-6 pb-8">
-            {/* Header */}
-            <div>
-                <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Settings</h1>
-                <p className="text-slate-400 mt-1 text-sm lg:text-base">Manage your account and preferences</p>
-            </div>
-
-            {/* Profile Section */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 lg:p-6">
-                <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 lg:w-20 lg:h-20 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
-                        <User className="h-8 w-8 lg:h-10 lg:w-10 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <h2 className="text-lg lg:text-xl font-semibold text-white truncate">
-                            {user?.email?.split('@')[0] || 'User'}
-                        </h2>
-                        <p className="text-slate-400 text-sm truncate">{user?.email}</p>
-                        <span className="inline-flex items-center px-2 py-0.5 mt-1 rounded-full text-xs font-medium bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                            Admin
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Notifications Section */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-800">
-                    <h3 className="font-semibold text-slate-200 flex items-center gap-2">
-                        <Bell className="h-4 w-4 text-slate-400" />
-                        Notifications
-                    </h3>
+        <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-140px)] animate-fade-in">
+            {/* Sidebar (Left Panel) */}
+            <div className="w-full lg:w-64 shrink-0 space-y-6">
+                <div>
+                    <h1 className="text-2xl font-bold text-white tracking-tight">Settings</h1>
+                    <p className="text-[#86868b] text-sm mt-1">System Preferences</p>
                 </div>
 
-                {/* Push Notifications */}
-                <div className="flex items-center justify-between px-4 py-4 border-b border-slate-800/50">
-                    <div className="flex items-center gap-3">
-                        <Smartphone className="h-5 w-5 text-slate-400" />
-                        <div>
-                            <p className="text-sm font-medium text-slate-200">Push Notifications</p>
-                            <p className="text-xs text-slate-500">Receive alerts on this device</p>
+                <div className="glass-panel p-2 rounded-xl flex flex-col gap-1">
+                    {menuItems.map(item => (
+                        <button
+                            key={item.id}
+                            onClick={() => setActiveTab(item.id as SettingsTab)}
+                            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === item.id
+                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                                : 'text-[#86868b] hover:text-white hover:bg-white/5'
+                                }`}
+                        >
+                            <item.icon className={`w-4 h-4 ${activeTab === item.id ? 'text-white' : 'text-[#86868b]'}`} />
+                            {item.label}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="glass-panel p-4 rounded-xl">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                            {user?.email?.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-sm font-medium text-white truncate">{user?.email}</p>
+                            <p className="text-xs text-[#86868b]">Administrator</p>
                         </div>
                     </div>
                     <button
-                        onClick={() => toggleSetting('notifications_enabled')}
-                        className={`w-12 h-7 rounded-full transition-colors relative ${settings.notifications_enabled ? 'bg-cyan-500' : 'bg-slate-700'
-                            }`}
+                        onClick={handleLogout}
+                        className="w-full py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold rounded-lg border border-red-500/20 transition-colors flex items-center justify-center gap-2"
                     >
-                        <span
-                            className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.notifications_enabled ? 'translate-x-6' : 'translate-x-1'
-                                }`}
-                        />
-                    </button>
-                </div>
-
-                {/* Email Alerts */}
-                <div className="flex items-center justify-between px-4 py-4">
-                    <div className="flex items-center gap-3">
-                        <Mail className="h-5 w-5 text-slate-400" />
-                        <div>
-                            <p className="text-sm font-medium text-slate-200">Email Alerts</p>
-                            <p className="text-xs text-slate-500">Critical alerts via email</p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => toggleSetting('email_alerts')}
-                        className={`w-12 h-7 rounded-full transition-colors relative ${settings.email_alerts ? 'bg-cyan-500' : 'bg-slate-700'
-                            }`}
-                    >
-                        <span
-                            className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.email_alerts ? 'translate-x-6' : 'translate-x-1'
-                                }`}
-                        />
+                        <LogOut className="h-3.5 w-3.5" />
+                        Sign Out
                     </button>
                 </div>
             </div>
 
-            {/* Appearance Section */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-800">
-                    <h3 className="font-semibold text-slate-200 flex items-center gap-2">
-                        <Moon className="h-4 w-4 text-slate-400" />
-                        Appearance
-                    </h3>
-                </div>
+            {/* Content (Right Panel) */}
+            <div className="flex-1 glass-card rounded-2xl p-6 lg:p-8 overflow-y-auto">
+                <div className="max-w-2xl mx-auto space-y-8">
 
-                <div className="flex items-center justify-between px-4 py-4">
-                    <div className="flex items-center gap-3">
-                        <Moon className="h-5 w-5 text-slate-400" />
-                        <div>
-                            <p className="text-sm font-medium text-slate-200">Dark Mode</p>
-                            <p className="text-xs text-slate-500">Use dark theme</p>
+                    {activeTab === 'general' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <div>
+                                <h2 className="text-xl font-bold text-white">General Settings</h2>
+                                <p className="text-[#86868b] text-sm">Customize viewing experience</p>
+                            </div>
+
+                            <div className="bg-[#1c1c1e] rounded-xl overflow-hidden border border-white/5 divide-y divide-white/5">
+                                <div className="p-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500"><Moon className="w-5 h-5" /></div>
+                                        <div>
+                                            <p className="text-white font-medium">Dark Mode</p>
+                                            <p className="text-xs text-[#86868b]">Force application wide dark theme</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => toggleSetting('dark_mode')} className={`w-11 h-6 rounded-full transition-colors relative ${settings.dark_mode ? 'bg-[#30d158]' : 'bg-[#3a3a3c]'}`}>
+                                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.dark_mode ? 'translate-x-5' : 'translate-x-0'}`} />
+                                    </button>
+                                </div>
+                                <div className="p-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500"><Globe className="w-5 h-5" /></div>
+                                        <div>
+                                            <p className="text-white font-medium">Language</p>
+                                            <p className="text-xs text-[#86868b]">English (US)</p>
+                                        </div>
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 text-[#86868b]" />
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <button
-                        onClick={() => toggleSetting('dark_mode')}
-                        className={`w-12 h-7 rounded-full transition-colors relative ${settings.dark_mode ? 'bg-cyan-500' : 'bg-slate-700'
-                            }`}
-                    >
-                        <span
-                            className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.dark_mode ? 'translate-x-6' : 'translate-x-1'
-                                }`}
-                        />
-                    </button>
-                </div>
-            </div>
+                    )}
 
-            {/* Security Section */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-800">
-                    <h3 className="font-semibold text-slate-200 flex items-center gap-2">
-                        <Shield className="h-4 w-4 text-slate-400" />
-                        Security
-                    </h3>
-                </div>
+                    {activeTab === 'notifications' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <div>
+                                <h2 className="text-xl font-bold text-white">Notifications</h2>
+                                <p className="text-[#86868b] text-sm">Manage alert delivery</p>
+                            </div>
 
-                <button className="w-full flex items-center justify-between px-4 py-4 hover:bg-slate-800/50 transition-colors">
-                    <div className="flex items-center gap-3">
-                        <Shield className="h-5 w-5 text-slate-400" />
-                        <div className="text-left">
-                            <p className="text-sm font-medium text-slate-200">Change Password</p>
-                            <p className="text-xs text-slate-500">Update your password</p>
+                            <div className="bg-[#1c1c1e] rounded-xl overflow-hidden border border-white/5 divide-y divide-white/5">
+                                <div className="p-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500"><BellRing className="w-5 h-5" /></div>
+                                        <div>
+                                            <p className="text-white font-medium">Push Notifications</p>
+                                            <p className="text-xs text-[#86868b]">Receive critical alerts on device</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => toggleSetting('notifications_enabled')} className={`w-11 h-6 rounded-full transition-colors relative ${settings.notifications_enabled ? 'bg-[#30d158]' : 'bg-[#3a3a3c]'}`}>
+                                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.notifications_enabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                                    </button>
+                                </div>
+                                <div className="p-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg bg-green-500/10 text-green-500"><Mail className="w-5 h-5" /></div>
+                                        <div>
+                                            <p className="text-white font-medium">Email Alerts</p>
+                                            <p className="text-xs text-[#86868b]">Weekly digest and critical errors</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => toggleSetting('email_alerts')} className={`w-11 h-6 rounded-full transition-colors relative ${settings.email_alerts ? 'bg-[#30d158]' : 'bg-[#3a3a3c]'}`}>
+                                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.email_alerts ? 'translate-x-5' : 'translate-x-0'}`} />
+                                    </button>
+                                </div>
+                            </div>
                         </div>
+                    )}
+
+                    {activeTab === 'account' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <div>
+                                <h2 className="text-xl font-bold text-white">Account & Security</h2>
+                                <p className="text-[#86868b] text-sm">Update profile and security keys</p>
+                            </div>
+
+                            <div className="bg-[#1c1c1e] rounded-xl overflow-hidden border border-white/5 divide-y divide-white/5">
+                                <div className="p-4 flex items-center justify-between hover:bg-white/5 cursor-pointer transition-colors">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg bg-slate-500/10 text-slate-400"><User className="w-5 h-5" /></div>
+                                        <div>
+                                            <p className="text-white font-medium">Edit Profile</p>
+                                            <p className="text-xs text-[#86868b]">Name, Avatar</p>
+                                        </div>
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 text-[#86868b]" />
+                                </div>
+                                <div className="p-4 flex items-center justify-between hover:bg-white/5 cursor-pointer transition-colors">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500"><Lock className="w-5 h-5" /></div>
+                                        <div>
+                                            <p className="text-white font-medium">Change Password</p>
+                                            <p className="text-xs text-[#86868b]">Last changed 3 months ago</p>
+                                        </div>
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 text-[#86868b]" />
+                                </div>
+                                <div className="p-4 flex items-center justify-between hover:bg-white/5 cursor-pointer transition-colors">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg bg-green-500/10 text-green-500"><Shield className="w-5 h-5" /></div>
+                                        <div>
+                                            <p className="text-white font-medium">2FA Authentication</p>
+                                            <p className="text-xs text-[#86868b]">Enabled</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-xs text-green-500 font-medium bg-green-500/10 px-2 py-1 rounded">Active</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="pt-6 border-t border-white/10">
+                        <button
+                            onClick={saveSettings}
+                            disabled={saving}
+                            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-all shadow-lg shadow-blue-500/25 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <CheckCircle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                            {saved ? 'Saved Successfully' : 'Save Changes'}
+                        </button>
                     </div>
-                    <ChevronRight className="h-5 w-5 text-slate-500" />
-                </button>
-            </div>
 
-            {/* Save Button */}
-            <button
-                onClick={saveSettings}
-                disabled={saving}
-                className="w-full py-3 bg-cyan-500 hover:bg-cyan-600 disabled:bg-cyan-500/50 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
-            >
-                {saving ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                ) : saved ? (
-                    <>
-                        <CheckCircle className="h-5 w-5" />
-                        Saved!
-                    </>
-                ) : (
-                    <>
-                        <Save className="h-5 w-5" />
-                        Save Changes
-                    </>
-                )}
-            </button>
-
-            {/* Logout Button */}
-            <button
-                onClick={handleLogout}
-                className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold rounded-xl border border-red-500/30 transition-colors flex items-center justify-center gap-2"
-            >
-                <LogOut className="h-5 w-5" />
-                Sign Out
-            </button>
-
-            {/* App Info */}
-            <div className="text-center text-slate-500 text-xs pt-4">
-                <p>EvaraTDS Dashboard v1.0.0</p>
-                <p className="mt-1">© 2024 EvaraTDS. All rights reserved.</p>
+                </div>
             </div>
         </div>
     )
