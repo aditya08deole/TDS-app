@@ -26,9 +26,18 @@ export default function Devices() {
     const { isAdmin } = useAuth()
     const { isMobile, openInspector } = useUI()
     const [devices, setDevices] = useState<Device[]>([])
-    const [newDevice, setNewDevice] = useState({ name: '', latitude: '', longitude: '' })
+    const [newDevice, setNewDevice] = useState({
+        name: '',
+        location_name: '',
+        latitude: '',
+        longitude: '',
+        sim_number: '',
+        node_number: '',
+        thingspeak_read_key: ''
+    })
     const [loading, setLoading] = useState(false)
     const [refreshing, setRefreshing] = useState(false)
+    // const [showQRScanner, setShowQRScanner] = useState(false) // TODO: Implement QR scanner modal
 
     // Search and Filter State
     const [searchQuery, setSearchQuery] = useState('')
@@ -93,21 +102,30 @@ export default function Devices() {
         if (!isAdmin) return
         setLoading(true)
 
-        // Mock keys for now
-        const readKey = 'ts_' + Math.random().toString(36).substr(2, 9)
-        const channelId = Math.floor(Math.random() * 1000000)
+        const channelId = Math.floor(Math.random() * 1000000) // This will be replaced with real ThingSpeak ID
 
         const { error } = await supabase.from('devices').insert([{
             name: newDevice.name,
+            location_name: newDevice.location_name,
             latitude: parseFloat(newDevice.latitude),
             longitude: parseFloat(newDevice.longitude),
-            thingspeak_read_key: readKey,
+            sim_number: newDevice.sim_number,
+            node_number: newDevice.node_number,
+            thingspeak_read_key: newDevice.thingspeak_read_key,
             thingspeak_channel_id: channelId,
             status: 'offline'
         }])
 
         if (!error) {
-            setNewDevice({ name: '', latitude: '', longitude: '' })
+            setNewDevice({
+                name: '',
+                location_name: '',
+                latitude: '',
+                longitude: '',
+                sim_number: '',
+                node_number: '',
+                thingspeak_read_key: ''
+            })
             refreshDevices()
         } else {
             alert('Error adding device: ' + error.message)
@@ -324,71 +342,132 @@ export default function Devices() {
                 <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 lg:p-6 backdrop-blur-sm">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
-                            <Plus className="h-5 w-5 text-cyan-400" />
+                            <Plus className="h-5 w-5 text-blue-400" />
                             Add New Device
                         </h3>
                         <div className="flex gap-2">
                             <button
                                 type="button"
-                                onClick={() => alert('QR Scanner coming soon! Use mobile app to scan QR codes.')}
-                                className="flex items-center gap-2 px-3 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 font-medium rounded-lg transition-colors text-sm"
+                                onClick={() => alert('QR Scanner feature coming soon!')}
+                                className="flex items-center gap-2 px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 font-medium rounded-lg transition-all text-sm"
                             >
                                 <ScanLine className="h-4 w-4" />
                                 Scan QR
                             </button>
                             <button
                                 type="button"
-                                onClick={() => alert('QR Generation feature! Generate QR codes for device provisioning.')}
-                                className="flex items-center gap-2 px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 font-medium rounded-lg transition-colors text-sm"
+                                onClick={() => alert('Generate QR for this device form data')}
+                                className="flex items-center gap-2 px-3 py-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 font-medium rounded-lg transition-all text-sm"
                             >
                                 <QrCode className="h-4 w-4" />
                                 Generate QR
                             </button>
                         </div>
                     </div>
-                    <form onSubmit={handleAddDevice} className="flex gap-3 lg:gap-4 items-end flex-wrap">
-                        <div className="flex-1 min-w-[150px]">
-                            <label className="text-sm text-slate-500 mb-1 block">Device Name</label>
+                    <form onSubmit={handleAddDevice} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {/* Device Name */}
+                        <div>
+                            <label className="text-sm text-slate-400 mb-1.5 block">Device Name *</label>
                             <input
                                 type="text"
                                 required
                                 value={newDevice.name}
                                 onChange={e => setNewDevice({ ...newDevice, name: e.target.value })}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-cyan-500 outline-none text-sm"
-                                placeholder="NodeMCU-01"
+                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                placeholder="e.g., NodeMCU-01"
                             />
                         </div>
-                        <div className="w-24 lg:w-32">
-                            <label className="text-sm text-slate-500 mb-1 block">Latitude</label>
+
+                        {/* Location Name */}
+                        <div>
+                            <label className="text-sm text-slate-400 mb-1.5 block">Location Name *</label>
+                            <input
+                                type="text"
+                                required
+                                value={newDevice.location_name}
+                                onChange={e => setNewDevice({ ...newDevice, location_name: e.target.value })}
+                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                placeholder="e.g., Tank A - Block 3"
+                            />
+                        </div>
+
+                        {/* Node Number */}
+                        <div>
+                            <label className="text-sm text-slate-400 mb-1.5 block">Node Number *</label>
+                            <input
+                                type="text"
+                                required
+                                value={newDevice.node_number}
+                                onChange={e => setNewDevice({ ...newDevice, node_number: e.target.value })}
+                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                placeholder="e.g., NODE-001"
+                            />
+                        </div>
+
+                        {/* Latitude */}
+                        <div>
+                            <label className="text-sm text-slate-400 mb-1.5 block">Latitude *</label>
                             <input
                                 type="number"
                                 step="any"
                                 required
                                 value={newDevice.latitude}
                                 onChange={e => setNewDevice({ ...newDevice, latitude: e.target.value })}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-cyan-500 outline-none text-sm"
-                                placeholder="20.59"
+                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                placeholder="e.g., 20.5937"
                             />
                         </div>
-                        <div className="w-24 lg:w-32">
-                            <label className="text-sm text-slate-500 mb-1 block">Longitude</label>
+
+                        {/* Longitude */}
+                        <div>
+                            <label className="text-sm text-slate-400 mb-1.5 block">Longitude *</label>
                             <input
                                 type="number"
                                 step="any"
                                 required
                                 value={newDevice.longitude}
                                 onChange={e => setNewDevice({ ...newDevice, longitude: e.target.value })}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-cyan-500 outline-none text-sm"
-                                placeholder="78.96"
+                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                placeholder="e.g., 78.9629"
                             />
                         </div>
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="px-4 lg:px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors shadow-lg shadow-cyan-500/20 text-sm"
-                        >
-                            {loading ? 'Adding...' : 'Add'}
-                        </button>
+
+                        {/* SIM Number */}
+                        <div>
+                            <label className="text-sm text-slate-400 mb-1.5 block">SIM Number *</label>
+                            <input
+                                type="text"
+                                required
+                                value={newDevice.sim_number}
+                                onChange={e => setNewDevice({ ...newDevice, sim_number: e.target.value })}
+                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                placeholder="e.g., +91-9876543210"
+                            />
+                        </div>
+
+                        {/* ThingSpeak Read API Key */}
+                        <div className="md:col-span-2">
+                            <label className="text-sm text-slate-400 mb-1.5 block">ThingSpeak Read API Key *</label>
+                            <input
+                                type="text"
+                                required
+                                value={newDevice.thingspeak_read_key}
+                                onChange={e => setNewDevice({ ...newDevice, thingspeak_read_key: e.target.value })}
+                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                placeholder="e.g., XXXXXXXXXXXXXX"
+                            />
+                        </div>
+
+                        {/* Submit Button */}
+                        <div className="md:col-span-2 lg:col-span-3 flex justify-end">
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white font-medium rounded-lg transition-all shadow-lg shadow-blue-500/20 text-sm"
+                            >
+                                {loading ? 'Adding Device...' : 'Add Device'}
+                            </button>
+                        </div>
                     </form>
                 </div>
             )}

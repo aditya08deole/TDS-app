@@ -1,7 +1,7 @@
 @layer base {
     :root {
         --font-size: 16px;
-        /* Pure Apple White Theme */
+        /* Pure Apple Light Theme */
         --background: 247 247 247;
         /* #F7F7F7 - Off-white like iOS */
         --foreground: 28 28 30;
@@ -15,7 +15,7 @@
         --popover-foreground: 28 28 30;
 
         --primary: 0 122 255;
-        /* Apple Blue */
+        /* Apple Blue #007AFF */
         --primary-foreground: 255 255 255;
 
         --secondary: 242 242 247;
@@ -35,67 +35,67 @@
         --destructive-foreground: 255 255 255;
 
         --border: 0 0 0 / 0.1;
-        /* Light border */
         --input: 0 0 0 / 0.05;
         --input-background: 242 242 247;
         --switch-background: 203 206 212;
         --ring: 0 122 255 / 0.5;
         --radius: 0.75rem;
-        /* 12px - Apple style */
+        /* 12px */
 
-        /* Sidebar - Light */
+        /* Sidebar - Light - WHITE with subtle borders */
         --sidebar: 255 255 255;
-        /* White sidebar */
+        /* Pure white */
         --sidebar-foreground: 28 28 30;
+        /* Dark text */
         --sidebar-primary: 0 122 255;
-        --sidebar-primary-foreground: 255 255 255;
+        /* Apple Blue for active items */
+        --sidebar-primary-foreground: 0 122 255;
+        /* Blue text when active */
         --sidebar-accent: 242 242 247;
+        /* Light gray hover */
         --sidebar-accent-foreground: 28 28 30;
         --sidebar-border: 0 0 0 / 0.08;
         --sidebar-ring: 0 122 255 / 0.4;
 
         /* Charts - Light */
         --chart-1: 52 199 89;
-        /* Apple Green */
+        /* Green */
         --chart-2: 0 122 255;
-        /* Apple Blue */
+        /* Blue */
         --chart-3: 255 149 0;
-        /* Apple Orange */
+        /* Orange */
         --chart-4: 175 82 222;
-        /* Apple Purple */
+        /* Purple */
         --chart-5: 255 59 48;
-        /* Apple Red */
+        /* Red */
 
         --font-weight-medium: 500;
         --font-weight-normal: 400;
     }
 
     .dark {
-        /* True Apple Black Theme - Like iOS */
+        /* True Apple Dark Theme */
         --background: 0 0 0;
-        /* Pure Black #000000 */
+        /* Pure Black */
         --foreground: 245 245 247;
         /* Apple White */
 
-        /* Glass Cards with proper transparency */
+        /* Glass Cards */
         --card: 28 28 30 / 0.7;
-        /* Transparent dark gray */
         --card-foreground: 245 245 247;
 
         --popover: 28 28 30 / 0.95;
         --popover-foreground: 245 245 247;
 
         --primary: 10 132 255;
-        /* Apple Blue Dark Mode */
+        /* Apple Blue Dark #0A84FF */
         --primary-foreground: 245 245 247;
 
         --secondary: 58 58 60 / 0.6;
-        /* Transparent gray */
         --secondary-foreground: 245 245 247;
 
         --muted: 58 58 60 / 0.5;
         --muted-foreground: 142 142 147;
-        /* Apple gray */
 
         --accent: 10 132 255;
         /* Apple Blue */
@@ -106,33 +106,36 @@
         --destructive-foreground: 245 245 247;
 
         --border: 255 255 255 / 0.08;
-        /* Subtle white border */
         --input: 255 255 255 / 0.08;
         --input-background: 255 255 255 / 0.05;
         --switch-background: 120 120 128 / 0.32;
         --ring: 255 255 255 / 0.2;
 
-        /* Sidebar - Dark */
-        --sidebar: 20 20 22 / 0.85;
-        /* Transparent dark */
+        /* Sidebar - Dark - NEAR BLACK with BLUE accents */
+        --sidebar: 18 18 18;
+        /* Near black, not pure black */
         --sidebar-foreground: 245 245 247;
+        /* White text */
         --sidebar-primary: 10 132 255 / 0.15;
+        /* Blue background for active */
         --sidebar-primary-foreground: 10 132 255;
-        --sidebar-accent: 72 72 74 / 0.5;
+        /* Blue text when active */
+        --sidebar-accent: 48 48 50;
+        /* Dark gray hover */
         --sidebar-accent-foreground: 245 245 247;
         --sidebar-border: 255 255 255 / 0.08;
         --sidebar-ring: 10 132 255 / 0.4;
 
-        /* Apple System Colors - Dark Mode */
+        /* Apple System Colors - Dark */
         --chart-1: 48 209 88;
-        /* Green Dark */
+        /* Green */
         --chart-2: 10 132 255;
-        /* Blue Dark */
+        /* Blue */
         --chart-3: 255 159 10;
-        /* Orange Dark */
+        /* Orange */
         --chart-4: 191 90 242;
-        /* Purple Dark */
+        /* Purple */
         --chart-5: 255 69 58;
-        /* Red Dark */
+        /* Red */
     }
 }
