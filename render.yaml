@@ -1,13 +1,9 @@
 services:
-  # EvaraTDS Unified Dashboard
-  # Single static site deployment - No Docker needed!
   - type: web
     name: evaratds-dashboard
-    runtime: static
-    buildCommand: cd admin_dashboard && npm ci && npm run build
+    env: static
+    buildCommand: cd admin_dashboard && npm install && npm run build
     staticPublishPath: admin_dashboard/dist
-    plan: free
-    branch: main
     envVars:
       - key: VITE_SUPABASE_URL
         sync: false
