@@ -66,12 +66,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         },
         {
             title: "Devices",
-            url: "/devices", // Assuming there is a device list page or similar? Or maybe this expands?
+            url: "/devices",
             icon: Smartphone,
-            items: [
-                { title: "All Devices", url: "/devices" },
-                // { title: "Add Device", url: "/devices/new" },
-            ]
+            isActive: location.pathname === "/devices" || location.pathname.startsWith("/devices/"),
         },
         {
             title: "Alerts",
