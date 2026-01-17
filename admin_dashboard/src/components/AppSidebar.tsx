@@ -167,6 +167,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </SidebarGroup>
             </SidebarContent>
             <SidebarFooter>
+                {/* Partner Logos */}
+                <div className="px-3 py-3 border-b border-white/5 group-data-[collapsible=icon]:hidden">
+                    <div className="flex items-center justify-center gap-4">
+                        <img
+                            src="/evaratech-logo.png"
+                            alt="EvaraTech"
+                            className="h-6 object-contain opacity-80 hover:opacity-100 transition-opacity"
+                        />
+                        <div className="w-px h-5 bg-white/20" />
+                        <img
+                            src="/iiith-logo.png"
+                            alt="IIIT Hyderabad"
+                            className="h-5 object-contain invert opacity-70 hover:opacity-100 transition-opacity"
+                        />
+                    </div>
+                </div>
+
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <DropdownMenu>
