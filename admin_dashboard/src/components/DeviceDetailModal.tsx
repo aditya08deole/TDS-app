@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import HealthTimeline from './HealthTimeline'
+import ConfidenceRing from './ConfidenceRing'
 
 interface Device {
     id: string
@@ -31,6 +32,7 @@ interface Device {
     last_seen?: string | null
     firmware_version?: string
     installed_at?: string
+    confidence_score?: number
 }
 
 interface SensorReading {
@@ -228,6 +230,22 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                         Signal
                                     </div>
                                     <p className="text-xl font-bold text-white">{device.signal_strength ?? '--'} dBm</p>
+                                </div>
+                                <div className="bg-slate-800/50 rounded-xl p-3 flex flex-col items-center justify-center">
+                                    <div className="flex items-center gap-2 text-slate-400 text-xs mb-2 w-full">
+                                        <Activity className="h-3 w-3" />
+                                        Trust Score
+                                    </div>
+                                    <ConfidenceRing score={device.confidence_score ?? 100} size={50} status={device.status} />
+                                </div>
+                                <div className="bg-slate-800/50 rounded-xl p-3 flex flex-col justify-center">
+                                    <div className="flex items-center gap-2 text-slate-400 text-xs mb-1">
+                                        <Activity className="h-3 w-3" />
+                                        Health
+                                    </div>
+                                    <p className="text-sm text-white">
+                                        {(device.confidence_score ?? 100) > 80 ? 'Excellent' : (device.confidence_score ?? 100) > 50 ? 'Fair' : 'Poor'}
+                                    </p>
                                 </div>
                             </div>
 

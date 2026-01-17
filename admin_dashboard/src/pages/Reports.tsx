@@ -1,0 +1,301 @@
+import { useState, useEffect, useMemo } from 'react'
+import { supabase } from '../lib/supabase'
+import { FileText, Download, BarChart3, TrendingUp, AlertTriangle, Activity, Server, Database } from 'lucide-react'
+import { useUI } from '../context/UIContext'
+
+interface UptimeStat {
+    device_id: string
+    device_name: string
+    uptime_percent: number
+    total_online_seconds: number
+    total_tracked_seconds: number
+    outage_count: number
+}
+
+interface HealthLog {
+    id: string
+    component: string
+    status: string
+    latency_ms: number
+    error_details?: string
+    checked_at: string
+}
+
+export default function Reports() {
+    const { isOffline } = useUI()
+    const [activeTab, setActiveTab] = useState<'analytics' | 'health'>('analytics')
+    const [stats, setStats] = useState<UptimeStat[]>([])
+    const [healthLogs, setHealthLogs] = useState<HealthLog[]>([])
+    const [days, setDays] = useState(30)
+    const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            if (isOffline) return
+            setLoading(true)
+
+            if (activeTab === 'analytics') {
+                const { data, error } = await supabase.rpc('get_uptime_stats', { p_days: days })
+                if (error) console.error(error)
+                if (data) setStats(data)
+            } else {
+                const { data, error } = await supabase
+                    .from('system_health_logs')
+                    .select('*')
+                    .order('checked_at', { ascending: false })
+                    .limit(50)
+                if (error) console.error(error)
+                if (data) setHealthLogs(data)
+            }
+
+            setLoading(false)
+        }
+        fetchStats()
+    }, [days, isOffline, activeTab])
+
+    // Aggregate Stats
+    const systemHealth = useMemo(() => {
+        if (!stats.length) return { avgUptime: 0, totalOutages: 0 }
+        const avgUptime = stats.reduce((acc, curr) => acc + curr.uptime_percent, 0) / stats.length
+        const totalOutages = stats.reduce((acc, curr) => acc + curr.outage_count, 0)
+        return { avgUptime, totalOutages }
+    }, [stats])
+
+    const handleDownloadCSV = () => {
+        const headers = ["Device Name", "Uptime %", "Outages", "Total Tracked (hrs)", "Online (hrs)"]
+        const rows = stats.map(s => [
+            s.device_name,
+            s.uptime_percent.toFixed(2),
+            s.outage_count,
+            (s.total_tracked_seconds / 3600).toFixed(1),
+            (s.total_online_seconds / 3600).toFixed(1)
+        ])
+
+        const csvContent = [
+            headers.join(","),
+            ...rows.map(r => r.join(","))
+        ].join("\n")
+
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.setAttribute("href", url)
+        link.setAttribute("download", `evara_uptime_report_${days}d_${new Date().toISOString().split('T')[0]}.csv`)
+        link.style.visibility = "hidden"
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+    }
+
+    return (
+        <div className="space-y-6 max-w-[1200px] mx-auto pb-20 animate-fade-in">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+                        Reports & Analytics
+                    </h1>
+                    <p className="text-[#86868b] mt-1">System performance and availability metrics</p>
+                </div>
+
+                <div className="flex bg-[#1c1c1e] p-1 rounded-lg border border-white/10">
+                    <button
+                        onClick={() => setActiveTab('analytics')}
+                        className={`px-4 py-2 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${activeTab === 'analytics' ? 'bg-[#3a3a3c] text-white shadow-sm' : 'text-[#86868b] hover:text-white'}`}
+                    >
+                        <BarChart3 className="w-4 h-4" /> Analytics
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('health')}
+                        className={`px-4 py-2 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${activeTab === 'health' ? 'bg-[#3a3a3c] text-white shadow-sm' : 'text-[#86868b] hover:text-white'}`}
+                    >
+                        <Activity className="w-4 h-4" /> System Health
+                    </button>
+                </div>
+            </div>
+
+            {activeTab === 'analytics' && (
+                <>
+                    <div className="flex justify-end gap-2">
+                        <div className="flex bg-[#1c1c1e] p-1 rounded-lg border border-white/10">
+                            {[7, 30, 90].map(d => (
+                                <button
+                                    key={d}
+                                    onClick={() => setDays(d)}
+                                    className={`px-4 py-2 rounded-md text-xs font-medium transition-all ${days === d ? 'bg-[#3a3a3c] text-white shadow-sm' : 'text-[#86868b] hover:text-white'}`}
+                                >
+                                    {d} Days
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            onClick={handleDownloadCSV}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                            disabled={loading || stats.length === 0}
+                        >
+                            <Download className="h-4 w-4" /> Export CSV
+                        </button>
+                    </div>
+
+                    {/* KPI Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="glass-panel p-5 rounded-xl flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                                <TrendingUp className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-white">{systemHealth.avgUptime.toFixed(1)}%</p>
+                                <p className="text-xs text-[#86868b] font-medium uppercase tracking-wider">Avg Fleet Availability</p>
+                            </div>
+                        </div>
+                        <div className="glass-panel p-5 rounded-xl flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-500">
+                                <AlertTriangle className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-white">{systemHealth.totalOutages}</p>
+                                <p className="text-xs text-[#86868b] font-medium uppercase tracking-wider">Total Outage Events</p>
+                            </div>
+                        </div>
+                        <div className="glass-panel p-5 rounded-xl flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
+                                <BarChart3 className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-white">{stats.length}</p>
+                                <p className="text-xs text-[#86868b] font-medium uppercase tracking-wider">Devices Monitored</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Data Table */}
+                    <div className="glass-panel rounded-xl overflow-hidden border border-white/5">
+                        <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-slate-400" /> Availability Report
+                            </h3>
+                            <span className="text-xs text-slate-500">Generated {new Date().toLocaleDateString()}</span>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-white/5 text-slate-400 font-medium">
+                                    <tr>
+                                        <th className="p-4">Device</th>
+                                        <th className="p-4">Uptime</th>
+                                        <th className="p-4">Outages</th>
+                                        <th className="p-4">Tracked Time</th>
+                                        <th className="p-4">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {loading ? (
+                                        <tr>
+                                            <td colSpan={5} className="p-8 text-center text-slate-500 animate-pulse">Loading report data...</td>
+                                        </tr>
+                                    ) : stats.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={5} className="p-8 text-center text-slate-500">No data available for this period.</td>
+                                        </tr>
+                                    ) : (
+                                        stats.map(device => (
+                                            <tr key={device.device_id} className="hover:bg-white/5 transition-colors group">
+                                                <td className="p-4 font-medium text-white">{device.device_name}</td>
+                                                <td className="p-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                                            <div
+                                                                className={`h-full rounded-full ${device.uptime_percent > 99 ? 'bg-emerald-500' : device.uptime_percent > 95 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                                                style={{ width: `${device.uptime_percent}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className={`font-mono ${device.uptime_percent > 99 ? 'text-emerald-400' : device.uptime_percent > 95 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                                            {device.uptime_percent}%
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4 text-slate-300">{device.outage_count}</td>
+                                                <td className="p-4 text-slate-400 font-mono">{(device.total_tracked_seconds / 3600).toFixed(1)}h</td>
+                                                <td className="p-4">
+                                                    {device.uptime_percent > 99 ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-500">Excellent</span>
+                                                    ) : device.uptime_percent > 90 ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/10 text-yellow-500">Fair</span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-500">Poor</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {activeTab === 'health' && (
+                <div className="glass-panel rounded-xl overflow-hidden border border-white/5">
+                    <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                            <Server className="h-4 w-4 text-slate-400" /> Infrastructure Status
+                        </h3>
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="flex items-center gap-1.5 px-2 py-1 bg-green-500/10 text-green-400 rounded-lg">
+                                <Database className="w-3 h-3" /> Supabase: Operational
+                            </span>
+                            <span className="flex items-center gap-1.5 px-2 py-1 bg-green-500/10 text-green-400 rounded-lg">
+                                <Activity className="w-3 h-3" /> ThingSpeak: Operational
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-white/5 text-slate-400 font-medium">
+                                <tr>
+                                    <th className="p-4">Component</th>
+                                    <th className="p-4">Status</th>
+                                    <th className="p-4">Latency</th>
+                                    <th className="p-4">Measured At</th>
+                                    <th className="p-4">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                                {loading ? (
+                                    <tr>
+                                        <td colSpan={5} className="p-8 text-center text-slate-500 animate-pulse">Checking system health...</td>
+                                    </tr>
+                                ) : healthLogs.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="p-8 text-center text-slate-500">
+                                            No recent health logs. (Scheduled checks might be pending)
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    healthLogs.map(log => (
+                                        <tr key={log.id} className="hover:bg-white/5 transition-colors font-mono text-xs">
+                                            <td className="p-4 font-semibold text-white">{log.component}</td>
+                                            <td className="p-4">
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded font-medium ${log.status === 'operational' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
+                                                    }`}>
+                                                    {log.status.toUpperCase()}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-slate-300">{log.latency_ms}ms</td>
+                                            <td className="p-4 text-slate-500">{new Date(log.checked_at).toLocaleString()}</td>
+                                            <td className="p-4 text-slate-400 max-w-xs truncate" title={log.error_details}>
+                                                {log.error_details || '-'}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}

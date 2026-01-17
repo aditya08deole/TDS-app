@@ -62,9 +62,16 @@ Deno.serve(async (req) => {
                 const feed = await res.json()
                 if (!feed) continue
 
-                // Data Mapping (Adjust fields based on your ThingSpeak setup)
-                // Field1: TDS, Field2: Temp, Field3: Voltage
+                // Field1: TDS, Field2: Temp
                 const tds = parseFloat(feed.field1)
+                const temp = parseFloat(feed.field2)
+
+                // Update last_reading_at in DB
+                await supabaseClient.rpc('record_reading', {
+                    p_device_id: device.id,
+                    p_ts: feed.created_at || new Date().toISOString(),
+                    p_tds: isNaN(tds) ? null : tds
+                })
                 const temp = parseFloat(feed.field2)
 
                 // Thresholds (Default to reasonable values if not set in metadata)

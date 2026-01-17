@@ -8,11 +8,15 @@ interface UIContextType {
     isOffline: boolean
     toggleSidebar: () => void
     sidebarOpen: boolean
+    inspectorDeviceId: string | null
+    openInspector: (deviceId: string) => void
+    closeInspector: () => void
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined)
 
 export function UIProvider({ children }: { children: React.ReactNode }) {
+    const [inspectorDeviceId, setInspectorDeviceId] = useState<string | null>(null)
     const [isMobile, setIsMobile] = useState(false)
     const [isTablet, setIsTablet] = useState(false)
     const [isDesktop, setIsDesktop] = useState(true)
@@ -56,6 +60,9 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
 
     const toggleSidebar = () => setSidebarOpen(prev => !prev)
 
+    const openInspector = (deviceId: string) => setInspectorDeviceId(deviceId)
+    const closeInspector = () => setInspectorDeviceId(null)
+
     return (
         <UIContext.Provider value={{
             isMobile,
@@ -64,7 +71,10 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
             isPWA,
             isOffline,
             toggleSidebar,
-            sidebarOpen
+            sidebarOpen,
+            inspectorDeviceId,
+            openInspector,
+            closeInspector
         }}>
             {children}
         </UIContext.Provider>

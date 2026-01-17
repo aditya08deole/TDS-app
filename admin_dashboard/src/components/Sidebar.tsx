@@ -5,21 +5,27 @@ import {
     Bell,
     Settings,
     LogOut,
-    Droplets
+    Droplets,
+    FileText,
+    ShieldCheck
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useUI } from '../context/UIContext'
+import { useRole } from '../context/RoleContext'
 
 const navItems = [
-    { label: 'Map View', path: '/map', icon: MapIcon },
-    { label: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { label: 'Alerts & Logs', path: '/alerts', icon: Bell },
+    { label: 'Map View', path: '/map', icon: MapIcon, permission: 'view_map' },
+    { label: 'Dashboard', path: '/', icon: LayoutDashboard, permission: 'view_dashboard' },
+    { label: 'Reports', path: '/reports', icon: FileText, permission: 'view_dashboard' }, // Assuming dashboard permission covers reports
+    { label: 'Alerts & Logs', path: '/alerts', icon: Bell, permission: 'view_alerts' },
+    { label: 'Audit Trail', path: '/audit', icon: ShieldCheck, permission: 'view_audit' },
 ]
 
 export default function Sidebar() {
     const { pathname } = useLocation()
     const { signOut, user, profile } = useAuth()
     const { isDesktop } = useUI()
+    const { hasPermission } = useRole()
 
     if (!isDesktop) return null
 
@@ -40,6 +46,8 @@ export default function Sidebar() {
             {/* Navigation - macOS Control Panel Style */}
             <nav className="flex-1 px-4 space-y-1">
                 {navItems.map((item) => {
+                    if (item.permission && !hasPermission(item.permission as any)) return null
+
                     const Icon = item.icon
                     const isActive = item.path === '/'
                         ? (pathname === '/' || pathname === '/dashboard')

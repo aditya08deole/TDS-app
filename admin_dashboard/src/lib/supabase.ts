@@ -38,6 +38,8 @@ export type Device = {
     last_seen_at?: string
     deployment_date?: string
     metadata?: Record<string, any>
+    confidence_score?: number
+    last_reading_at?: string
 
     created_at: string
 }

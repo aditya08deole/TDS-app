@@ -6,10 +6,13 @@ import { useAuth } from '../context/AuthContext'
 import { offlineStore } from '../lib/offlineStore'
 import { useUI } from '../context/UIContext'
 
+import { useRole } from '../context/RoleContext'
+
 export default function Alerts() {
     const [alerts, setAlerts] = useState<Alert[]>([])
     const { user } = useAuth()
     const { isOffline } = useUI()
+    const { hasPermission } = useRole()
     const [filter, setFilter] = useState<'all' | 'critical' | 'warning'>('all')
 
     useEffect(() => {
@@ -87,9 +90,10 @@ export default function Alerts() {
     }, [isOffline])
 
     const acknowledgeAlert = async (id: string) => {
-        setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: 'acknowledged' } : a))
+        if (!user) return
+        setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: 'acknowledged', acknowledged_at: new Date().toISOString() } : a))
         if (navigator.onLine) {
-            await supabase.from('alerts').update({ status: 'acknowledged' }).eq('id', id)
+            await supabase.rpc('acknowledge_alert', { p_alert_id: id, p_actor_id: user.id })
         } else {
             await offlineStore.queueAction('ACKNOWLEDGE_ALERT', { id })
         }
@@ -98,14 +102,10 @@ export default function Alerts() {
     const resolveAlert = async (id: string) => {
         if (!user) return
         const timestamp = new Date().toISOString()
-        setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: 'resolved' } : a))
+        setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: 'resolved', resolved_at: timestamp, resolved_by: user.id } : a))
 
         if (navigator.onLine) {
-            await supabase.from('alerts').update({
-                status: 'resolved',
-                resolved_at: timestamp,
-                resolved_by: user.id
-            }).eq('id', id)
+            await supabase.rpc('resolve_alert', { p_alert_id: id, p_actor_id: user.id, p_notes: null })
         } else {
             await offlineStore.queueAction('RESOLVE_ALERT', { id, resolved_at: timestamp, resolved_by: user.id })
         }
@@ -239,7 +239,7 @@ export default function Alerts() {
                                         </div>
 
                                         <div className="flex gap-2">
-                                            {alert.status === 'open' && (
+                                            {hasPermission('maintenance_mode') && alert.status === 'open' && (
                                                 <button
                                                     onClick={() => acknowledgeAlert(alert.id)}
                                                     className="px-4 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs font-semibold shadow-lg shadow-blue-500/20 transition-all hover:scale-105"
@@ -247,7 +247,7 @@ export default function Alerts() {
                                                     Acknowledge
                                                 </button>
                                             )}
-                                            {alert.status === 'acknowledged' && (
+                                            {hasPermission('maintenance_mode') && alert.status === 'acknowledged' && (
                                                 <button
                                                     onClick={() => resolveAlert(alert.id)}
                                                     className="px-4 py-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 text-xs font-semibold shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"

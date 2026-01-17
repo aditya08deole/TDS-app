@@ -4,7 +4,6 @@ import type { Device } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useUI } from '../context/UIContext'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
-import DeviceDetailModal from '../components/DeviceDetailModal'
 import {
     Plus,
     Trash2,
@@ -23,7 +22,7 @@ type StatusFilter = 'all' | 'online' | 'offline' | 'maintenance'
 
 export default function Devices() {
     const { isAdmin } = useAuth()
-    const { isMobile } = useUI()
+    const { isMobile, openInspector } = useUI()
     const [devices, setDevices] = useState<Device[]>([])
     const [newDevice, setNewDevice] = useState({ name: '', latitude: '', longitude: '' })
     const [loading, setLoading] = useState(false)
@@ -37,9 +36,9 @@ export default function Devices() {
     const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set())
     const [selectionMode, setSelectionMode] = useState(false)
 
-    // Modal State
-    const [selectedDevice, setSelectedDevice] = useState<Device | null>(null)
-    const [isModalOpen, setIsModalOpen] = useState(false)
+    // Modal State - REMOVED for Phase 5 Global Inspector
+    // const [selectedDevice, setSelectedDevice] = useState<Device | null>(null)
+    // const [isModalOpen, setIsModalOpen] = useState(false)
 
     const refreshDevices = useCallback(async () => {
         setRefreshing(true)
@@ -124,8 +123,7 @@ export default function Devices() {
         if (selectionMode) {
             toggleDeviceSelection(device.id)
         } else {
-            setSelectedDevice(device)
-            setIsModalOpen(true)
+            openInspector(device.id)
         }
     }
 
@@ -441,16 +439,7 @@ export default function Devices() {
                 )}
             </div>
 
-            {/* Device Detail Modal */}
-            <DeviceDetailModal
-                device={selectedDevice}
-                isOpen={isModalOpen}
-                onClose={() => {
-                    setIsModalOpen(false)
-                    setSelectedDevice(null)
-                }}
-                onRefresh={refreshDevices}
-            />
+            {/* Device Detail Modal REMOVED - using Global Inspector */}
         </div>
     )
 }

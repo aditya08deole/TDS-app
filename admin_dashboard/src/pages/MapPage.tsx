@@ -1,3 +1,4 @@
+// MapPage.tsx - Refactored for Phase 6 (Map Layers) & Phase 5 (Global Inspector)
 import { useEffect, useState } from 'react'
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
@@ -5,11 +6,10 @@ import { supabase } from '../lib/supabase'
 import type { Device } from '../lib/supabase'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { Maximize2, Minimize2, Map as MapIcon, Layers } from 'lucide-react'
+import { Maximize2, Minimize2, Map as MapIcon, Layers, Activity, Wifi } from 'lucide-react'
 import { useUI } from '../context/UIContext'
-import DevicePanel from '../components/DevicePanel'
 
-// Using DivIcon exclusively, so standard marker fix is less critical but kept for safety
+// Using DivIcon exclusively
 import icon from 'leaflet/dist/images/marker-icon.png'
 import iconShadow from 'leaflet/dist/images/marker-shadow.png'
 
@@ -22,28 +22,53 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 type DeviceLocation = Device & { latest_tds?: number }
 
-const createStatusIcon = (status: string) => {
-    // Apple-style status colors
-    const colorClass =
-        status === 'online' ? 'bg-[#30d158]' : // Apple Green
-            status === 'critical' ? 'bg-[#ff453a]' : // Apple Red
-                status === 'warning' ? 'bg-[#ff9f0a]' : // Apple Orange
-                    'bg-[#8e8e93]'; // Apple Gray
+type MapLayer = 'status' | 'confidence'
 
-    const shadowColor =
-        status === 'online' ? 'rgba(48, 209, 88, 0.5)' :
-            status === 'critical' ? 'rgba(255, 69, 58, 0.5)' :
-                status === 'warning' ? 'rgba(255, 159, 10, 0.5)' :
-                    'rgba(142, 142, 147, 0.5)';
+const createMarkerIcon = (device: DeviceLocation, layer: MapLayer) => {
+    let colorClass, shadowColor, pulseAnimation;
 
-    const pulseAnimation = status === 'critical' ? 'animate-ping' : status === 'online' ? 'animate-pulse' : '';
+    if (layer === 'status') {
+        const status = device.status || 'offline';
+        if (status === 'online') {
+            colorClass = 'bg-[#30d158]'; // Green
+            shadowColor = 'rgba(48, 209, 88, 0.5)';
+            pulseAnimation = 'animate-pulse';
+        } else if (status === 'critical') {
+            colorClass = 'bg-[#ff453a]'; // Red
+            shadowColor = 'rgba(255, 69, 58, 0.5)';
+            pulseAnimation = 'animate-ping';
+        } else if (status === 'warning') {
+            colorClass = 'bg-[#ff9f0a]'; // Orange
+            shadowColor = 'rgba(255, 159, 10, 0.5)';
+            pulseAnimation = '';
+        } else {
+            colorClass = 'bg-[#8e8e93]'; // Gray
+            shadowColor = 'rgba(142, 142, 147, 0.5)';
+            pulseAnimation = '';
+        }
+    } else {
+        // Confidence Layer
+        const score = device.confidence_score ?? 100;
+        if (score >= 80) {
+            colorClass = 'bg-[#30d158]'; // High Confidence
+            shadowColor = 'rgba(48, 209, 88, 0.5)';
+        } else if (score >= 50) {
+            colorClass = 'bg-[#ff9f0a]'; // Medium
+            shadowColor = 'rgba(255, 159, 10, 0.5)';
+        } else {
+            colorClass = 'bg-[#ff453a]'; // Low
+            shadowColor = 'rgba(255, 69, 58, 0.5)';
+            pulseAnimation = 'animate-ping';
+        }
+    }
 
     return L.divIcon({
         className: 'custom-marker',
         html: `
             <div class="relative flex h-6 w-6 group hover:scale-125 transition-transform duration-300">
-                <span class="${pulseAnimation} absolute inline-flex h-full w-full rounded-full ${colorClass} opacity-60"></span>
+                <span class="${pulseAnimation || ''} absolute inline-flex h-full w-full rounded-full ${colorClass} opacity-60"></span>
                 <span class="relative inline-flex rounded-full h-6 w-6 ${colorClass} border-[3px] border-[#1c1c1e] shadow-lg" style="box-shadow: 0 0 15px ${shadowColor};"></span>
+                ${layer === 'confidence' ? `<span class="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-white bg-black/50 px-1 rounded">${device.confidence_score ?? 100}%</span>` : ''}
             </div>
         `,
         iconSize: [24, 24],
@@ -65,16 +90,16 @@ function MapController({ center }: { center: [number, number] | null }) {
 }
 
 export default function MapPage() {
-    const { isMobile } = useUI()
+    const { openInspector, inspectorDeviceId } = useUI()
     const [devices, setDevices] = useState<DeviceLocation[]>([])
-    const [selectedDevice, setSelectedDevice] = useState<DeviceLocation | null>(null)
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [filter, setFilter] = useState<'all' | 'critical' | 'offline'>('all')
+    const [activeLayer, setActiveLayer] = useState<MapLayer>('status')
+    const [showLayerMenu, setShowLayerMenu] = useState(false)
 
     useEffect(() => {
         const fetchDevices = async () => {
             // Mock Data Injection for Dev if DB is empty or for specific coordinate testing
-            // We can mix real DB data with mocks if needed, but here we'll simulate the DB fetch structure
             const { data: dbDevices } = await supabase.from('devices').select('*')
 
             // If no DB data (or for styling test), use mocks with distributed coordinates around Hyderabad
@@ -94,12 +119,11 @@ export default function MapPage() {
                     status: i === 0 ? 'online' : i === 1 ? 'critical' : 'online',
                     latitude: c.lat,
                     longitude: c.lng,
-                    location: 'Test Location',
-                    api_key: 'abc',
+                    confidence_score: i === 1 ? 45 : i === 4 ? 70 : 98, // Mock scores
+                    location_name: 'Test Location', // Updated field name
                     created_at: new Date().toISOString(),
-                    organization_id: 'org1',
                     last_seen: new Date().toISOString()
-                })) as any // relaxed type for mock
+                })) as any
             }
 
             setDevices(finalDevices as DeviceLocation[])
@@ -176,7 +200,11 @@ export default function MapPage() {
                         maxZoom={20}
                     />
 
-                    <MapController center={selectedDevice && selectedDevice.latitude && selectedDevice.longitude ? [selectedDevice.latitude, selectedDevice.longitude] : null} />
+                    {/* Find active device coords for flyTo */}
+                    <MapController center={inspectorDeviceId ?
+                        (devices.find(d => d.id === inspectorDeviceId) ? [devices.find(d => d.id === inspectorDeviceId)!.latitude!, devices.find(d => d.id === inspectorDeviceId)!.longitude!] : null)
+                        : null}
+                    />
 
                     <MarkerClusterGroup
                         chunkedLoading
@@ -193,9 +221,9 @@ export default function MapPage() {
                                 <Marker
                                     key={device.id}
                                     position={[device.latitude, device.longitude]}
-                                    icon={createStatusIcon(device.status || 'offline')}
+                                    icon={createMarkerIcon(device, activeLayer)}
                                     eventHandlers={{
-                                        click: () => setSelectedDevice(device)
+                                        click: () => openInspector(device.id)
                                     }}
                                 />
                             )
@@ -203,19 +231,35 @@ export default function MapPage() {
                     </MarkerClusterGroup>
                 </MapContainer>
 
-                {/* Floating Overlay Controls (if needed) */}
-                <div className="absolute top-4 right-4 z-[400] flex flex-col gap-2">
-                    <button className="bg-[#1c1c1e]/90 backdrop-blur-xl p-2 rounded-lg border border-white/10 text-white hover:bg-white/10 transition-colors shadow-lg">
+                {/* Layer Control - Floating */}
+                <div className="absolute top-4 right-4 z-[400] flex flex-col items-end gap-2">
+                    <button
+                        onClick={() => setShowLayerMenu(!showLayerMenu)}
+                        className={`bg-[#1c1c1e]/90 backdrop-blur-xl p-3 rounded-xl border border-white/10 text-white hover:bg-white/10 transition-all shadow-lg ${showLayerMenu ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : ''}`}
+                    >
                         <Layers className="w-5 h-5" />
                     </button>
-                </div>
 
-                {/* Device Panel Overlay */}
-                <DevicePanel
-                    device={selectedDevice}
-                    onClose={() => setSelectedDevice(null)}
-                    isMobile={isMobile}
-                />
+                    {showLayerMenu && (
+                        <div className="bg-[#1c1c1e]/95 backdrop-blur-md rounded-xl border border-white/10 p-2 shadow-xl animate-scale-in origin-top-right min-w-[160px]">
+                            <p className="text-[10px] uppercase font-bold text-slate-500 px-3 py-2">Map Layers</p>
+                            <button
+                                onClick={() => { setActiveLayer('status'); setShowLayerMenu(false) }}
+                                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${activeLayer === 'status' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-300 hover:bg-white/5'}`}
+                            >
+                                <Wifi className="w-4 h-4" />
+                                Connection Status
+                            </button>
+                            <button
+                                onClick={() => { setActiveLayer('confidence'); setShowLayerMenu(false) }}
+                                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${activeLayer === 'confidence' ? 'bg-blue-500/20 text-blue-400' : 'text-slate-300 hover:bg-white/5'}`}
+                            >
+                                <Activity className="w-4 h-4" />
+                                Health Confidence
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     )

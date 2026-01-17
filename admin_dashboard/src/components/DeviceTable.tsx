@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Device } from '../lib/supabase'
+import ConfidenceRing from './ConfidenceRing'
 
 interface DeviceTableProps {
     devices: Device[]
@@ -106,6 +107,7 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
                             </th>
                             <th className="p-4 text-right">TDS (ppm)</th>
                             <th className="p-4 text-right">Temp (°C)</th>
+                            <th className="p-4 text-center">Confidence</th>
                             <th className="p-4 text-center">Status</th>
                             <th className="p-4 text-right pr-6">Last Seen</th>
                         </tr>
@@ -145,6 +147,16 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
                                         {(20 + Math.random() * 10).toFixed(1)}
                                     </td>
                                     <td className="p-4 flex justify-center">
+                                        <div onClick={(e) => e.stopPropagation()}>
+                                            <ConfidenceRing score={device.confidence_score ?? 100} size={32} status={device.status} />
+                                        </div>
+                                    </td>
+                                    <td className="p-4 flex justify-center">
+                                        <div onClick={(e) => e.stopPropagation()}>
+                                            <ConfidenceRing score={device.confidence_score ?? 100} size={32} status={device.status} />
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-center">
                                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium border border-white/5 ${device.status === 'online' ? 'bg-green-500/10 text-green-400' :
                                             device.status === 'warning' ? 'bg-orange-500/10 text-orange-400' :
                                                 device.status === 'critical' ? 'bg-red-500/10 text-red-400' : 'bg-slate-500/10 text-slate-400'

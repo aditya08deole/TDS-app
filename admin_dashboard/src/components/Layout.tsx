@@ -5,6 +5,8 @@ import { WifiOff, Bell } from 'lucide-react'
 import { useUI } from '../context/UIContext'
 import { useAuth } from '../context/AuthContext'
 import ParticleBackground from './ParticleBackground'
+import CommandPalette from './CommandPalette'
+import DeviceInspector from './DeviceInspector'
 
 export default function Layout() {
     const { isDesktop, isOffline } = useUI()
@@ -61,6 +63,12 @@ export default function Layout() {
 
             {/* Bottom Nav (Mobile) */}
             <BottomNav />
+
+            {/* Global Search */}
+            <CommandPalette />
+
+            {/* Persistent Inspector Panel */}
+            <DeviceInspector />
         </div>
     )
 }
