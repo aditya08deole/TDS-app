@@ -113,7 +113,6 @@ export default function Dashboard() {
         }, { online: 0, warning: 0, critical: 0, offline: 0 })
     }, [devices])
 
-    // Get selected device info for chart titles
     const selectedDevice = useMemo(() => {
         if (selectedLocation === 'all') return null
         return devices.find(d => d.id === selectedLocation)
@@ -138,23 +137,7 @@ export default function Dashboard() {
 
     return (
         <div className="space-y-6 max-w-[1600px] mx-auto pb-10">
-            {/* Partner Logos Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-6">
-                    <img
-                        src="/evaratech-logo.png"
-                        alt="EvaraTech"
-                        className="h-8 object-contain opacity-90 hover:opacity-100 transition-all duration-300"
-                    />
-                    <div className="w-px h-6 bg-white/10" />
-                    <img
-                        src="/iiith-logo.png"
-                        alt="IIIT Hyderabad"
-                        className="h-7 object-contain invert opacity-80 hover:opacity-100 transition-all duration-300"
-                    />
-                </div>
-            </div>
-
+            {/* Header - Title and Controls */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Overview</h1>
@@ -163,7 +146,7 @@ export default function Dashboard() {
             </div>
 
             <Tabs defaultValue="default" className="w-full">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-6">
                     <TabsList className="bg-white/5 backdrop-blur-lg border border-white/10">
                         <TabsTrigger value="default" className="gap-2 data-[state=active]:bg-white/10 transition-all duration-300"><LayoutGrid className="w-4 h-4" /> Default</TabsTrigger>
                         <TabsTrigger value="all" className="gap-2 data-[state=active]:bg-white/10 transition-all duration-300"><AreaChartIcon className="w-4 h-4" /> All Devices</TabsTrigger>
@@ -175,42 +158,125 @@ export default function Dashboard() {
                                 <SelectValue placeholder="Select Location" />
                             </SelectTrigger>
                             <SelectContent className="bg-black/90 backdrop-blur-xl border-white/10">
-                                <SelectItem value="all">All Locations (Aggregate)</SelectItem>
+                                <SelectItem value="all">All Locations</SelectItem>
                                 {devices.map(d => <SelectItem key={d.id} value={d.id}>{d.name} - {d.location_name}</SelectItem>)}
                             </SelectContent>
                         </Select>
                         <Button className="bg-primary/20 hover:bg-primary/30 text-primary border border-primary/20 transition-all duration-300">
-                            <Activity className="h-4 w-4 mr-2" /> Live View
+                            <Activity className="h-4 w-4 mr-2" /> Live
                         </Button>
                     </div>
                 </div>
 
                 <TabsContent value="default" className="space-y-6">
-                    {/* Status Cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {[
-                            { label: 'Online', value: stats.online, color: 'text-green-500', bg: 'bg-green-500/10', borderColor: 'border-green-500/20' },
-                            { label: 'Warning', value: stats.warning, color: 'text-orange-500', bg: 'bg-orange-500/10', borderColor: 'border-orange-500/20' },
-                            { label: 'Critical', value: stats.critical, color: 'text-red-500', bg: 'bg-red-500/10', borderColor: 'border-red-500/20' },
-                            { label: 'Offline', value: stats.offline, color: 'text-slate-500', bg: 'bg-slate-500/10', borderColor: 'border-slate-500/20' },
-                        ].map((stat, index) => (
-                            <GlassCard
-                                key={stat.label}
-                                className={`p-4 flex items-center justify-between border ${stat.borderColor} transition-all duration-500 hover:scale-[1.02] hover:shadow-lg`}
-                                style={{ animationDelay: `${index * 100}ms` }}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stat.bg} ${stat.color} transition-transform duration-300 hover:scale-110`}>
-                                        <Activity className="h-5 w-5" />
+                    {/* Row 1: Status Cards (Left) + Pie Chart (Center) + Activity (Right) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                        {/* Status Cards - Vertical Stack */}
+                        <div className="lg:col-span-3 flex flex-col gap-3">
+                            {[
+                                { label: 'Online', value: stats.online, color: 'text-green-400', border: 'border-green-500/30', icon: '↑' },
+                                { label: 'Warning', value: stats.warning, color: 'text-orange-400', border: 'border-orange-500/30', icon: '⚠' },
+                                { label: 'Critical', value: stats.critical, color: 'text-red-400', border: 'border-red-500/30', icon: '!' },
+                                { label: 'Offline', value: stats.offline, color: 'text-slate-400', border: 'border-slate-500/30', icon: '○' },
+                            ].map((stat, index) => (
+                                <GlassCard
+                                    key={stat.label}
+                                    className={`p-4 flex items-center justify-between border ${stat.border} transition-all duration-500 hover:scale-[1.02] hover:shadow-lg`}
+                                    style={{ animationDelay: `${index * 50}ms` }}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center ${stat.color} text-lg`}>
+                                            <Activity className="h-5 w-5" />
+                                        </div>
+                                        <span className="text-sm font-medium text-muted-foreground">{stat.label}</span>
                                     </div>
-                                    <span className="text-sm font-medium text-muted-foreground">{stat.label}</span>
+                                    <span className="text-3xl font-bold font-mono">{stat.value}</span>
+                                </GlassCard>
+                            ))}
+                        </div>
+
+                        {/* Device Status Pie Chart - Center */}
+                        <div className="lg:col-span-5">
+                            <GlassCard className="p-6 h-full transition-all duration-500 hover:shadow-xl">
+                                <h3 className="text-lg font-semibold mb-4">Device Status</h3>
+                                <div className="h-[240px]">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={[
+                                                    { name: 'Online', value: stats.online },
+                                                    { name: 'Warning', value: stats.warning },
+                                                    { name: 'Critical', value: stats.critical },
+                                                    { name: 'Offline', value: stats.offline },
+                                                ]}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={70}
+                                                outerRadius={95}
+                                                paddingAngle={4}
+                                                dataKey="value"
+                                                strokeWidth={0}
+                                            >
+                                                <Cell fill={STATUS_COLORS.online} />
+                                                <Cell fill={STATUS_COLORS.warning} />
+                                                <Cell fill={STATUS_COLORS.critical} />
+                                                <Cell fill={STATUS_COLORS.offline} />
+                                            </Pie>
+                                            <Tooltip content={<CustomTooltip />} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
                                 </div>
-                                <span className="text-2xl font-bold font-mono">{stat.value}</span>
+                                <div className="flex flex-wrap justify-center gap-4 text-xs text-muted-foreground mt-2">
+                                    <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#30d158]" /> Online ({stats.online})</div>
+                                    <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#ff9f0a]" /> Warning ({stats.warning})</div>
+                                    <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#ff453a]" /> Critical ({stats.critical})</div>
+                                    <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#8e8e93]" /> Offline ({stats.offline})</div>
+                                </div>
                             </GlassCard>
-                        ))}
+                        </div>
+
+                        {/* Recent Activity - Right */}
+                        <div className="lg:col-span-4">
+                            <GlassCard className="p-6 h-full transition-all duration-500 hover:shadow-xl">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-semibold">Recent Activity</h3>
+                                    <span className="text-xs text-muted-foreground bg-white/5 px-2 py-1 rounded-full">
+                                        {devices.length} devices
+                                    </span>
+                                </div>
+                                <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1 custom-scrollbar">
+                                    {devices.map((dev, index) => {
+                                        const latestData = sensorData[dev.id]?.[sensorData[dev.id]?.length - 1]
+                                        const timeAgo = Math.floor(Math.random() * 10) + 1
+
+                                        return (
+                                            <div
+                                                key={dev.id}
+                                                className="flex items-center justify-between p-2.5 rounded-lg bg-white/5 border border-white/5 transition-all duration-300 hover:bg-white/10"
+                                                style={{ animationDelay: `${index * 30}ms` }}
+                                            >
+                                                <div className="flex items-center gap-2.5">
+                                                    <StatusIndicator status={dev.status} size="sm" />
+                                                    <div>
+                                                        <div className="text-sm font-medium">{dev.name}</div>
+                                                        <div className="text-[11px] text-muted-foreground">{dev.location_name}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-sm font-mono font-bold">{latestData?.tds || '--'} <span className="text-muted-foreground font-normal text-xs">ppm</span></div>
+                                                    <div className="text-[11px] text-muted-foreground flex items-center gap-1 justify-end">
+                                                        <Clock className="w-2.5 h-2.5" /> {timeAgo}m ago
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </GlassCard>
+                        </div>
                     </div>
 
-                    {/* Main Charts - TDS and Temperature */}
+                    {/* Row 2: TDS and Temperature Charts */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* TDS Trend Chart */}
                         <GlassCard className="p-6 transition-all duration-500 hover:shadow-xl">
@@ -226,19 +292,19 @@ export default function Dashboard() {
                                         </p>
                                     </div>
                                 </div>
-                                <div className="flex gap-1.5 bg-white/5 rounded-lg p-1">
+                                <div className="flex gap-1 bg-white/5 rounded-lg p-1">
                                     {['24h', '7d', '30d'].map((r) => (
                                         <button
                                             key={r}
                                             onClick={() => setTimeRange(r as any)}
-                                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-300 ${timeRange === r ? 'bg-primary text-primary-foreground shadow-lg' : 'text-muted-foreground hover:bg-white/10'}`}
+                                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-300 ${timeRange === r ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-white/10'}`}
                                         >
                                             {r}
                                         </button>
                                     ))}
                                 </div>
                             </div>
-                            <div className="h-[280px]">
+                            <div className="h-[250px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={trendData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                                         <defs>
@@ -278,15 +344,9 @@ export default function Dashboard() {
                                     </span>
                                 </div>
                             </div>
-                            <div className="h-[280px]">
+                            <div className="h-[250px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={trendData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                                        <defs>
-                                            <linearGradient id="tempGradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#ff9f0a" stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor="#ff9f0a" stopOpacity={0} />
-                                            </linearGradient>
-                                        </defs>
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                         <XAxis dataKey="time" stroke="#666" fontSize={10} tickLine={false} axisLine={false} dy={10} />
                                         <YAxis stroke="#666" fontSize={10} tickLine={false} axisLine={false} dx={-5} domain={['dataMin - 2', 'dataMax + 2']} />
@@ -294,82 +354,6 @@ export default function Dashboard() {
                                         <Line type="monotone" dataKey="temp" stroke="#ff9f0a" strokeWidth={2.5} dot={false} activeDot={{ r: 6, fill: '#ff9f0a', strokeWidth: 2, stroke: '#fff' }} />
                                     </LineChart>
                                 </ResponsiveContainer>
-                            </div>
-                        </GlassCard>
-                    </div>
-
-                    {/* Device Status Pie + Recent Activity */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Device Status Pie Chart */}
-                        <GlassCard className="p-6 flex flex-col transition-all duration-500 hover:shadow-xl">
-                            <h3 className="text-lg font-semibold mb-4">Device Status</h3>
-                            <div className="flex-1 min-h-[200px]">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart>
-                                        <Pie
-                                            data={[
-                                                { name: 'Online', value: stats.online },
-                                                { name: 'Warning', value: stats.warning },
-                                                { name: 'Critical', value: stats.critical },
-                                                { name: 'Offline', value: stats.offline },
-                                            ]}
-                                            innerRadius={55}
-                                            outerRadius={75}
-                                            paddingAngle={4}
-                                            dataKey="value"
-                                        >
-                                            <Cell fill={STATUS_COLORS.online} />
-                                            <Cell fill={STATUS_COLORS.warning} />
-                                            <Cell fill={STATUS_COLORS.critical} />
-                                            <Cell fill={STATUS_COLORS.offline} />
-                                        </Pie>
-                                        <Tooltip content={<CustomTooltip />} />
-                                    </PieChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <div className="grid grid-cols-2 gap-y-2 text-xs text-muted-foreground mt-2">
-                                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#30d158]" /> Online ({stats.online})</div>
-                                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#ff9f0a]" /> Warning ({stats.warning})</div>
-                                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#ff453a]" /> Critical ({stats.critical})</div>
-                                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#8e8e93]" /> Offline ({stats.offline})</div>
-                            </div>
-                        </GlassCard>
-
-                        {/* Recent Activity - ALL DEVICES with scroll */}
-                        <GlassCard className="p-6 lg:col-span-2 transition-all duration-500 hover:shadow-xl">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-semibold">Recent Activity</h3>
-                                <span className="text-xs text-muted-foreground bg-white/5 px-2 py-1 rounded-full">
-                                    {devices.length} devices
-                                </span>
-                            </div>
-                            <div className="space-y-3 max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
-                                {devices.map((dev, index) => {
-                                    const latestData = sensorData[dev.id]?.[sensorData[dev.id]?.length - 1]
-                                    const timeAgo = Math.floor(Math.random() * 10) + 1 // Mock time
-
-                                    return (
-                                        <div
-                                            key={dev.id}
-                                            className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 transition-all duration-300 hover:bg-white/10 hover:border-white/10 hover:scale-[1.01]"
-                                            style={{ animationDelay: `${index * 50}ms` }}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <StatusIndicator status={dev.status} size="sm" pulse />
-                                                <div>
-                                                    <div className="text-sm font-medium">{dev.name}</div>
-                                                    <div className="text-xs text-muted-foreground">{dev.location_name}</div>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-sm font-mono font-bold">{latestData?.tds || '--'} <span className="text-muted-foreground font-normal">ppm</span></div>
-                                                <div className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
-                                                    <Clock className="w-3 h-3" /> {timeAgo}m ago
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )
-                                })}
                             </div>
                         </GlassCard>
                     </div>
