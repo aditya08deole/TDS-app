@@ -276,13 +276,16 @@ export default function MapPage() {
     const labelTileUrl = 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png'
 
     return (
-        <div className={`relative transition-all duration-500 ease-out ${isFullscreen ? 'fixed inset-0 z-50' : 'h-[calc(100vh-80px)]'}`}>
+        <div
+            className={`relative transition-all duration-500 ease-out ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}
+            style={{ height: isFullscreen ? '100vh' : 'calc(100vh - 80px)', minHeight: '500px' }}
+        >
             {/* Full Map */}
             <MapContainer
                 center={[17.4455, 78.3489]}
                 zoom={16}
                 scrollWheelZoom={true}
-                className="h-full w-full"
+                style={{ height: '100%', width: '100%' }}
                 zoomControl={false}
             >
                 {/* Base Tile Layer */}
