@@ -1,4 +1,4 @@
-// MapPage.tsx - Premium iOS Dark Theme Map with Neon Rectangular Markers
+// MapPage.tsx - Premium iOS Dark Theme Map with White Transparent Markers
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import { AreaChart, Area, LineChart, Line, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
@@ -82,48 +82,52 @@ const getPpmStatus = (ppm: number | undefined, status: string) => {
 }
 
 // ============================================
-// NEON RECTANGULAR MARKER - Small, Translucent with Name
+// WHITE TRANSPARENT MARKER WITH ARROW POINTER
 // ============================================
-const createNeonMarkerIcon = (device: DeviceLocation) => {
+const createWhiteTransparentMarker = (device: DeviceLocation) => {
     const ppmStatus = getPpmStatus(device.latest_tds, device.status || 'offline')
     const ppmValue = device.latest_tds || '--'
     const isOffline = device.status === 'offline'
     const shortName = device.name.length > 12 ? device.name.substring(0, 12) + '...' : device.name
 
     return L.divIcon({
-        className: 'neon-marker',
+        className: 'white-marker',
         html: `
             <div class="relative group" style="transform: translate(-50%, -100%);">
-                <!-- Glow effect -->
-                <div class="absolute inset-0 rounded-lg blur-md opacity-60" 
-                     style="background: ${ppmStatus.glow}; transform: scale(1.1);"></div>
+                <!-- Subtle glow -->
+                <div class="absolute inset-0 rounded-lg blur-sm opacity-30" 
+                     style="background: ${ppmStatus.color}; transform: scale(1.05);"></div>
                 
-                <!-- Main marker body - Rectangular translucent -->
-                <div class="relative flex flex-col items-center px-2.5 py-1.5 rounded-lg backdrop-blur-xl transition-all duration-300 group-hover:scale-105"
-                     style="background: ${THEME.bg.glass}; border: 1px solid ${ppmStatus.color}40; box-shadow: 0 0 20px ${ppmStatus.glow}, inset 0 0 20px ${ppmStatus.glow};">
+                <!-- White transparent marker body -->
+                <div class="relative flex flex-col items-center px-2.5 py-1.5 rounded-lg backdrop-blur-md transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg"
+                     style="background: rgba(255, 255, 255, 0.85); border: 1.5px solid ${ppmStatus.color}; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
                     
-                    <!-- Status dot and name row -->
+                    <!-- Status dot and name -->
                     <div class="flex items-center gap-1.5 mb-0.5">
                         <div class="w-1.5 h-1.5 rounded-full ${!isOffline ? 'animate-pulse' : ''}" 
-                             style="background: ${ppmStatus.color}; box-shadow: 0 0 8px ${ppmStatus.glow};"></div>
-                        <span class="text-[9px] font-medium text-white/80 whitespace-nowrap">${shortName}</span>
+                             style="background: ${ppmStatus.color}; box-shadow: 0 0 6px ${ppmStatus.glow};"></div>
+                        <span class="text-[9px] font-semibold text-gray-800 whitespace-nowrap">${shortName}</span>
                     </div>
                     
                     <!-- PPM Value -->
                     <div class="flex items-baseline gap-0.5">
-                        <span class="text-sm font-bold font-mono" style="color: ${ppmStatus.color}; text-shadow: 0 0 10px ${ppmStatus.glow};">${ppmValue}</span>
-                        <span class="text-[8px] text-white/40">ppm</span>
+                        <span class="text-sm font-bold font-mono text-gray-900">${ppmValue}</span>
+                        <span class="text-[8px] text-gray-600">ppm</span>
                     </div>
                 </div>
                 
-                <!-- Pointer/Arrow -->
+                <!-- Arrow Pointer -->
                 <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-0 h-0" 
-                     style="border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid ${ppmStatus.color}40;"></div>
+                     style="border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid rgba(255, 255, 255, 0.85); filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1));"></div>
+                
+                <!-- Exact point indicator -->
+                <div class="absolute -bottom-2 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full" 
+                     style="background: ${ppmStatus.color}; box-shadow: 0 0 8px ${ppmStatus.glow};"></div>
             </div>
         `,
-        iconSize: [80, 50],
-        iconAnchor: [40, 50],
-        popupAnchor: [0, -50]
+        iconSize: [90, 55],
+        iconAnchor: [45, 57],
+        popupAnchor: [0, -57]
     })
 }
 
@@ -163,7 +167,7 @@ const CustomChartTooltip = ({ active, payload, label, type }: any) => {
 }
 
 // ============================================
-// FLOATING DEVICE PANEL - Black Translucent iOS Style
+// FLOATING DEVICE PANEL - FIXED POSITIONING
 // ============================================
 function DevicePanel({
     device,
@@ -175,10 +179,20 @@ function DevicePanel({
     onClose: () => void
 }) {
     const panelRef = useRef<HTMLDivElement>(null)
-    const [position, setPosition] = useState({ x: window.innerWidth - 380, y: 80 })
+    // Calculate safe initial position: centered in map area
+    const [position, setPosition] = useState(() => {
+        const leftPanelWidth = 300
+        const availableWidth = window.innerWidth - leftPanelWidth
+        // Position panel 50% from the left of available space (centered)
+        return {
+            x: leftPanelWidth + (availableWidth * 0.5),
+            y: 100
+        }
+    })
     const [isDragging, setIsDragging] = useState(false)
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
     const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview')
+    const [isClosing, setIsClosing] = useState(false)
 
     const ppmStatus = getPpmStatus(device.latest_tds, device.status || 'offline')
 
@@ -205,6 +219,27 @@ function DevicePanel({
         return Number((last - prev).toFixed(1))
     }, [chartData])
 
+    // Ensure panel stays within viewport - account for left panel
+    useEffect(() => {
+        const ensureInViewport = () => {
+            const leftPanelWidth = 320 // Left panel + margin
+            const panelWidth = 360
+            const panelHeight = 600
+
+            const maxX = window.innerWidth - panelWidth - 20
+            const maxY = window.innerHeight - panelHeight - 20
+            const minX = leftPanelWidth
+
+            setPosition(prev => ({
+                x: Math.max(minX, Math.min(maxX, prev.x)),
+                y: Math.max(20, Math.min(maxY, prev.y))
+            }))
+        }
+        ensureInViewport()
+        window.addEventListener('resize', ensureInViewport)
+        return () => window.removeEventListener('resize', ensureInViewport)
+    }, [])
+
     // Drag handlers
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         if ((e.target as HTMLElement).closest('button')) return
@@ -216,10 +251,13 @@ function DevicePanel({
     useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
             if (isDragging) {
-                setPosition({
-                    x: Math.max(0, Math.min(window.innerWidth - 360, e.clientX - dragOffset.x)),
-                    y: Math.max(0, Math.min(window.innerHeight - 500, e.clientY - dragOffset.y))
-                })
+                const leftPanelWidth = 320
+                const panelWidth = 360
+                const panelHeight = 600
+
+                const newX = Math.max(leftPanelWidth, Math.min(window.innerWidth - panelWidth - 20, e.clientX - dragOffset.x))
+                const newY = Math.max(20, Math.min(window.innerHeight - panelHeight - 20, e.clientY - dragOffset.y))
+                setPosition({ x: newX, y: newY })
             }
         }
         const handleMouseUp = () => setIsDragging(false)
@@ -234,10 +272,16 @@ function DevicePanel({
         }
     }, [isDragging, dragOffset])
 
+    // Close with animation
+    const handleClose = () => {
+        setIsClosing(true)
+        setTimeout(() => onClose(), 300)
+    }
+
     return (
         <div
             ref={panelRef}
-            className="fixed z-[1000] w-[360px] rounded-2xl overflow-hidden transition-shadow duration-300"
+            className={`fixed z-[1000] w-[360px] rounded-2xl overflow-hidden transition-all duration-300 ${isClosing ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
             style={{
                 left: position.x,
                 top: position.y,
@@ -250,15 +294,13 @@ function DevicePanel({
             }}
             onMouseDown={handleMouseDown}
         >
-            {/* Header with accent line */}
+            {/* Header */}
             <div className="relative p-4" style={{ borderBottom: `1px solid ${THEME.border.subtle}` }}>
-                {/* Top accent glow */}
                 <div className="absolute top-0 left-0 right-0 h-[2px]"
                     style={{ background: `linear-gradient(90deg, transparent, ${ppmStatus.color}, transparent)` }} />
 
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        {/* Status icon */}
                         <div className="relative w-11 h-11 rounded-xl flex items-center justify-center"
                             style={{ background: ppmStatus.bg, border: `1px solid ${ppmStatus.color}30` }}>
                             {device.status === 'offline' ? (
@@ -266,7 +308,6 @@ function DevicePanel({
                             ) : (
                                 <Wifi className="w-5 h-5" style={{ color: ppmStatus.color }} />
                             )}
-                            {/* Pulse ring */}
                             {device.status !== 'offline' && (
                                 <div className="absolute inset-0 rounded-xl animate-ping opacity-20"
                                     style={{ background: ppmStatus.color }} />
@@ -282,8 +323,8 @@ function DevicePanel({
                     </div>
 
                     <button
-                        onClick={onClose}
-                        className="p-2 rounded-lg transition-all duration-200 hover:scale-105"
+                        onClick={handleClose}
+                        className="p-2 rounded-lg transition-all duration-200 hover:scale-110 hover:bg-white/5"
                         style={{ background: THEME.bg.tertiary }}
                     >
                         <X className="w-4 h-4" style={{ color: THEME.text.muted }} />
@@ -310,61 +351,61 @@ function DevicePanel({
             </div>
 
             {/* Content */}
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-3">
                 {activeTab === 'overview' && (
                     <>
-                        {/* Stats Grid */}
-                        <div className="grid grid-cols-2 gap-3">
-                            {/* TDS Card */}
-                            <div className="p-4 rounded-xl" style={{ background: THEME.bg.tertiary, border: `1px solid ${THEME.border.subtle}` }}>
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                        <Droplets className="w-4 h-4" style={{ color: THEME.chart.tds.stroke }} />
-                                        <span className="text-[10px] uppercase tracking-wider" style={{ color: THEME.text.muted }}>TDS Level</span>
+                        {/* Compact Stats Grid */}
+                        <div className="grid grid-cols-2 gap-2">
+                            {/* TDS Card - Smaller */}
+                            <div className="p-3 rounded-xl" style={{ background: THEME.bg.tertiary, border: `1px solid ${THEME.border.subtle}` }}>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <div className="flex items-center gap-1.5">
+                                        <Droplets className="w-3.5 h-3.5" style={{ color: THEME.chart.tds.stroke }} />
+                                        <span className="text-[9px] uppercase tracking-wider" style={{ color: THEME.text.muted }}>TDS</span>
                                     </div>
                                     {tdsTrend !== 0 && (
                                         <div className="flex items-center gap-0.5" style={{ color: tdsTrend > 0 ? THEME.status.critical.color : THEME.status.online.color }}>
-                                            {tdsTrend > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                                            <span className="text-[9px]">{Math.abs(tdsTrend)}</span>
+                                            {tdsTrend > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                                            <span className="text-[8px]">{Math.abs(tdsTrend)}</span>
                                         </div>
                                     )}
                                 </div>
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-2xl font-bold font-mono" style={{ color: ppmStatus.color }}>{device.latest_tds || '--'}</span>
-                                    <span className="text-xs" style={{ color: THEME.text.muted }}>ppm</span>
+                                    <span className="text-xl font-bold font-mono" style={{ color: ppmStatus.color }}>{device.latest_tds || '--'}</span>
+                                    <span className="text-[10px]" style={{ color: THEME.text.muted }}>ppm</span>
                                 </div>
                             </div>
 
-                            {/* Temp Card */}
-                            <div className="p-4 rounded-xl" style={{ background: THEME.bg.tertiary, border: `1px solid ${THEME.border.subtle}` }}>
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                        <Thermometer className="w-4 h-4" style={{ color: THEME.chart.temp.stroke }} />
-                                        <span className="text-[10px] uppercase tracking-wider" style={{ color: THEME.text.muted }}>Temp</span>
+                            {/* Temp Card - Smaller */}
+                            <div className="p-3 rounded-xl" style={{ background: THEME.bg.tertiary, border: `1px solid ${THEME.border.subtle}` }}>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <div className="flex items-center gap-1.5">
+                                        <Thermometer className="w-3.5 h-3.5" style={{ color: THEME.chart.temp.stroke }} />
+                                        <span className="text-[9px] uppercase tracking-wider" style={{ color: THEME.text.muted }}>Temp</span>
                                     </div>
                                     {tempTrend !== 0 && (
                                         <div className="flex items-center gap-0.5" style={{ color: tempTrend > 0 ? THEME.chart.temp.stroke : THEME.chart.tds.stroke }}>
-                                            {tempTrend > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                                            <span className="text-[9px]">{Math.abs(tempTrend)}</span>
+                                            {tempTrend > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                                            <span className="text-[8px]">{Math.abs(tempTrend)}</span>
                                         </div>
                                     )}
                                 </div>
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-2xl font-bold font-mono" style={{ color: THEME.chart.temp.stroke }}>{device.latest_temp || '--'}</span>
-                                    <span className="text-xs" style={{ color: THEME.text.muted }}>°C</span>
+                                    <span className="text-xl font-bold font-mono" style={{ color: THEME.chart.temp.stroke }}>{device.latest_temp || '--'}</span>
+                                    <span className="text-[10px]" style={{ color: THEME.text.muted }}>°C</span>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Mini TDS Chart */}
-                        <div className="p-4 rounded-xl" style={{ background: THEME.bg.tertiary, border: `1px solid ${THEME.border.subtle}` }}>
-                            <div className="flex items-center justify-between mb-3">
+                        {/* TDS Chart */}
+                        <div className="p-3 rounded-xl" style={{ background: THEME.bg.tertiary, border: `1px solid ${THEME.border.subtle}` }}>
+                            <div className="flex items-center justify-between mb-2">
                                 <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: THEME.chart.tds.stroke }}>
                                     TDS History (24H)
                                 </span>
-                                <Activity className="w-3.5 h-3.5" style={{ color: THEME.chart.tds.stroke }} />
+                                <Activity className="w-3 h-3" style={{ color: THEME.chart.tds.stroke }} />
                             </div>
-                            <div className="h-[80px]">
+                            <div className="h-[70px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                                         <defs>
@@ -390,15 +431,15 @@ function DevicePanel({
                             </div>
                         </div>
 
-                        {/* Mini Temp Chart */}
-                        <div className="p-4 rounded-xl" style={{ background: THEME.bg.tertiary, border: `1px solid ${THEME.border.subtle}` }}>
-                            <div className="flex items-center justify-between mb-3">
+                        {/* Temp Chart */}
+                        <div className="p-3 rounded-xl" style={{ background: THEME.bg.tertiary, border: `1px solid ${THEME.border.subtle}` }}>
+                            <div className="flex items-center justify-between mb-2">
                                 <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: THEME.chart.temp.stroke }}>
                                     Temp History (24H)
                                 </span>
-                                <Activity className="w-3.5 h-3.5" style={{ color: THEME.chart.temp.stroke }} />
+                                <Activity className="w-3 h-3" style={{ color: THEME.chart.temp.stroke }} />
                             </div>
-                            <div className="h-[80px]">
+                            <div className="h-[70px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke={THEME.border.subtle} vertical={false} />
@@ -532,12 +573,12 @@ export default function MapPage() {
         return result
     }, [devices, statusFilter, searchQuery])
 
-    // Refresh handler
+    // Refresh handler - smooth rotation only once
     const handleRefresh = useCallback(() => {
         setIsRefreshing(true)
         setTimeout(() => {
             setIsRefreshing(false)
-        }, 1000)
+        }, 600)
     }, [])
 
     // Map tiles
@@ -689,7 +730,7 @@ export default function MapPage() {
                             <Marker
                                 key={device.id}
                                 position={[device.latitude, device.longitude]}
-                                icon={createNeonMarkerIcon(device)}
+                                icon={createWhiteTransparentMarker(device)}
                                 eventHandlers={{ click: () => setSelectedDevice(device) }}
                             />
                         )
@@ -698,13 +739,16 @@ export default function MapPage() {
 
                 {/* Top Right Controls */}
                 <div className="absolute top-4 right-4 z-[500] flex items-center gap-2">
-                    {/* Refresh Button */}
+                    {/* Refresh Button - Single rotation */}
                     <button
                         onClick={handleRefresh}
-                        className={`p-3 rounded-xl backdrop-blur-xl transition-all duration-300 ${isRefreshing ? 'animate-spin' : ''}`}
+                        className="p-3 rounded-xl backdrop-blur-xl transition-all duration-300"
                         style={{ background: THEME.bg.glass, border: `1px solid ${THEME.border.light}` }}
                     >
-                        <RefreshCw className="w-5 h-5" style={{ color: THEME.text.primary }} />
+                        <RefreshCw
+                            className={`w-5 h-5 transition-transform duration-600 ${isRefreshing ? 'rotate-360' : ''}`}
+                            style={{ color: THEME.text.primary }}
+                        />
                     </button>
 
                     {/* Layer Toggle */}
@@ -718,7 +762,7 @@ export default function MapPage() {
                         </button>
                         {showLayerMenu && (
                             <div
-                                className="absolute top-full right-0 mt-2 p-2 min-w-[140px] rounded-xl backdrop-blur-xl"
+                                className="absolute top-full right-0 mt-2 p-2 min-w-[140px] rounded-xl backdrop-blur-xl animate-scale-in"
                                 style={{ background: THEME.bg.glass, border: `1px solid ${THEME.border.light}` }}
                             >
                                 <p className="text-[9px] uppercase px-3 py-1 font-medium" style={{ color: THEME.text.muted }}>Map Style</p>

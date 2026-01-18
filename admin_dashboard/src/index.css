@@ -83,3 +83,18 @@
 .animate-scale-in {
     animation: scale-in 0.3s ease-out forwards;
 }
+
+/* Smooth single rotation for refresh button */
+.rotate-360 {
+    animation: rotate-once 0.6s ease-in-out;
+}
+
+@keyframes rotate-once {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
