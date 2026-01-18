@@ -139,28 +139,56 @@ export default function DeviceInspector() {
     const fetchSensorHistory = async () => {
         if (!device) return
         try {
-            // Using mock 'sensor_data' if table doesn't exist, falling back to random for demo
-            // In a real scenario, this fetches from the actual table
+            // Try to fetch real ThingSpeak data via the device's channel_id and read key
+            const channelId = (device as any).thingspeak_channel_id
+            const readKey = (device as any).thingspeak_read_key
+            const tdsField = (device as any).tds_field_number || 1
+            const tempField = (device as any).temperature_field_number || 2
+
+            if (channelId && readKey) {
+                // Correct URL: /channels/{CHANNEL_ID}/feeds.json?api_key={READ_KEY}
+                const url = `https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${readKey}&results=100`
+                console.log('DeviceInspector fetching:', url)
+
+                const response = await fetch(url)
+                const json = await response.json()
+
+                if (json.feeds && json.feeds.length > 0) {
+                    const readings = json.feeds.map((entry: any, i: number) => ({
+                        id: i.toString(),
+                        tds: parseFloat(entry[`field${tdsField}`]) || 0,
+                        temperature: parseFloat(entry[`field${tempField}`]) || 0,
+                        recorded_at: entry.created_at
+                    })).filter((r: any) => r.tds > 20) // Remove TDS <= 20 (invalid/noise)
+
+                    console.log(`DeviceInspector: Got ${readings.length} readings`)
+                    setSensorHistory(readings)
+                    return
+                }
+            }
+
+            // Fallback: Try to fetch from Supabase readings table
             const { data } = await supabase
-                .from('readings') // Assuming a readings table or fallback
+                .from('readings')
                 .select('*')
                 .eq('device_id', device.id)
                 .order('created_at', { ascending: false })
                 .limit(50)
 
             if (data && data.length > 0) {
-                setSensorHistory([...data].reverse())
-            } else {
-                // Mock data for demo if no real data
-                const mock = Array.from({ length: 20 }).map((_, i) => ({
+                setSensorHistory([...data].reverse().map((r, i) => ({
                     id: i.toString(),
-                    tds: 150 + Math.random() * 50,
-                    recorded_at: new Date(Date.now() - i * 3600000).toISOString()
-                })).reverse()
-                setSensorHistory(mock)
+                    tds: r.tds || 0,
+                    temperature: r.temperature,
+                    recorded_at: r.created_at
+                })))
+            } else {
+                // No data available
+                setSensorHistory([])
             }
         } catch (err) {
             console.error(err)
+            setSensorHistory([])
         }
     }
 

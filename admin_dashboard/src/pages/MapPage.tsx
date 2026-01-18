@@ -1,8 +1,11 @@
-// MapPage.tsx - Premium iOS Dark Theme Map with White Transparent Markers
+// MapPage.tsx - Premium iOS Dark Theme Map with Real ThingSpeak Data
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import { AreaChart, Area, LineChart, Line, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { supabase } from '../lib/supabase'
 import type { Device, SensorData } from '../lib/supabase'
+import { useThingSpeakData, type DeviceWithSensorData } from '../hooks/useThingSpeakData'
+import { getTDSStatus } from '../lib/constants'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import {
@@ -17,7 +20,7 @@ import iconShadow from 'leaflet/dist/images/marker-shadow.png'
 const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconAnchor: [12, 41] })
 L.Marker.prototype.options.icon = DefaultIcon
 
-type DeviceLocation = Device & { latest_tds?: number; latest_temp?: number }
+type DeviceLocation = DeviceWithSensorData
 type MapStyle = 'street' | 'satellite'
 type FilterType = 'all' | 'online' | 'warning' | 'critical' | 'offline'
 
@@ -88,7 +91,7 @@ const createWhiteTransparentMarker = (device: DeviceLocation) => {
     const ppmStatus = getPpmStatus(device.latest_tds, device.status || 'offline')
     const ppmValue = device.latest_tds || '--'
     const isOffline = device.status === 'offline'
-    const shortName = device.name.length > 12 ? device.name.substring(0, 12) + '...' : device.name
+    const shortName = (device.location_name || device.name).length > 12 ? (device.location_name || device.name).substring(0, 12) + '...' : (device.location_name || device.name)
 
     return L.divIcon({
         className: 'white-marker',
@@ -196,13 +199,16 @@ function DevicePanel({
 
     const ppmStatus = getPpmStatus(device.latest_tds, device.status || 'offline')
 
-    // Chart data
-    const chartData = useMemo(() => sensorData.map((d, i) => ({
-        time: new Date(d.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        tds: d.tds,
-        temp: d.temperature,
-        index: i
-    })), [sensorData])
+    // Chart data - limit to last 30 points for cleaner trend visualization
+    const chartData = useMemo(() => {
+        const last30 = sensorData.slice(-30)
+        return last30.map((d, i) => ({
+            time: new Date(d.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            tds: d.tds,
+            temp: d.temperature,
+            index: i
+        }))
+    }, [sensorData])
 
     // Calculate trends
     const tdsTrend = useMemo(() => {
@@ -315,7 +321,7 @@ function DevicePanel({
                         </div>
 
                         <div>
-                            <h3 className="text-base font-semibold text-white">{device.name}</h3>
+                            <h3 className="text-base font-semibold text-white">{device.location_name || device.name}</h3>
                             <p className="text-[11px] flex items-center gap-1" style={{ color: THEME.text.muted }}>
                                 <MapPin className="w-3 h-3" /> {device.location_name}
                             </p>
@@ -509,8 +515,7 @@ function DevicePanel({
 // MAIN MAP PAGE COMPONENT
 // ============================================
 export default function MapPage() {
-    const [devices, setDevices] = useState<DeviceLocation[]>([])
-    const [sensorData, setSensorData] = useState<{ [key: string]: SensorData[] }>({})
+    const [supabaseDevices, setSupabaseDevices] = useState<Device[]>([])
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [mapStyle, setMapStyle] = useState<MapStyle>('street')
     const [showLayerMenu, setShowLayerMenu] = useState(false)
@@ -520,32 +525,70 @@ export default function MapPage() {
     const [statusFilter, setStatusFilter] = useState<FilterType>('all')
     const [isRefreshing, setIsRefreshing] = useState(false)
 
-    // Mock data initialization
+    // Fetch real devices from Supabase
     useEffect(() => {
-        const mockDevices: DeviceLocation[] = [
-            { id: '1', name: 'Himalaya Mess', location_name: 'Main Dining Hall', status: 'online', latitude: 17.4455, longitude: 78.3489, latest_tds: 186, latest_temp: 25.2 },
-            { id: '2', name: 'Vindhya Mess', location_name: 'North Campus', status: 'online', latitude: 17.4470, longitude: 78.3510, latest_tds: 225, latest_temp: 24.8 },
-            { id: '3', name: 'Kadamba Canteen', location_name: 'Academic Block', status: 'warning', latitude: 17.4440, longitude: 78.3470, latest_tds: 425, latest_temp: 26.1 },
-            { id: '4', name: 'Library', location_name: 'Central Library', status: 'online', latitude: 17.4485, longitude: 78.3505, latest_tds: 195, latest_temp: 23.5 },
-            { id: '5', name: 'OBH', location_name: 'Boys Hostel', status: 'online', latitude: 17.4420, longitude: 78.3520, latest_tds: 310, latest_temp: 25.8 },
-            { id: '6', name: 'NBH', location_name: 'New Hostel', status: 'critical', latitude: 17.4435, longitude: 78.3440, latest_tds: 725, latest_temp: 27.2 },
-            { id: '7', name: 'Girls Hostel', location_name: 'GH Building', status: 'online', latitude: 17.4460, longitude: 78.3530, latest_tds: 165, latest_temp: 24.3 },
-            { id: '8', name: 'KRB', location_name: 'Research Complex', status: 'online', latitude: 17.4500, longitude: 78.3480, latest_tds: 210, latest_temp: 25.0 },
-            { id: '9', name: 'Sports Complex', location_name: 'Athletic Facility', status: 'offline', latitude: 17.4510, longitude: 78.3460 },
-        ] as any
-        setDevices(mockDevices)
+        const fetchDevices = async () => {
+            const { data } = await supabase
+                .from('devices')
+                .select('*')
+                .order('created_at', { ascending: false })
 
-        const mockSensorData: { [key: string]: SensorData[] } = {}
-        mockDevices.forEach(d => {
-            mockSensorData[d.id] = Array.from({ length: 24 }, (_, i) => ({
-                id: i, device_id: d.id,
-                tds: Math.floor(Math.random() * (400 - 100) + 100),
-                temperature: parseFloat((Math.random() * (30 - 20) + 20).toFixed(1)),
-                voltage: 3.3, recorded_at: new Date(Date.now() - (24 - i) * 3600000).toISOString()
+            if (data) setSupabaseDevices(data)
+        }
+
+        fetchDevices()
+
+        // Subscribe to device changes
+        const subscription = supabase
+            .channel('map_devices_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, () => {
+                fetchDevices()
+            })
+            .subscribe()
+
+        return () => {
+            subscription.unsubscribe()
+        }
+    }, [])
+
+    // Fetch real-time ThingSpeak data for all devices
+    const { devices: devicesWithData, deviceData } = useThingSpeakData(supabaseDevices)
+
+    // Convert ThingSpeak data to SensorData format for charts
+    const sensorData = useMemo(() => {
+        const result: { [key: string]: SensorData[] } = {}
+        deviceData.forEach((data, deviceId) => {
+            result[deviceId] = data.map((reading, index) => ({
+                id: index,
+                device_id: deviceId,
+                tds: reading.tds,
+                temperature: reading.temperature,
+                voltage: reading.voltage,
+                recorded_at: reading.timestamp
             }))
         })
-        setSensorData(mockSensorData)
-    }, [])
+        return result
+    }, [deviceData])
+
+    // Enrich devices with status based on TDS and offline detection
+    const devices: DeviceLocation[] = useMemo(() => {
+        return devicesWithData.map(device => {
+            let status: 'online' | 'warning' | 'critical' | 'offline' = 'offline'
+
+            if (device.is_offline) {
+                status = 'offline'
+            } else if (device.latest_tds !== undefined) {
+                status = getTDSStatus(device.latest_tds)
+            }
+
+            return {
+                ...device,
+                status,
+                latest_tds: device.latest_tds,
+                latest_temp: device.latest_temp
+            }
+        })
+    }, [devicesWithData])
 
     // Stats calculation
     const stats = useMemo(() => devices.reduce((acc, d) => {
@@ -674,7 +717,7 @@ export default function MapPage() {
                                         <Droplets className="w-4 h-4" style={{ color: ppmStatus.color }} />
                                     </div>
                                     <div>
-                                        <div className="text-sm font-medium" style={{ color: THEME.text.primary }}>{device.name}</div>
+                                        <div className="text-sm font-medium" style={{ color: THEME.text.primary }}>{device.location_name || device.name}</div>
                                         <div className="text-[10px]" style={{ color: THEME.text.muted }}>{device.location_name}</div>
                                     </div>
                                 </div>

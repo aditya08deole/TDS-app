@@ -35,7 +35,11 @@ export default function Devices() {
         longitude: '',
         sim_number: '',
         node_number: '',
-        thingspeak_read_key: ''
+        thingspeak_channel_id: '',
+        thingspeak_read_key: '',
+        tds_field: 1,
+        temp_field: 2,
+        voltage_field: 3
     })
     const [loading, setLoading] = useState(false)
     const [refreshing, setRefreshing] = useState(false)
@@ -105,8 +109,6 @@ export default function Devices() {
         if (!isAdmin) return
         setLoading(true)
 
-        const channelId = Math.floor(Math.random() * 1000000) // This will be replaced with real ThingSpeak ID
-
         const { error } = await supabase.from('devices').insert([{
             name: newDevice.name,
             location_name: newDevice.location_name,
@@ -114,12 +116,16 @@ export default function Devices() {
             longitude: parseFloat(newDevice.longitude),
             sim_number: newDevice.sim_number,
             node_number: newDevice.node_number,
+            thingspeak_channel_id: newDevice.thingspeak_channel_id,
             thingspeak_read_key: newDevice.thingspeak_read_key,
-            thingspeak_channel_id: channelId,
+            tds_field_number: newDevice.tds_field,
+            temperature_field_number: newDevice.temp_field,
+            voltage_field_number: newDevice.voltage_field,
             status: 'offline'
         }])
 
         if (!error) {
+            alert('✅ Device added successfully!')
             setNewDevice({
                 name: '',
                 location_name: '',
@@ -127,7 +133,11 @@ export default function Devices() {
                 longitude: '',
                 sim_number: '',
                 node_number: '',
-                thingspeak_read_key: ''
+                thingspeak_channel_id: '',
+                thingspeak_read_key: '',
+                tds_field: 1,
+                temp_field: 2,
+                voltage_field: 3
             })
             refreshDevices()
         } else {
@@ -448,6 +458,19 @@ export default function Devices() {
                             />
                         </div>
 
+                        {/* ThingSpeak Channel ID */}
+                        <div>
+                            <label className="text-sm text-slate-400 mb-1.5 block">ThingSpeak Channel ID *</label>
+                            <input
+                                type="text"
+                                required
+                                value={newDevice.thingspeak_channel_id}
+                                onChange={e => setNewDevice({ ...newDevice, thingspeak_channel_id: e.target.value })}
+                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                placeholder="e.g., 2713286"
+                            />
+                        </div>
+
                         {/* ThingSpeak Read API Key */}
                         <div className="md:col-span-2">
                             <label className="text-sm text-slate-400 mb-1.5 block">ThingSpeak Read API Key *</label>
@@ -459,6 +482,57 @@ export default function Devices() {
                                 className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
                                 placeholder="e.g., XXXXXXXXXXXXXX"
                             />
+                        </div>
+
+                        {/* Field Mapping Section */}
+                        <div className="md:col-span-2 lg:col-span-3">
+                            <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                                ThingSpeak Field Mapping
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {/* TDS Field */}
+                                <div>
+                                    <label className="text-sm text-slate-400 mb-1.5 block">TDS Field Number</label>
+                                    <select
+                                        value={newDevice.tds_field}
+                                        onChange={e => setNewDevice({ ...newDevice, tds_field: parseInt(e.target.value) })}
+                                        className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                    >
+                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
+                                            <option key={num} value={num}>Field {num}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Temperature Field */}
+                                <div>
+                                    <label className="text-sm text-slate-400 mb-1.5 block">Temperature Field Number</label>
+                                    <select
+                                        value={newDevice.temp_field}
+                                        onChange={e => setNewDevice({ ...newDevice, temp_field: parseInt(e.target.value) })}
+                                        className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                    >
+                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
+                                            <option key={num} value={num}>Field {num}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Voltage Field */}
+                                <div>
+                                    <label className="text-sm text-slate-400 mb-1.5 block">Voltage Field Number</label>
+                                    <select
+                                        value={newDevice.voltage_field}
+                                        onChange={e => setNewDevice({ ...newDevice, voltage_field: parseInt(e.target.value) })}
+                                        className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                    >
+                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
+                                            <option key={num} value={num}>Field {num}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Submit Button */}
@@ -510,7 +584,7 @@ export default function Devices() {
                                 </button>
                             )}
                         </div>
-                        <h3 className="text-lg lg:text-xl font-bold text-slate-100 mb-1 truncate">{device.name}</h3>
+                        <h3 className="text-lg lg:text-xl font-bold text-slate-100 mb-1 truncate">{device.location_name || device.name}</h3>
                         <p className="text-slate-500 text-xs mb-3 truncate">CH: {device.thingspeak_channel_id || 'N/A'}</p>
 
                         <div className="space-y-2">
@@ -564,7 +638,11 @@ export default function Devices() {
                         longitude: data.longitude,
                         sim_number: data.sim_number,
                         node_number: data.node_number,
-                        thingspeak_read_key: data.thingspeak_read_key
+                        thingspeak_channel_id: data.thingspeak_channel_id || '',
+                        thingspeak_read_key: data.thingspeak_read_key,
+                        tds_field: data.tds_field || 1,
+                        temp_field: data.temp_field || 2,
+                        voltage_field: data.voltage_field || 3
                     })
                 }}
             />

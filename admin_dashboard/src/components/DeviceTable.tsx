@@ -136,15 +136,15 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
                                         </button>
                                     </td>
                                     <td className="p-4 font-medium text-white group-hover:text-cyan-400 transition-colors">
-                                        {device.name}
+                                        {device.location_name || device.name}
                                     </td>
                                     <td className="p-4 text-[#86868b]">{device.location_name}</td>
                                     <td className="p-4 text-right font-mono text-white">
-                                        {/* Mock Data Injection for Table Display */}
-                                        {(150 + Math.random() * 100).toFixed(0)}
+                                        {/* Real TDS from device props */}
+                                        {(device as any).latest_tds?.toFixed(0) || '--'}
                                     </td>
                                     <td className="p-4 text-right font-mono text-[#86868b]">
-                                        {(20 + Math.random() * 10).toFixed(1)}
+                                        {(device as any).latest_temp?.toFixed(1) || '--'}
                                     </td>
                                     <td className="p-4 flex justify-center">
                                         <div onClick={(e) => e.stopPropagation()}>
@@ -177,6 +177,6 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
                     </tbody>
                 </table>
             </div>
-        </div>
+        </div >
     )
 }

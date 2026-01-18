@@ -4,7 +4,10 @@ import {
     PieChart, Pie, Cell, LineChart, Line
 } from 'recharts'
 import { Activity, Clock, Droplets, Thermometer, LayoutGrid, TrendingUp, TrendingDown, Zap } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import type { Device, SensorData } from '../lib/supabase'
+import { useThingSpeakData } from '../hooks/useThingSpeakData'
+import { getTDSStatus } from '../lib/constants'
 
 import { GlassCard } from '@/components/GlassCard'
 import { StatusIndicator } from '@/components/StatusIndicator'
@@ -56,64 +59,77 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 }
 
 export default function Dashboard() {
-    const [devices, setDevices] = useState<Device[]>([])
-    const [sensorData, setSensorData] = useState<{ [key: string]: SensorData[] }>({})
+    const [supabaseDevices, setSupabaseDevices] = useState<Device[]>([])
     const [loading, setLoading] = useState(true)
-    const [selectedLocation, setSelectedLocation] = useState<string>('all')
-    const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d'>('24h')
+    const [selectedLocation, setSelectedLocation] = useState<string>('') // Empty until devices load
+    const [dataPointLimit, setDataPointLimit] = useState<number>(100) // Data point count instead of time range
 
+    // Fetch real devices from Supabase
     useEffect(() => {
-        let isMounted = true
-        const POLL_INTERVAL = 30000
+        const fetchDevices = async () => {
+            const { data } = await supabase
+                .from('devices')
+                .select('*')
+                .order('created_at', { ascending: false })
 
-        const fetchData = async () => {
-            const base = {
-                latitude: 17.4455,
-                longitude: 78.3489,
-                thingspeak_channel_id: 12345,
-                thingspeak_read_key: 'abc',
-                created_at: new Date().toISOString(),
-                metadata: { polling_interval: 30 }
-            }
-
-            const mockDevices: Device[] = [
-                { ...base, id: '1', name: 'Himalaya Mess', location_name: 'Main Dining Hall', status: 'online', last_seen_at: new Date().toISOString() },
-                { ...base, id: '2', name: 'Vindhya Mess', location_name: 'North Campus', status: 'online', last_seen_at: new Date().toISOString() },
-                { ...base, id: '3', name: 'Kadamba Canteen', location_name: 'Academic Block', status: 'warning', last_seen_at: new Date().toISOString() },
-                { ...base, id: '4', name: 'Library', location_name: 'Central Library', status: 'online', last_seen_at: new Date().toISOString() },
-                { ...base, id: '5', name: 'OBH', location_name: 'Boys Hostel', status: 'warning', last_seen_at: new Date().toISOString() },
-                { ...base, id: '6', name: 'NBH', location_name: 'New Hostel', status: 'critical', last_seen_at: new Date().toISOString() },
-                { ...base, id: '7', name: 'Girls Hostel', location_name: 'GH Building', status: 'online', last_seen_at: new Date().toISOString() },
-                { ...base, id: '8', name: 'KRB', location_name: 'Research Complex', status: 'online', last_seen_at: new Date().toISOString() },
-                { ...base, id: '9', name: 'Sports Complex', location_name: 'Athletic Facility', status: 'offline', last_seen_at: new Date().toISOString() },
-                { ...base, id: '10', name: 'T-Hub', location_name: 'Innovation Center', status: 'online', last_seen_at: new Date().toISOString() },
-            ]
-
-            if (isMounted) setDevices(mockDevices)
-
-            const newData: { [key: string]: SensorData[] } = {}
-            mockDevices.forEach(d => {
-                newData[d.id] = Array.from({ length: 24 }, (_, i) => ({
-                    id: i,
-                    device_id: d.id,
-                    tds: Math.floor(Math.random() * (400 - 100) + 100),
-                    temperature: parseFloat((Math.random() * (30 - 20) + 20).toFixed(1)),
-                    voltage: 3.3,
-                    recorded_at: new Date(Date.now() - (24 - i) * 3600000).toISOString(),
-                    timestamp: new Date(Date.now() - (24 - i) * 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                }))
-            })
-
-            if (isMounted) {
-                setSensorData(newData)
+            if (data) {
+                setSupabaseDevices(data)
+                // Auto-select first device if no device selected yet
+                if (data.length > 0 && !selectedLocation) {
+                    setSelectedLocation(data[0].id)
+                }
                 setLoading(false)
             }
         }
 
-        fetchData()
-        const interval = setInterval(fetchData, POLL_INTERVAL)
-        return () => { isMounted = false; clearInterval(interval) }
+        fetchDevices()
+
+        // Subscribe to device changes
+        const subscription = supabase
+            .channel('dashboard_devices_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, () => {
+                fetchDevices()
+            })
+            .subscribe()
+
+        return () => {
+            subscription.unsubscribe()
+        }
     }, [])
+
+    // Fetch real-time ThingSpeak data
+    const { devices: devicesWithData, deviceData } = useThingSpeakData(supabaseDevices)
+
+    // Enrich devices with status
+    const devices = useMemo(() => {
+        return devicesWithData.map(device => {
+            let status: 'online' | 'warning' | 'critical' | 'offline' = 'offline'
+
+            if (device.is_offline) {
+                status = 'offline'
+            } else if (device.latest_tds !== undefined) {
+                status = getTDSStatus(device.latest_tds)
+            }
+
+            return { ...device, status }
+        })
+    }, [devicesWithData])
+
+    // Convert ThingSpeak data to SensorData format
+    const sensorData = useMemo(() => {
+        const result: { [key: string]: SensorData[] } = {}
+        deviceData.forEach((data, deviceId) => {
+            result[deviceId] = data.map((reading, index) => ({
+                id: index,
+                device_id: deviceId,
+                tds: reading.tds,
+                temperature: reading.temperature,
+                voltage: reading.voltage,
+                recorded_at: reading.timestamp
+            }))
+        })
+        return result
+    }, [deviceData])
 
     const stats = useMemo(() => devices.reduce((acc, d) => {
         const s = d.status as keyof typeof acc
@@ -122,20 +138,26 @@ export default function Dashboard() {
     }, { online: 0, warning: 0, critical: 0, offline: 0 }), [devices])
 
     const selectedDevice = useMemo(() =>
-        selectedLocation === 'all' ? null : devices.find(d => d.id === selectedLocation)
+        selectedLocation ? devices.find(d => d.id === selectedLocation) : null
         , [selectedLocation, devices])
 
-    const locationLabel = selectedDevice ? selectedDevice.name : 'All Locations'
+    const locationLabel = selectedDevice ? (selectedDevice.location_name || selectedDevice.name) : 'No Device Selected'
 
     const trendData = useMemo(() => {
-        const id = selectedLocation === 'all' ? devices[0]?.id : selectedLocation
-        if (!id || !sensorData[id]) return []
-        return sensorData[id].map(d => ({
-            time: (d as any).timestamp,
+        // Use selected device, fallback to first device if not selected
+        const effectiveLocation = selectedLocation || devices[0]?.id
+        if (!effectiveLocation || !sensorData[effectiveLocation]) return []
+
+        // Get data and slice to the selected data point limit
+        const allData = sensorData[effectiveLocation]
+        const slicedData = allData.slice(-dataPointLimit)
+
+        return slicedData.map(d => ({
+            time: new Date(d.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             tds: d.tds,
             temp: d.temperature
         }))
-    }, [selectedLocation, devices, sensorData])
+    }, [selectedLocation, devices, sensorData, dataPointLimit])
 
     const latestTDS = trendData.length > 0 ? trendData[trendData.length - 1].tds : 0
     const prevTDS = trendData.length > 1 ? trendData[trendData.length - 2].tds : latestTDS
@@ -276,7 +298,7 @@ export default function Dashboard() {
                                             <div className="flex items-center gap-2">
                                                 <StatusIndicator status={d.status} size="sm" />
                                                 <div>
-                                                    <div className="text-xs font-medium">{d.name}</div>
+                                                    <div className="text-xs font-medium">{d.location_name || d.name}</div>
                                                     <div className="text-[10px] text-white/40">{d.location_name}</div>
                                                 </div>
                                             </div>
@@ -285,7 +307,7 @@ export default function Dashboard() {
                                                     {latest?.tds || '--'} <span className="text-white/40 font-normal">ppm</span>
                                                 </div>
                                                 <div className="text-[10px] text-white/40 flex items-center gap-0.5 justify-end">
-                                                    <Clock className="w-2.5 h-2.5" /> {Math.floor(Math.random() * 10) + 1}m ago
+                                                    <Clock className="w-2.5 h-2.5" /> {latest?.recorded_at ? new Date(latest.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
                                                 </div>
                                             </div>
                                         </div>
@@ -311,28 +333,31 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center gap-3">
                         <div className="flex gap-0.5 bg-white/[0.03] rounded-lg p-0.5 border border-white/[0.06]">
-                            {['24h', '7d', '30d'].map((r) => (
+                            {[60, 100, 500, 1000].map((count) => (
                                 <button
-                                    key={r}
-                                    onClick={() => setTimeRange(r as any)}
-                                    className={`px-3 py-1.5 rounded text-xs font-medium transition-all duration-300 ${timeRange === r
-                                            ? 'bg-primary text-white shadow-lg'
-                                            : 'text-white/50 hover:bg-white/[0.08]'
+                                    key={count}
+                                    onClick={() => setDataPointLimit(count)}
+                                    className={`px-3 py-1.5 rounded text-xs font-medium transition-all duration-300 ${dataPointLimit === count
+                                        ? 'bg-primary text-white shadow-lg'
+                                        : 'text-white/50 hover:bg-white/[0.08]'
                                         }`}
                                 >
-                                    {r}
+                                    {count}
                                 </button>
                             ))}
                         </div>
                         <Select value={selectedLocation} onValueChange={setSelectedLocation}>
                             <SelectTrigger className="w-[160px] h-8 bg-white/[0.03] border-white/[0.08] text-xs transition-all duration-300 hover:bg-white/[0.06]">
-                                <SelectValue placeholder="All Locations" />
+                                <SelectValue placeholder={devices.length === 0 ? "No Devices" : "Select Device"} />
                             </SelectTrigger>
                             <SelectContent className="bg-black/95 backdrop-blur-xl border-white/10">
-                                <SelectItem value="all" className="text-xs">All Locations</SelectItem>
-                                {devices.map(d => (
-                                    <SelectItem key={d.id} value={d.id} className="text-xs">{d.name}</SelectItem>
-                                ))}
+                                {devices.length === 0 ? (
+                                    <SelectItem value="none" disabled className="text-xs text-white/40">No devices added</SelectItem>
+                                ) : (
+                                    devices.map(d => (
+                                        <SelectItem key={d.id} value={d.id} className="text-xs">{d.location_name || d.name}</SelectItem>
+                                    ))
+                                )}
                             </SelectContent>
                         </Select>
                         <Button
@@ -450,7 +475,7 @@ export default function Dashboard() {
                             >
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <h4 className="text-sm font-medium truncate max-w-[100px]">{device.name}</h4>
+                                        <h4 className="text-sm font-medium truncate max-w-[100px]">{device.location_name || device.name}</h4>
                                         <p className="text-[10px] text-white/40 truncate max-w-[100px]">{device.location_name}</p>
                                     </div>
                                     <StatusIndicator status={device.status} size="sm" pulse />

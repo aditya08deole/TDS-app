@@ -26,13 +26,19 @@ export type Device = {
     longitude: number
 
     // ThingSpeak integration
-    thingspeak_channel_id: number
+    thingspeak_channel_id?: string
     thingspeak_read_key?: string
     thingspeak_write_key?: string
 
     // Hardware Identity
+    node_number?: string
     sim_number?: string
     serial_number?: string
+
+    // Field Mapping (which ThingSpeak field contains which data)
+    tds_field_number?: number
+    temperature_field_number?: number
+    voltage_field_number?: number
 
     status: 'online' | 'offline' | 'warning' | 'critical' | 'maintenance'
     last_seen_at?: string

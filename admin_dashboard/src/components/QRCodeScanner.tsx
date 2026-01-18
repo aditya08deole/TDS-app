@@ -15,7 +15,11 @@ interface ScanResult {
     latitude: string
     longitude: string
     sim_number: string
+    thingspeak_channel_id: string
     thingspeak_read_key: string
+    tds_field?: number
+    temp_field?: number
+    voltage_field?: number
 }
 
 interface QRCodeScannerProps {
@@ -56,7 +60,11 @@ export function QRCodeScanner({ isOpen, onClose, onScan }: QRCodeScannerProps) {
                 latitude: String(decoded.data.lat || ''),
                 longitude: String(decoded.data.lng || ''),
                 sim_number: decoded.data.sim || '',
-                thingspeak_read_key: decoded.data.api_key || ''
+                thingspeak_channel_id: String(decoded.data.channel_id || ''),
+                thingspeak_read_key: decoded.data.api_key || '',
+                tds_field: decoded.data.f_tds || 1,
+                temp_field: decoded.data.f_temp || 2,
+                voltage_field: decoded.data.f_volt || 3
             }
 
             setSuccess(true)

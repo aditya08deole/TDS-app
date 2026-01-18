@@ -7,7 +7,8 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Download, Copy, Check, QrCode } from 'lucide-react'
+import { Download, Copy, Check, QrCode, UploadCloud } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 
 interface DeviceData {
     name: string
@@ -16,7 +17,12 @@ interface DeviceData {
     latitude: string
     longitude: string
     sim_number: string
+    thingspeak_channel_id: string
     thingspeak_read_key: string
+    // Field mappings
+    tds_field?: number
+    temp_field?: number
+    voltage_field?: number
 }
 
 interface QRCodeGeneratorProps {
@@ -27,6 +33,7 @@ interface QRCodeGeneratorProps {
 
 export function QRCodeGenerator({ deviceData, isOpen, onClose }: QRCodeGeneratorProps) {
     const [copied, setCopied] = useState(false)
+    const [uploading, setUploading] = useState(false)
 
     // Generate QR payload with device data
     const generatePayload = () => {
@@ -41,7 +48,12 @@ export function QRCodeGenerator({ deviceData, isOpen, onClose }: QRCodeGenerator
                 lat: parseFloat(deviceData.latitude) || 0,
                 lng: parseFloat(deviceData.longitude) || 0,
                 sim: deviceData.sim_number,
-                api_key: deviceData.thingspeak_read_key
+                channel_id: deviceData.thingspeak_channel_id,
+                api_key: deviceData.thingspeak_read_key,
+                // Field mappings
+                f_tds: deviceData.tds_field || 1,
+                f_temp: deviceData.temp_field || 2,
+                f_volt: deviceData.voltage_field || 3
             }
         }
         return btoa(JSON.stringify(payload))
@@ -50,33 +62,74 @@ export function QRCodeGenerator({ deviceData, isOpen, onClose }: QRCodeGenerator
     const qrData = generatePayload()
 
     // Check if form has enough data to generate QR
-    const hasData = deviceData.name || deviceData.location_name || deviceData.node_number
+    const hasData = deviceData.name && deviceData.thingspeak_read_key
 
-    const downloadQR = () => {
+    const generateBlob = async (): Promise<Blob | null> => {
         const svg = document.getElementById('evara-qr-code')
-        if (!svg) return
+        if (!svg) return null
 
         const svgData = new XMLSerializer().serializeToString(svg)
         const canvas = document.createElement('canvas')
         const ctx = canvas.getContext('2d')
         const img = new Image()
 
-        img.onload = () => {
-            canvas.width = 512
-            canvas.height = 512
-            ctx?.fillRect(0, 0, 512, 512)
-            ctx!.fillStyle = '#FFFFFF'
-            ctx?.fillRect(0, 0, 512, 512)
-            ctx?.drawImage(img, 0, 0, 512, 512)
+        return new Promise((resolve) => {
+            img.onload = () => {
+                canvas.width = 512
+                canvas.height = 512
+                // White background
+                ctx!.fillStyle = '#FFFFFF'
+                ctx?.fillRect(0, 0, 512, 512)
+                ctx?.drawImage(img, 0, 0, 512, 512)
 
-            const pngData = canvas.toDataURL('image/png')
-            const a = document.createElement('a')
-            a.download = `evara-device-${deviceData.name || 'new'}-qr.png`
-            a.href = pngData
-            a.click()
+                canvas.toBlob((blob) => {
+                    resolve(blob)
+                }, 'image/png')
+            }
+            img.src = 'data:image/svg+xml;base64,' + btoa(svgData)
+        })
+    }
+
+    const downloadQR = async () => {
+        const blob = await generateBlob()
+        if (!blob) return
+
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.download = `evara-${deviceData.name.replace(/\s+/g, '-').toLowerCase()}-qr.png`
+        a.href = url
+        a.click()
+        URL.revokeObjectURL(url)
+    }
+
+    const saveToSupabase = async () => {
+        if (!deviceData.name) return
+        setUploading(true)
+        try {
+            const blob = await generateBlob()
+            if (!blob) throw new Error('Failed to generate image')
+
+            const fileName = `${deviceData.name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.png`
+            const { error } = await supabase.storage
+                .from('qr_codes') // Correct bucket name created in migration
+                .upload(fileName, blob, {
+                    contentType: 'image/png',
+                    upsert: true
+                })
+
+            if (error) throw error
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('qr_codes')
+                .getPublicUrl(fileName)
+
+            alert(`✅ QR Code saved to cloud successfully!\nURL: ${publicUrl}`)
+        } catch (error: any) {
+            console.error('Upload failed:', error)
+            alert(`Upload failed: ${error.message || 'Unknown error'}`)
+        } finally {
+            setUploading(false)
         }
-
-        img.src = 'data:image/svg+xml;base64,' + btoa(svgData)
     }
 
     const copyData = () => {
@@ -138,18 +191,29 @@ export function QRCodeGenerator({ deviceData, isOpen, onClose }: QRCodeGenerator
                             </p>
 
                             {/* Action Buttons */}
-                            <div className="flex gap-2 w-full">
+                            <div className="flex flex-col gap-2 w-full">
+                                <div className="flex gap-2 w-full">
+                                    <Button
+                                        variant="outline"
+                                        className="flex-1"
+                                        onClick={downloadQR}
+                                    >
+                                        <Download className="h-4 w-4 mr-2" />
+                                        Download PNG
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        className="flex-1"
+                                        onClick={saveToSupabase}
+                                        disabled={uploading}
+                                    >
+                                        <UploadCloud className="h-4 w-4 mr-2" />
+                                        {uploading ? 'Saving...' : 'Save to Cloud'}
+                                    </Button>
+                                </div>
                                 <Button
                                     variant="outline"
-                                    className="flex-1"
-                                    onClick={downloadQR}
-                                >
-                                    <Download className="h-4 w-4 mr-2" />
-                                    Download PNG
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    className="flex-1"
+                                    className="w-full"
                                     onClick={copyData}
                                 >
                                     {copied ? (
