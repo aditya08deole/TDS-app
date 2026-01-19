@@ -40,6 +40,7 @@ export interface FieldMapping {
 
 const BASE_URL = 'https://api.thingspeak.com'
 
+
 /**
  * Get field value from ThingSpeak entry based on field number
  */

@@ -1,12 +1,12 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, LineChart, Line
 } from 'recharts'
 import { Activity, Clock, Droplets, Thermometer, LayoutGrid, TrendingUp, TrendingDown, Zap } from 'lucide-react'
-import { supabase } from '../lib/supabase'
-import type { Device, SensorData } from '../lib/supabase'
-import { useThingSpeakData } from '../hooks/useThingSpeakData'
+import type { EnrichedDevice, SensorData } from '../lib/supabase'
+import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
+import { useAllDevicesThingSpeakData } from '../hooks/useThingSpeakQueries'
 import { getTDSStatus } from '../lib/constants'
 
 import { GlassCard } from '@/components/GlassCard'
@@ -59,49 +59,29 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 }
 
 export default function Dashboard() {
-    const [supabaseDevices, setSupabaseDevices] = useState<Device[]>([])
-    const [loading, setLoading] = useState(true)
     const [selectedLocation, setSelectedLocation] = useState<string>('') // Empty until devices load
     const [dataPointLimit, setDataPointLimit] = useState<number>(100) // Data point count instead of time range
 
-    // Fetch real devices from Supabase
-    useEffect(() => {
-        const fetchDevices = async () => {
-            const { data } = await supabase
-                .from('devices')
-                .select('*')
-                .order('created_at', { ascending: false })
+    // Fetch devices using React Query (with caching)
+    const { data: supabaseDevices = [], isLoading: devicesLoading } = useDevices()
 
-            if (data) {
-                setSupabaseDevices(data)
-                // Auto-select first device if no device selected yet
-                if (data.length > 0 && !selectedLocation) {
-                    setSelectedLocation(data[0].id)
-                }
-                setLoading(false)
-            }
+    // Subscribe to real-time device changes
+    useDeviceSubscription()
+
+    // Fetch ThingSpeak data for all devices (with caching and batching)
+    const { devices: devicesWithData, deviceData, isLoading: dataLoading } = useAllDevicesThingSpeakData(supabaseDevices)
+
+    const loading = devicesLoading || dataLoading
+
+    // Auto-select first device when devices load
+    useMemo(() => {
+        if (supabaseDevices.length > 0 && !selectedLocation) {
+            setSelectedLocation(supabaseDevices[0].id)
         }
-
-        fetchDevices()
-
-        // Subscribe to device changes
-        const subscription = supabase
-            .channel('dashboard_devices_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, () => {
-                fetchDevices()
-            })
-            .subscribe()
-
-        return () => {
-            subscription.unsubscribe()
-        }
-    }, [])
-
-    // Fetch real-time ThingSpeak data
-    const { devices: devicesWithData, deviceData } = useThingSpeakData(supabaseDevices)
+    }, [supabaseDevices, selectedLocation])
 
     // Enrich devices with status
-    const devices = useMemo(() => {
+    const devices: EnrichedDevice[] = useMemo(() => {
         return devicesWithData.map(device => {
             let status: 'online' | 'warning' | 'critical' | 'offline' = 'offline'
 

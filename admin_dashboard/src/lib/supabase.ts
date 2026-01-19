@@ -50,6 +50,17 @@ export type Device = {
     created_at: string
 }
 
+/**
+ * Enriched Device type with runtime sensor data from ThingSpeak
+ * Properties added by useAllDevicesThingSpeakData hook
+ */
+export type EnrichedDevice = Device & {
+    latest_tds?: number
+    latest_temp?: number
+    latest_voltage?: number
+    is_offline?: boolean
+}
+
 export type SensorData = {
     id: number
     device_id: string

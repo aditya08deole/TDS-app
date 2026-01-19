@@ -2,9 +2,9 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import { AreaChart, Area, LineChart, Line, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
-import { supabase } from '../lib/supabase'
-import type { Device, SensorData } from '../lib/supabase'
-import { useThingSpeakData, type DeviceWithSensorData } from '../hooks/useThingSpeakData'
+import type { EnrichedDevice, SensorData } from '../lib/supabase'
+import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
+import { useAllDevicesThingSpeakData } from '../hooks/useThingSpeakQueries'
 import { getTDSStatus } from '../lib/constants'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
@@ -20,7 +20,7 @@ import iconShadow from 'leaflet/dist/images/marker-shadow.png'
 const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconAnchor: [12, 41] })
 L.Marker.prototype.options.icon = DefaultIcon
 
-type DeviceLocation = DeviceWithSensorData
+type DeviceLocation = EnrichedDevice
 type MapStyle = 'street' | 'satellite'
 type FilterType = 'all' | 'online' | 'warning' | 'critical' | 'offline'
 
@@ -515,7 +515,15 @@ function DevicePanel({
 // MAIN MAP PAGE COMPONENT
 // ============================================
 export default function MapPage() {
-    const [supabaseDevices, setSupabaseDevices] = useState<Device[]>([])
+    // Fetch devices using React Query (with caching)
+    const { data: supabaseDevices = [] } = useDevices()
+
+    // Subscribe to real-time device changes
+    useDeviceSubscription()
+
+    // Fetch ThingSpeak data for all devices (with caching and batching)
+    const { devices: devicesWithData, deviceData } = useAllDevicesThingSpeakData(supabaseDevices)
+
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [mapStyle, setMapStyle] = useState<MapStyle>('street')
     const [showLayerMenu, setShowLayerMenu] = useState(false)
@@ -524,35 +532,6 @@ export default function MapPage() {
     const [panelCollapsed, setPanelCollapsed] = useState(false)
     const [statusFilter, setStatusFilter] = useState<FilterType>('all')
     const [isRefreshing, setIsRefreshing] = useState(false)
-
-    // Fetch real devices from Supabase
-    useEffect(() => {
-        const fetchDevices = async () => {
-            const { data } = await supabase
-                .from('devices')
-                .select('*')
-                .order('created_at', { ascending: false })
-
-            if (data) setSupabaseDevices(data)
-        }
-
-        fetchDevices()
-
-        // Subscribe to device changes
-        const subscription = supabase
-            .channel('map_devices_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, () => {
-                fetchDevices()
-            })
-            .subscribe()
-
-        return () => {
-            subscription.unsubscribe()
-        }
-    }, [])
-
-    // Fetch real-time ThingSpeak data for all devices
-    const { devices: devicesWithData, deviceData } = useThingSpeakData(supabaseDevices)
 
     // Convert ThingSpeak data to SensorData format for charts
     const sensorData = useMemo(() => {

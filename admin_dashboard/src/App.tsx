@@ -1,5 +1,8 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import { queryClient } from './lib/queryClient'
 import { AuthProvider } from './context/AuthContext'
 import { UIProvider } from './context/UIContext'
 import { RoleProvider } from './context/RoleContext'
@@ -7,10 +10,12 @@ import { ThemeProvider } from './context/ThemeContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import AuthGuard from './components/AuthGuard'
-// import ReloadPrompt from './components/ReloadPrompt' // PWA disabled
+import ReloadPrompt from './components/ReloadPrompt'
 import NotificationManager from './components/NotificationManager'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { initOfflineSync } from './lib/syncQueue'
+import { initWebVitals } from './lib/webVitals'
+import { initErrorTracking } from './lib/errorTracking'
 
 // Lazy Load Pages
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -29,11 +34,16 @@ const PageLoader = () => (
     </div>
 )
 
-// App Wrapper to initialize offline sync
+// App Wrapper to initialize offline sync and monitoring
 function AppWrapper({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         // Initialize offline sync queue
         const cleanup = initOfflineSync()
+
+        // Initialize monitoring
+        initWebVitals()
+        initErrorTracking()
+
         return cleanup
     }, [])
 
@@ -43,76 +53,80 @@ function AppWrapper({ children }: { children: React.ReactNode }) {
 function App() {
     return (
         <ErrorBoundary>
-            <ThemeProvider>
-                <BrowserRouter>
-                    <UIProvider>
-                        <AuthProvider>
-                            <RoleProvider>
-                                <AppWrapper>
-                                    <Routes>
-                                        {/* Public Routes */}
-                                        <Route path="/login" element={<Login />} />
+            <QueryClientProvider client={queryClient}>
+                <ThemeProvider>
+                    <BrowserRouter>
+                        <UIProvider>
+                            <AuthProvider>
+                                <RoleProvider>
+                                    <AppWrapper>
+                                        <Routes>
+                                            {/* Public Routes */}
+                                            <Route path="/login" element={<Login />} />
 
-                                        {/* Protected Routes - Wrapped with AuthGuard */}
-                                        <Route element={<AuthGuard />}>
-                                            <Route path="/" element={<Layout />}>
-                                                <Route index element={
-                                                    <Suspense fallback={<PageLoader />}>
-                                                        <Dashboard />
-                                                    </Suspense>
-                                                } />
-                                                <Route path="map" element={
-                                                    <Suspense fallback={<PageLoader />}>
-                                                        <MapPage />
-                                                    </Suspense>
-                                                } />
-                                                <Route path="devices" element={
-                                                    <Suspense fallback={<PageLoader />}>
-                                                        <DeviceList />
-                                                    </Suspense>
-                                                } />
-                                                <Route path="alert" element={
-                                                    <Suspense fallback={<PageLoader />}>
-                                                        <Alerts />
-                                                    </Suspense>
-                                                } />
-                                                <Route path="alerts" element={
-                                                    <Suspense fallback={<PageLoader />}>
-                                                        <Alerts />
-                                                    </Suspense>
-                                                } />
-                                                <Route path="scan" element={
-                                                    <Suspense fallback={<PageLoader />}>
-                                                        <ScanDevice />
-                                                    </Suspense>
-                                                } />
-                                                <Route path="audit" element={
-                                                    <Suspense fallback={<PageLoader />}>
-                                                        <AuditLog />
-                                                    </Suspense>
-                                                } />
-                                                <Route path="reports" element={
-                                                    <Suspense fallback={<PageLoader />}>
-                                                        <Reports />
-                                                    </Suspense>
-                                                } />
-                                                <Route path="settings" element={
-                                                    <Suspense fallback={<PageLoader />}>
-                                                        <Settings />
-                                                    </Suspense>
-                                                } />
+                                            {/* Protected Routes - Wrapped with AuthGuard */}
+                                            <Route element={<AuthGuard />}>
+                                                <Route path="/" element={<Layout />}>
+                                                    <Route index element={
+                                                        <Suspense fallback={<PageLoader />}>
+                                                            <Dashboard />
+                                                        </Suspense>
+                                                    } />
+                                                    <Route path="map" element={
+                                                        <Suspense fallback={<PageLoader />}>
+                                                            <MapPage />
+                                                        </Suspense>
+                                                    } />
+                                                    <Route path="devices" element={
+                                                        <Suspense fallback={<PageLoader />}>
+                                                            <DeviceList />
+                                                        </Suspense>
+                                                    } />
+                                                    <Route path="alert" element={
+                                                        <Suspense fallback={<PageLoader />}>
+                                                            <Alerts />
+                                                        </Suspense>
+                                                    } />
+                                                    <Route path="alerts" element={
+                                                        <Suspense fallback={<PageLoader />}>
+                                                            <Alerts />
+                                                        </Suspense>
+                                                    } />
+                                                    <Route path="scan" element={
+                                                        <Suspense fallback={<PageLoader />}>
+                                                            <ScanDevice />
+                                                        </Suspense>
+                                                    } />
+                                                    <Route path="audit" element={
+                                                        <Suspense fallback={<PageLoader />}>
+                                                            <AuditLog />
+                                                        </Suspense>
+                                                    } />
+                                                    <Route path="reports" element={
+                                                        <Suspense fallback={<PageLoader />}>
+                                                            <Reports />
+                                                        </Suspense>
+                                                    } />
+                                                    <Route path="settings" element={
+                                                        <Suspense fallback={<PageLoader />}>
+                                                            <Settings />
+                                                        </Suspense>
+                                                    } />
+                                                </Route>
+                                                <Route path="*" element={<Navigate to="/" replace />} />
                                             </Route>
-                                            <Route path="*" element={<Navigate to="/" replace />} />
-                                        </Route>
-                                    </Routes>
-                                    {/* <ReloadPrompt /> */} {/* PWA disabled */}
-                                    <NotificationManager />
-                                </AppWrapper>
-                            </RoleProvider>
-                        </AuthProvider>
-                    </UIProvider>
-                </BrowserRouter>
-            </ThemeProvider>
+                                        </Routes>
+                                        <ReloadPrompt />
+                                        <NotificationManager />
+                                    </AppWrapper>
+                                </RoleProvider>
+                            </AuthProvider>
+                        </UIProvider>
+                    </BrowserRouter>
+                </ThemeProvider>
+                {/* React Query Devtools - only in development */}
+                <ReactQueryDevtools initialIsOpen={false} />
+            </QueryClientProvider>
         </ErrorBoundary>
     )
 }
