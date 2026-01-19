@@ -59,6 +59,14 @@ export type EnrichedDevice = Device & {
     latest_temp?: number
     latest_voltage?: number
     is_offline?: boolean
+    last_reading_time?: string
+
+    // Dual categorization (Phase 1: UI/UX Upgrade)
+    tds_category?: 'safe' | 'critical' | 'unknown'
+    connectivity_status?: 'online' | 'offline'
+
+    // Legacy status (kept for backward compatibility)
+    status?: 'online' | 'warning' | 'critical' | 'offline'
 }
 
 export type SensorData = {

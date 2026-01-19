@@ -51,8 +51,8 @@ export function useDeviceThingSpeakData(device: Device | undefined) {
         queryKey: queryKeys.sensorData(device?.id || ''),
         queryFn: () => fetchDeviceThingSpeakData(device!),
         enabled: !!device?.thingspeak_channel_id && !!device?.thingspeak_read_key,
-        staleTime: 15 * 1000, // 15 seconds (increased from 5s)
-        refetchInterval: 15 * 1000, // Poll every 15 seconds
+        staleTime: 4 * 1000, // 4 seconds (Phase 6: UI/UX Upgrade - matches 5s polling)
+        refetchInterval: 5 * 1000, // Poll every 5 seconds for real-time
         gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
     })
 }

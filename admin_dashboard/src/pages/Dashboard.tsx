@@ -1,44 +1,23 @@
 import { useState, useMemo } from 'react'
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    PieChart, Pie, Cell, LineChart, Line
+    LineChart, Line
 } from 'recharts'
-import { Activity, Clock, Droplets, Thermometer, LayoutGrid, TrendingUp, TrendingDown, Zap } from 'lucide-react'
+import { Activity, Clock, Droplets, Thermometer, LayoutGrid, TrendingUp, TrendingDown, Zap, Wifi, WifiOff } from 'lucide-react'
 import type { EnrichedDevice, SensorData } from '../lib/supabase'
 import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
 import { useAllDevicesThingSpeakData } from '../hooks/useThingSpeakQueries'
-import { getTDSStatus } from '../lib/constants'
+import { getTDSStatus, getTDSCategory, getConnectivityStatus } from '../lib/constants'
 
 import { GlassCard } from '@/components/GlassCard'
 import { StatusIndicator } from '@/components/StatusIndicator'
+import { DashboardCard } from '@/components/DashboardCard'
+import { DualPieChart } from '@/components/DualPieChart'
+import { CategorizedDeviceList } from '@/components/CategorizedDeviceList'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AreaChart as AreaChartIcon } from 'lucide-react'
-
-const STATUS_COLORS = {
-    online: '#30d158',
-    warning: '#ff9f0a',
-    critical: '#ff453a',
-    offline: '#8e8e93'
-}
-
-// Custom tooltip for pie chart - shows devices count
-const PieTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-        const data = payload[0]
-        return (
-            <div className="px-3 py-2 rounded-lg border border-white/10 shadow-xl backdrop-blur-xl bg-black/90">
-                <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: data.payload.fill }} />
-                    <span className="text-white text-sm font-medium">{data.name}</span>
-                </div>
-                <p className="text-white/80 text-xs mt-1">{data.value} devices</p>
-            </div>
-        )
-    }
-    return null
-}
 
 // Custom tooltip for chart data
 const ChartTooltip = ({ active, payload, label }: any) => {
@@ -80,9 +59,10 @@ export default function Dashboard() {
         }
     }, [supabaseDevices, selectedLocation])
 
-    // Enrich devices with status
+    // Enrich devices with dual categorization (Phase 1: UI/UX Upgrade)
     const devices: EnrichedDevice[] = useMemo(() => {
         return devicesWithData.map(device => {
+            // Legacy status (for backward compatibility)
             let status: 'online' | 'warning' | 'critical' | 'offline' = 'offline'
 
             if (device.is_offline) {
@@ -91,7 +71,17 @@ export default function Dashboard() {
                 status = getTDSStatus(device.latest_tds)
             }
 
-            return { ...device, status }
+            // New dual categorization
+            const tds_category = getTDSCategory(device.latest_tds)
+            const connectivity_status = getConnectivityStatus(device.last_reading_time)
+
+            return {
+                ...device,
+                status,                    // Legacy
+                tds_category,              // New: safe/critical/unknown
+                connectivity_status,       // New: online/offline
+                last_reading_time: device.last_reading_time || new Date().toISOString()
+            }
         })
     }, [devicesWithData])
 
@@ -111,11 +101,27 @@ export default function Dashboard() {
         return result
     }, [deviceData])
 
+    // Legacy stats (for backward compatibility)
     const stats = useMemo(() => devices.reduce((acc, d) => {
         const s = d.status as keyof typeof acc
         if (acc[s] !== undefined) acc[s]++
         return acc
     }, { online: 0, warning: 0, critical: 0, offline: 0 }), [devices])
+
+    // New categorized stats (Phase 2: UI/UX Upgrade)
+    const categorizedStats = useMemo(() => {
+        const safeTDSDevices = devices.filter(d => d.tds_category === 'safe')
+        const criticalTDSDevices = devices.filter(d => d.tds_category === 'critical')
+        const onlineDevices = devices.filter(d => d.connectivity_status === 'online')
+        const offlineDevices = devices.filter(d => d.connectivity_status === 'offline')
+
+        return {
+            safeTDS: { count: safeTDSDevices.length, devices: safeTDSDevices },
+            criticalTDS: { count: criticalTDSDevices.length, devices: criticalTDSDevices },
+            online: { count: onlineDevices.length, devices: onlineDevices },
+            offline: { count: offlineDevices.length, devices: offlineDevices }
+        }
+    }, [devices])
 
     const selectedDevice = useMemo(() =>
         selectedLocation ? devices.find(d => d.id === selectedLocation) : null
@@ -192,69 +198,58 @@ export default function Dashboard() {
 
             {/* Default View */}
             <TabsContent value="default" className="space-y-4 mt-0">
-                {/* Row 1: Status Cards (WIDER) + Pie Chart (NARROWER) + Activity */}
+                {/* Row 1: New TDS-Centric Cards (2x2 Grid) + Pie Chart + Activity */}
                 <div className="grid grid-cols-12 gap-4">
-                    {/* Status Cards - WIDER (4 cols instead of 3) */}
-                    <div className="col-span-12 lg:col-span-4 grid grid-cols-2 gap-2">
-                        {[
-                            { label: 'Online', value: stats.online, color: '#30d158', bg: 'bg-green-500/10', icon: Activity },
-                            { label: 'Warning', value: stats.warning, color: '#ff9f0a', bg: 'bg-orange-500/10', icon: Activity },
-                            { label: 'Critical', value: stats.critical, color: '#ff453a', bg: 'bg-red-500/10', icon: Activity },
-                            { label: 'Offline', value: stats.offline, color: '#8e8e93', bg: 'bg-slate-500/10', icon: Activity },
-                        ].map((s, idx) => (
-                            <div
-                                key={s.label}
-                                className="flex flex-col justify-between p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] hover:scale-[1.02] transition-all duration-300 cursor-pointer min-h-[100px]"
-                                style={{ animationDelay: `${idx * 50}ms` }}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div className={`w-10 h-10 rounded-xl ${s.bg} flex items-center justify-center transition-transform duration-300 hover:scale-110`}>
-                                        <s.icon className="w-5 h-5" style={{ color: s.color }} />
-                                    </div>
-                                    <span className="text-3xl font-bold font-mono">{s.value}</span>
-                                </div>
-                                <span className="text-sm text-white/60 mt-2">{s.label}</span>
-                            </div>
-                        ))}
+                    {/* New Dashboard Cards - 4 cols (2x2 grid) */}
+                    <div className="col-span-12 lg:col-span-4 grid grid-cols-2 gap-3">
+                        {/* Row 1: Safe TDS, Critical TDS */}
+                        <DashboardCard
+                            title="Safe TDS"
+                            count={categorizedStats.safeTDS.count}
+                            icon={Droplets}
+                            color="#30d158"
+                            devices={categorizedStats.safeTDS.devices}
+                        />
+                        <DashboardCard
+                            title="Critical TDS"
+                            count={categorizedStats.criticalTDS.count}
+                            icon={Droplets}
+                            color="#ff453a"
+                            devices={categorizedStats.criticalTDS.devices}
+                        />
+
+                        {/* Row 2: Online, Offline */}
+                        <DashboardCard
+                            title="Online"
+                            count={categorizedStats.online.count}
+                            icon={Wifi}
+                            color="#30d158"
+                            devices={categorizedStats.online.devices}
+                        />
+                        <DashboardCard
+                            title="Offline"
+                            count={categorizedStats.offline.count}
+                            icon={WifiOff}
+                            color="#8e8e93"
+                            devices={categorizedStats.offline.devices}
+                        />
                     </div>
 
-                    {/* Pie Chart - NARROWER (4 cols instead of 5) */}
+                    {/* Dual Pie Chart - Connectivity + TDS Category */}
                     <div className="col-span-12 lg:col-span-4">
                         <GlassCard className="p-4 h-full transition-all duration-500 hover:shadow-xl">
-                            <h3 className="text-sm font-medium mb-1">Device Status</h3>
-                            <div className="h-[180px] relative">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart>
-                                        <Pie
-                                            data={[
-                                                { name: 'Online', value: stats.online },
-                                                { name: 'Warning', value: stats.warning },
-                                                { name: 'Critical', value: stats.critical },
-                                                { name: 'Offline', value: stats.offline }
-                                            ]}
-                                            cx="50%" cy="50%"
-                                            innerRadius={45} outerRadius={70}
-                                            paddingAngle={3} dataKey="value" strokeWidth={0}
-                                        >
-                                            <Cell fill={STATUS_COLORS.online} />
-                                            <Cell fill={STATUS_COLORS.warning} />
-                                            <Cell fill={STATUS_COLORS.critical} />
-                                            <Cell fill={STATUS_COLORS.offline} />
-                                        </Pie>
-                                        <Tooltip content={<PieTooltip />} />
-                                    </PieChart>
-                                </ResponsiveContainer>
-                                {/* Center Label - NEW FEATURE */}
-                                <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none">
-                                    <span className="text-2xl font-bold">{devices.length}</span>
-                                    <span className="text-[10px] text-white/50">Total</span>
-                                </div>
-                            </div>
-                            <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[10px] text-white/50">
-                                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#30d158]" />Online ({stats.online})</span>
-                                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ff9f0a]" />Warning ({stats.warning})</span>
-                                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#ff453a]" />Critical ({stats.critical})</span>
-                                <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-[#8e8e93]" />Offline ({stats.offline})</span>
+                            <h3 className="text-sm font-medium mb-2">Device Overview</h3>
+                            <div className="h-[220px] relative">
+                                <DualPieChart
+                                    connectivityData={[
+                                        { name: 'Online', value: categorizedStats.online.count, fill: '#30d158' },
+                                        { name: 'Offline', value: categorizedStats.offline.count, fill: '#8e8e93' }
+                                    ]}
+                                    tdsData={[
+                                        { name: 'Safe TDS', value: categorizedStats.safeTDS.count, fill: '#30d158' },
+                                        { name: 'Critical TDS', value: categorizedStats.criticalTDS.count, fill: '#ff453a' }
+                                    ]}
+                                />
                             </div>
                         </GlassCard>
                     </div>
@@ -296,6 +291,39 @@ export default function Dashboard() {
                             </div>
                         </GlassCard>
                     </div>
+                </div>
+
+                {/* Critical Warning Banner */}
+                {categorizedStats.criticalTDS.count > 0 && (
+                    <div className="rounded-xl border border-[#ff453a]/30 bg-gradient-to-r from-[#ff453a]/10 to-[#ff9f0a]/10 p-4 flex items-center justify-between backdrop-blur-xl">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-[#ff453a]/20 flex items-center justify-center">
+                                <Activity className="w-5 h-5 text-[#ff453a] animate-pulse" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-semibold text-white">Critical TDS Alert</h3>
+                                <p className="text-xs text-white/60">
+                                    {categorizedStats.criticalTDS.count} device{categorizedStats.criticalTDS.count > 1 ? 's' : ''} in critical TDS range - Review immediately
+                                </p>
+                            </div>
+                        </div>
+                        <div className="text-2xl font-bold text-[#ff453a]">
+                            {categorizedStats.criticalTDS.count}
+                        </div>
+                    </div>
+                )}
+
+                {/* Categorized Device List */}
+                <div>
+                    <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                        <LayoutGrid className="w-4 h-4" />
+                        Devices by TDS Category
+                    </h3>
+                    <CategorizedDeviceList
+                        safeTDSDevices={categorizedStats.safeTDS.devices}
+                        criticalTDSDevices={categorizedStats.criticalTDS.devices}
+                        onDeviceClick={(deviceId) => setSelectedLocation(deviceId)}
+                    />
                 </div>
 
                 {/* Controls Row */}
@@ -353,11 +381,29 @@ export default function Dashboard() {
                 <div className="grid grid-cols-12 gap-4">
                     {/* TDS Chart */}
                     <div className="col-span-12 lg:col-span-6">
+                        {/* Critical TDS Warning Banner */}
+                        {selectedDevice && selectedDevice.tds_category === 'critical' && (
+                            <div className="mb-3 rounded-lg border border-[#ff453a]/30 bg-[#ff453a]/10 p-3 flex items-center gap-2 animate-pulse">
+                                <Activity className="w-4 h-4 text-[#ff453a]" />
+                                <span className="text-xs font-medium text-[#ff453a]">⚠️ Critical TDS Level Detected</span>
+                            </div>
+                        )}
+
                         <GlassCard className="p-5 transition-all duration-500 hover:shadow-xl">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center transition-transform duration-300 hover:scale-110">
-                                        <Droplets className="w-5 h-5 text-green-500" />
+                                    <div
+                                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 hover:scale-110 ${selectedDevice?.tds_category === 'critical'
+                                            ? 'bg-red-500/10'
+                                            : 'bg-green-500/10'
+                                            }`}
+                                    >
+                                        <Droplets
+                                            className={`w-5 h-5 ${selectedDevice?.tds_category === 'critical'
+                                                ? 'text-red-500'
+                                                : 'text-green-500'
+                                                }`}
+                                        />
                                     </div>
                                     <div>
                                         <h3 className="text-sm font-medium">TDS Trend</h3>
@@ -365,7 +411,14 @@ export default function Dashboard() {
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <span className="text-xl font-bold font-mono text-green-500">{latestTDS}</span>
+                                    <span
+                                        className={`text-xl font-bold font-mono ${selectedDevice?.tds_category === 'critical'
+                                            ? 'text-red-500'
+                                            : 'text-green-500'
+                                            }`}
+                                    >
+                                        {latestTDS}
+                                    </span>
                                     <span className="text-xs text-white/40 ml-1">ppm</span>
                                 </div>
                             </div>
@@ -373,9 +426,15 @@ export default function Dashboard() {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={trendData} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
                                         <defs>
-                                            <linearGradient id="tdsGradient" x1="0" y1="0" x2="0" y2="1">
+                                            {/* Safe TDS Gradient (Green) */}
+                                            <linearGradient id="tdsGradientSafe" x1="0" y1="0" x2="0" y2="1">
                                                 <stop offset="5%" stopColor="#30d158" stopOpacity={0.3} />
                                                 <stop offset="95%" stopColor="#30d158" stopOpacity={0} />
+                                            </linearGradient>
+                                            {/* Critical TDS Gradient (Red) */}
+                                            <linearGradient id="tdsGradientCritical" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#ff453a" stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor="#ff453a" stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
@@ -385,9 +444,16 @@ export default function Dashboard() {
                                         <Area
                                             type="monotone"
                                             dataKey="tds"
-                                            stroke="#30d158"
+                                            stroke={selectedDevice?.tds_category === 'critical' ? '#ff453a' : '#30d158'}
+                                            fill={selectedDevice?.tds_category === 'critical' ? 'url(#tdsGradientCritical)' : 'url(#tdsGradientSafe)'}
                                             strokeWidth={2.5}
-                                            fill="url(#tdsGradient)"
+                                            dot={false}
+                                            activeDot={{
+                                                r: 5,
+                                                fill: selectedDevice?.tds_category === 'critical' ? '#ff453a' : '#30d158',
+                                                strokeWidth: 2,
+                                                stroke: '#000'
+                                            }}
                                             animationDuration={800}
                                             animationEasing="ease-out"
                                         />
@@ -399,7 +465,7 @@ export default function Dashboard() {
 
                     {/* Temperature Chart */}
                     <div className="col-span-12 lg:col-span-6">
-                        <GlassCard className="p-5 transition-all duration-500 hover:shadow-xl">
+                        <GlassCard className="p-5 transition-all duration-500 hover:shadow-xl temp-graph-glow">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center transition-transform duration-300 hover:scale-110">
@@ -472,7 +538,7 @@ export default function Dashboard() {
                                             <Area
                                                 type="monotone"
                                                 dataKey="tds"
-                                                stroke={STATUS_COLORS[device.status as keyof typeof STATUS_COLORS]}
+                                                stroke={device.status === 'online' ? '#30d158' : device.status === 'warning' ? '#ff9f0a' : device.status === 'critical' ? '#ff453a' : '#8e8e93'}
                                                 fill="none"
                                                 strokeWidth={1.5}
                                             />
