@@ -5,7 +5,7 @@ import { AreaChart, Area, LineChart, Line, ResponsiveContainer, XAxis, YAxis, Ca
 import type { EnrichedDevice, SensorData } from '../lib/supabase'
 import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
 import { useAllDevicesThingSpeakData } from '../hooks/useThingSpeakQueries'
-import { getTDSStatus } from '../lib/constants'
+import { getTDSStatus, getDeviceDisplayName } from '../lib/constants'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import {
@@ -91,7 +91,8 @@ const createWhiteTransparentMarker = (device: DeviceLocation) => {
     const ppmStatus = getPpmStatus(device.latest_tds, device.status || 'offline')
     const ppmValue = device.latest_tds || '--'
     const isOffline = device.status === 'offline'
-    const shortName = (device.location_name || device.name).length > 12 ? (device.location_name || device.name).substring(0, 12) + '...' : (device.location_name || device.name)
+    const displayName = getDeviceDisplayName(device)
+    const shortName = displayName.length > 12 ? displayName.substring(0, 12) + '...' : displayName
 
     return L.divIcon({
         className: 'white-marker',
@@ -397,7 +398,7 @@ function DevicePanel({
                                     )}
                                 </div>
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-xl font-bold font-mono" style={{ color: THEME.chart.temp.stroke }}>{device.latest_temp || '--'}</span>
+                                    <span className="text-xl font-bold font-mono" style={{ color: THEME.chart.temp.stroke }}>{device.latest_temperature || '--'}</span>
                                     <span className="text-[10px]" style={{ color: THEME.text.muted }}>°C</span>
                                 </div>
                             </div>
@@ -564,7 +565,7 @@ export default function MapPage() {
                 ...device,
                 status,
                 latest_tds: device.latest_tds,
-                latest_temp: device.latest_temp
+                latest_temperature: device.latest_temperature
             }
         })
     }, [devicesWithData])

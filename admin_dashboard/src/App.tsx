@@ -13,6 +13,7 @@ import AuthGuard from './components/AuthGuard'
 import ReloadPrompt from './components/ReloadPrompt'
 import NotificationManager from './components/NotificationManager'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { Toaster } from './components/ui/sonner'
 import { initOfflineSync } from './lib/syncQueue'
 import { initWebVitals } from './lib/webVitals'
 import { initErrorTracking } from './lib/errorTracking'
@@ -127,6 +128,8 @@ function App() {
                 {/* React Query Devtools - only in development */}
                 <ReactQueryDevtools initialIsOpen={false} />
             </QueryClientProvider>
+            {/* Toast Notifications */}
+            <Toaster richColors position="top-right" />
         </ErrorBoundary>
     )
 }

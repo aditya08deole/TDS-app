@@ -1,9 +1,10 @@
 import { X, Thermometer, Droplets, ExternalLink, Activity } from 'lucide-react'
+import { getDeviceDisplayName } from '../lib/constants'
 import type { Device } from '../lib/supabase'
 import { AreaChart, Area, ResponsiveContainer, YAxis } from 'recharts'
 
 interface DevicePanelProps {
-    device: (Device & { latest_tds?: number; latest_temp?: number; status?: string }) | null
+    device: (Device & { latest_tds?: number; latest_temperature?: number; status?: string }) | null
     onClose: () => void
     isMobile: boolean
     chartData?: { time: number; value: number }[]
@@ -24,7 +25,7 @@ export default function DevicePanel({ device, onClose, isMobile, chartData = [] 
         : "absolute top-4 right-4 bottom-4 w-[400px] bg-[#0f172a]/95 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-[-10px_0_40px_rgba(0,0,0,0.5)] z-[1000] p-6 animate-slide-in-right flex flex-col";
 
     const tdsValue = device.latest_tds || 0
-    const tempValue = device.latest_temp || 0
+    const tempValue = device.latest_temperature || 0
 
     return (
         <>
@@ -41,9 +42,9 @@ export default function DevicePanel({ device, onClose, isMobile, chartData = [] 
                                 {device.status || 'OFFLINE'}
                             </span>
                         </div>
-                        <h2 className="text-2xl font-bold text-white tracking-tight leading-tight">{device.location_name || device.name}</h2>
+                        <h2 className="text-2xl font-bold text-white tracking-tight leading-tight">{getDeviceDisplayName(device)}</h2>
                         <p className="text-sm text-slate-400 mt-1 flex items-center gap-1">
-                            {(device as any).location || 'Unknown Location'}
+                            {device.location_name || device.name || 'Unknown Location'}
                         </p>
                     </div>
                     <button onClick={onClose} className="p-2 bg-slate-900 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800/50 transition-colors">

@@ -56,10 +56,10 @@ export type Device = {
  */
 export type EnrichedDevice = Device & {
     latest_tds?: number
-    latest_temp?: number
+    latest_temperature?: number
     latest_voltage?: number
     is_offline?: boolean
-    last_reading_time?: string
+    // last_reading_at is inherited from Device
 
     // Dual categorization (Phase 1: UI/UX Upgrade)
     tds_category?: 'safe' | 'critical' | 'unknown'

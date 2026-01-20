@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, type Device } from '../lib/supabase'
+import { getDeviceDisplayName } from '../lib/constants'
+import { toast } from 'sonner'
 import {
     X,
     MapPin,
@@ -16,30 +18,20 @@ import HealthTimeline from './HealthTimeline'
 import ConfidenceRing from './ConfidenceRing'
 import { useUI } from '../context/UIContext'
 
-interface Device {
-    id: string
+// Extended Device type for Inspector specific needs
+type InspectorDevice = Device & {
     device_id?: string
-    name: string
-    status: string
-    location?: string
-    location_name?: string
-    latitude?: number
-    longitude?: number
     battery_level?: number
     signal_strength?: number
     last_seen?: string | null
-    last_seen_at?: string | null
-    firmware_version?: string
     first_seen_at?: string
-    last_reading_at?: string
     metadata?: {
         firmware_version?: string
         last_maintenance?: string
         [key: string]: any
     }
-    deployment_date?: string
-    created_at?: string
-    confidence_score?: number
+    // Allow any other props
+    [key: string]: any
 }
 
 interface SensorReading {
@@ -58,7 +50,7 @@ import { useRole } from '../context/RoleContext'
 export default function DeviceInspector() {
     const { inspectorDeviceId, closeInspector, isMobile } = useUI()
     const { hasPermission, isAtLeast } = useRole()
-    const [device, setDevice] = useState<Device | null>(null)
+    const [device, setDevice] = useState<InspectorDevice | null>(null)
     const [activeTab, setActiveTab] = useState<TabType>('overview')
     const [sensorHistory, setSensorHistory] = useState<SensorReading[]>([])
 
@@ -100,17 +92,25 @@ export default function DeviceInspector() {
 
     const handleRegenerateQR = async () => {
         if (!device) return
-        if (!confirm('Are you sure you want to regenerate the QR code? The old QR code will stop working immediately.')) return
+
+        // Use toast for confirmation
+        const confirmed = window.confirm('Are you sure you want to regenerate the QR code? The old QR code will stop working immediately.')
+        if (!confirmed) return
 
         setUpdating(true)
+        const toastId = toast.loading('Regenerating QR code...')
+
         try {
             const { error } = await supabase.rpc('rotate_qr_code', { p_device_id: device.id })
             if (error) throw error
-            // Optionally refresh device details to get new version if we tracked it in UI
-            alert('QR Code rotated successfully.')
+
+            toast.success('QR Code rotated successfully!', { id: toastId })
         } catch (err) {
             console.error('Failed to rotate QR', err)
-            alert('Failed to rotate QR code.')
+            toast.error('Failed to rotate QR code', {
+                id: toastId,
+                description: err instanceof Error ? err.message : 'Unknown error'
+            })
         }
         setUpdating(false)
     }
@@ -227,7 +227,7 @@ export default function DeviceInspector() {
                 <div className="flex items-center gap-3">
                     {device && <div className={`w-3 h-3 rounded-full ${getStatusColor(device.status)} shadow-[0_0_8px_currentColor]`} />}
                     <div>
-                        <h2 className="text-sm font-bold text-white tracking-wide uppercase">{device?.name || 'Loading...'}</h2>
+                        <h2 className="text-sm font-bold text-white tracking-wide uppercase">{device ? getDeviceDisplayName(device) : 'Loading...'}</h2>
                         <p className="text-[10px] text-slate-400 font-mono">{device?.id?.slice(0, 8)}...</p>
                     </div>
                 </div>

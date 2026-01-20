@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, type Device } from '../lib/supabase'
+import { getDeviceDisplayName } from '../lib/constants'
 import {
     X,
     Battery,
@@ -19,20 +20,14 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import HealthTimeline from './HealthTimeline'
 import ConfidenceRing from './ConfidenceRing'
 
-interface Device {
-    id: string
+// Extend Device to include optional runtime properties or mapped fields
+type ModalDevice = Device & {
     device_id?: string
-    name: string
-    status: string
-    location?: string
-    latitude?: number
-    longitude?: number
     battery_level?: number
     signal_strength?: number
-    last_seen?: string | null
     firmware_version?: string
     installed_at?: string
-    confidence_score?: number
+    [key: string]: any
 }
 
 interface SensorReading {
@@ -51,7 +46,7 @@ interface MaintenanceLog {
 }
 
 interface DeviceDetailModalProps {
-    device: Device | null
+    device: ModalDevice | null
     isOpen: boolean
     onClose: () => void
     onRefresh?: () => void
@@ -173,7 +168,7 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                     <div className="flex items-center gap-3">
                         <div className={`w-3 h-3 rounded-full ${getStatusColor(device.status)}`} />
                         <div>
-                            <h2 className="text-lg font-semibold text-white">{device.name || device.device_id}</h2>
+                            <h2 className="text-lg font-semibold text-white">{getDeviceDisplayName(device)}</h2>
                             <p className="text-xs text-slate-400">{device.device_id}</p>
                         </div>
                     </div>
@@ -258,7 +253,7 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                     <MapPin className="h-3 w-3" />
                                     Location
                                 </div>
-                                <p className="text-sm text-white">{device.location || 'Not set'}</p>
+                                <p className="text-sm text-white">{device.location_name || 'Not set'}</p>
                                 {device.latitude && device.longitude && (
                                     <p className="text-xs text-slate-500 mt-1">
                                         {device.latitude.toFixed(4)}, {device.longitude.toFixed(4)}
@@ -293,9 +288,9 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                             </div>
 
                             {/* Last Seen */}
-                            {device.last_seen && (
+                            {(device.last_seen_at || device.last_seen) && (
                                 <div className="text-center text-xs text-slate-500">
-                                    Last seen: {new Date(device.last_seen).toLocaleString()}
+                                    Last seen: {new Date(device.last_seen_at || device.last_seen!).toLocaleString()}
                                 </div>
                             )}
                         </div>
@@ -384,16 +379,16 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                             <div className="bg-slate-800/50 rounded-xl divide-y divide-slate-700">
                                 <div className="flex items-center justify-between p-3">
                                     <span className="text-sm text-slate-400">Device ID</span>
-                                    <span className="text-sm text-white font-mono">{device.device_id}</span>
+                                    <span className="text-sm text-white font-mono">{device.node_number || device.device_id || device.id.split('-')[0]}</span>
                                 </div>
                                 <div className="flex items-center justify-between p-3">
                                     <span className="text-sm text-slate-400">Firmware</span>
-                                    <span className="text-sm text-white">{device.firmware_version || 'Unknown'}</span>
+                                    <span className="text-sm text-white">{device.metadata?.firmware_version || device.firmware_version || 'v1.0.0'}</span>
                                 </div>
                                 <div className="flex items-center justify-between p-3">
                                     <span className="text-sm text-slate-400">Installed</span>
                                     <span className="text-sm text-white">
-                                        {device.installed_at ? new Date(device.installed_at).toLocaleDateString() : 'Unknown'}
+                                        {new Date(device.deployment_date || device.installed_at || device.created_at).toLocaleDateString()}
                                     </span>
                                 </div>
                             </div>

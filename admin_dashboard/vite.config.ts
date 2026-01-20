@@ -18,6 +18,8 @@ export default defineConfig({
             registerType: 'autoUpdate',
             includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
             workbox: {
+                // Increase cache limit to handle large Dashboard bundle
+                maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MB
                 globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
                 runtimeCaching: [
                     {
@@ -95,5 +97,38 @@ export default defineConfig({
                 ]
             }
         })
-    ]
+    ],
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    // React core libraries
+                    'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+                    // Chart library (large dependency)
+                    'charts-vendor': ['recharts'],
+                    // Plotly (very large - 3MB+)
+                    'plotly-vendor': ['plotly.js', 'react-plotly.js'],
+                    // UI component libraries
+                    'ui-vendor': [
+                        '@radix-ui/react-tabs',
+                        '@radix-ui/react-select',
+                        '@radix-ui/react-dialog',
+                        '@radix-ui/react-dropdown-menu',
+                        '@radix-ui/react-slot',
+                        '@radix-ui/react-label'
+                    ],
+                    // Map libraries
+                    'map-vendor': ['leaflet', 'react-leaflet'],
+                    // State management and data fetching
+                    'query-vendor': ['@tanstack/react-query']
+                },
+                // Ensure consistent hashing for cache busting
+                entryFileNames: 'assets/[name].[hash].js',
+                chunkFileNames: 'assets/[name].[hash].js',
+                assetFileNames: 'assets/[name].[hash].[ext]'
+            }
+        },
+        // Increase chunk size warning limit to 1000 kB
+        chunkSizeWarningLimit: 1000
+    }
 })

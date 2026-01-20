@@ -44,8 +44,14 @@ export function DualPieChart({ connectivityData, tdsData }: DualPieChartProps) {
 
     // Custom label for percentages
     const renderLabel = (entry: any) => {
-        const total = entry.payload.payload.reduce((sum: number, item: any) => sum + item.value, 0)
-        const percentage = parseFloat(((entry.value / total) * 100).toFixed(0))
+        // Determine which dataset this entry belongs to (Connectivity or TDS)
+        const isConnectivity = connectivityData.some(d => d.name === entry.name)
+        const currentData = isConnectivity ? connectivityData : tdsData
+
+        const total = currentData.reduce((sum, item) => sum + item.value, 0)
+        if (total === 0) return ''
+
+        const percentage = Math.round((entry.value / total) * 100)
         return percentage > 5 ? `${percentage}%` : '' // Only show if > 5%
     }
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { EnrichedDevice } from '@/lib/supabase'
+import { getDeviceDisplayName } from '@/lib/constants'
 
 interface CategorizedDeviceListProps {
     safeTDSDevices: EnrichedDevice[]
@@ -67,7 +68,7 @@ export function CategorizedDeviceList({
                                     <div className="flex items-center gap-3">
                                         <div className="w-1.5 h-1.5 rounded-full bg-[#30d158]" />
                                         <span className="text-sm text-white/90 group-hover:text-white transition-colors">
-                                            {device.name}
+                                            {getDeviceDisplayName(device)}
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -80,8 +81,8 @@ export function CategorizedDeviceList({
                                         {/* Connectivity Badge */}
                                         <span
                                             className={`px-2 py-0.5 rounded text-[10px] font-medium ${device.connectivity_status === 'online'
-                                                    ? 'bg-[#30d158]/20 text-[#30d158]'
-                                                    : 'bg-[#8e8e93]/20 text-[#8e8e93]'
+                                                ? 'bg-[#30d158]/20 text-[#30d158]'
+                                                : 'bg-[#8e8e93]/20 text-[#8e8e93]'
                                                 }`}
                                         >
                                             {device.connectivity_status === 'online' ? '● Online' : '○ Offline'}
@@ -133,7 +134,7 @@ export function CategorizedDeviceList({
                                     <div className="flex items-center gap-3">
                                         <div className="w-1.5 h-1.5 rounded-full bg-[#ff453a] animate-pulse" />
                                         <span className="text-sm text-white/90 group-hover:text-white transition-colors">
-                                            {device.name}
+                                            {getDeviceDisplayName(device)}
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -146,8 +147,8 @@ export function CategorizedDeviceList({
                                         {/* Connectivity Badge */}
                                         <span
                                             className={`px-2 py-0.5 rounded text-[10px] font-medium ${device.connectivity_status === 'online'
-                                                    ? 'bg-[#30d158]/20 text-[#30d158]'
-                                                    : 'bg-[#8e8e93]/20 text-[#8e8e93]'
+                                                ? 'bg-[#30d158]/20 text-[#30d158]'
+                                                : 'bg-[#8e8e93]/20 text-[#8e8e93]'
                                                 }`}
                                         >
                                             {device.connectivity_status === 'online' ? '● Online' : '○ Offline'}

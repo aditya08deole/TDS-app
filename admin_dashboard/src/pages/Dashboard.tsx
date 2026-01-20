@@ -3,17 +3,17 @@ import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     LineChart, Line
 } from 'recharts'
-import { Activity, Clock, Droplets, Thermometer, LayoutGrid, TrendingUp, TrendingDown, Zap, Wifi, WifiOff } from 'lucide-react'
+import { Activity, Droplets, Thermometer, LayoutGrid, TrendingUp, TrendingDown, Zap, Wifi, WifiOff } from 'lucide-react'
 import type { EnrichedDevice, SensorData } from '../lib/supabase'
-import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
-import { useAllDevicesThingSpeakData } from '../hooks/useThingSpeakQueries'
-import { getTDSStatus, getTDSCategory, getConnectivityStatus } from '../lib/constants'
+import { useDevices, useDeviceSubscription, useDeviceSensorData } from '../hooks/useDeviceQueries'
+import { useAllDevicesThingSpeakData, useDeviceLatestReading } from '../hooks/useThingSpeakQueries'
+import { getTDSStatus, getTDSCategory, getConnectivityStatus, getDeviceDisplayName } from '../lib/constants'
 
 import { GlassCard } from '@/components/GlassCard'
 import { StatusIndicator } from '@/components/StatusIndicator'
 import { DashboardCard } from '@/components/DashboardCard'
-import { DualPieChart } from '@/components/DualPieChart'
-import { CategorizedDeviceList } from '@/components/CategorizedDeviceList'
+import { PlotlyPieChart } from '@/components/PlotlyPieChart'
+import { ActivityPanel } from '@/components/ActivityPanel'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -47,22 +47,34 @@ export default function Dashboard() {
     // Subscribe to real-time device changes
     useDeviceSubscription()
 
-    // Fetch ThingSpeak data for all devices (with caching and batching)
+    // NEW HYBRID STRATEGY (Phase 1A):
+    // 1. Get selected device
+    const selectedDevice = useMemo(() =>
+        supabaseDevices.find(d => d.id === selectedLocation),
+        [supabaseDevices, selectedLocation])
+
+    // 2. Real-time status from ThingSpeak /last.json (3s polling)
+    const { data: realTimeStatus } = useDeviceLatestReading(selectedDevice)
+
+    // 3. Historical charts from Supabase (Last 100 points)
+    const { data: historicalData = [] } = useDeviceSensorData(selectedLocation, dataPointLimit)
+
+    // 4. Batch fetch ThingSpeak data for ALL devices (for the list/map/stats)
+    // This is still needed for the overview stats and device list
     const { devices: devicesWithData, deviceData, isLoading: dataLoading } = useAllDevicesThingSpeakData(supabaseDevices)
 
     const loading = devicesLoading || dataLoading
 
-    // Auto-select first device when devices load
+    // Auto-select first device
     useMemo(() => {
         if (supabaseDevices.length > 0 && !selectedLocation) {
             setSelectedLocation(supabaseDevices[0].id)
         }
     }, [supabaseDevices, selectedLocation])
 
-    // Enrich devices with dual categorization (Phase 1: UI/UX Upgrade)
+    // Enrich devices with dual categorization
     const devices: EnrichedDevice[] = useMemo(() => {
         return devicesWithData.map(device => {
-            // Legacy status (for backward compatibility)
             let status: 'online' | 'warning' | 'critical' | 'offline' = 'offline'
 
             if (device.is_offline) {
@@ -71,21 +83,22 @@ export default function Dashboard() {
                 status = getTDSStatus(device.latest_tds)
             }
 
-            // New dual categorization
             const tds_category = getTDSCategory(device.latest_tds)
-            const connectivity_status = getConnectivityStatus(device.last_reading_time)
+            // Handle timestamp from either source
+            const lastSeen = device.last_reading_at || new Date().toISOString()
+            const connectivity_status = getConnectivityStatus(lastSeen)
 
             return {
                 ...device,
-                status,                    // Legacy
-                tds_category,              // New: safe/critical/unknown
-                connectivity_status,       // New: online/offline
-                last_reading_time: device.last_reading_time || new Date().toISOString()
+                status,
+                tds_category,
+                connectivity_status,
+                last_reading_at: lastSeen
             }
         })
     }, [devicesWithData])
 
-    // Convert ThingSpeak data to SensorData format
+    // Convert ThingSpeak data to SensorData format (Required for 'All Devices' tab sparklines)
     const sensorData = useMemo(() => {
         const result: { [key: string]: SensorData[] } = {}
         deviceData.forEach((data, deviceId) => {
@@ -101,12 +114,37 @@ export default function Dashboard() {
         return result
     }, [deviceData])
 
-    // Legacy stats (for backward compatibility)
-    const stats = useMemo(() => devices.reduce((acc, d) => {
-        const s = d.status as keyof typeof acc
-        if (acc[s] !== undefined) acc[s]++
-        return acc
-    }, { online: 0, warning: 0, critical: 0, offline: 0 }), [devices])
+    // Get current device values (prefer Real-Time Status if available)
+    const currentDevice = useMemo(() => {
+        // Find enriched device info
+        const baseDevice = devices.find(d => d.id === selectedLocation)
+        if (!baseDevice) return null
+
+        // Use real-time status if available, otherwise fallback to bulk data
+        const latestTDS = realTimeStatus?.tds ?? baseDevice.latest_tds
+        const latestTemp = realTimeStatus?.temperature ?? baseDevice.latest_temperature
+        const lastSeen = realTimeStatus?.timestamp ?? baseDevice.last_reading_at
+
+        return {
+            ...baseDevice,
+            latest_tds: latestTDS,
+            latest_temperature: latestTemp,
+            last_reading_at: lastSeen,
+            tds_category: getTDSCategory(latestTDS),
+            connectivity_status: getConnectivityStatus(lastSeen)
+        }
+    }, [selectedLocation, devices, realTimeStatus])
+
+    // Format historical data for charts
+    const chartData = useMemo(() => {
+        // Reverse Supabase data (newest first -> oldest first for chart)
+        return [...historicalData].reverse().map(reading => ({
+            name: new Date(reading.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            tds: reading.tds,
+            temp: reading.temperature,
+            fullDate: new Date(reading.recorded_at).toLocaleString()
+        }))
+    }, [historicalData])
 
     // New categorized stats (Phase 2: UI/UX Upgrade)
     const categorizedStats = useMemo(() => {
@@ -123,41 +161,26 @@ export default function Dashboard() {
         }
     }, [devices])
 
-    const selectedDevice = useMemo(() =>
-        selectedLocation ? devices.find(d => d.id === selectedLocation) : null
-        , [selectedLocation, devices])
+    // Use currentDevice for display label
+    const locationLabel = currentDevice ? getDeviceDisplayName(currentDevice) : 'No Device Selected'
 
-    const locationLabel = selectedDevice ? (selectedDevice.location_name || selectedDevice.name) : 'No Device Selected'
+    // Use chartData for trends (last 2 points)
+    // Note: chartData is already formatted for the chart { name, tds, temp, fullDate }
+    const latestTDS = currentDevice?.latest_tds ?? 0
+    // Fix: check if chartData has items before accessing
+    const prevTDS = chartData.length > 1 ? chartData[chartData.length - 2].tds : latestTDS
+    const tdsChange = typeof latestTDS === 'number' && typeof prevTDS === 'number' ? latestTDS - prevTDS : 0
 
-    const trendData = useMemo(() => {
-        // Use selected device, fallback to first device if not selected
-        const effectiveLocation = selectedLocation || devices[0]?.id
-        if (!effectiveLocation || !sensorData[effectiveLocation]) return []
-
-        // Get data and slice to the selected data point limit
-        const allData = sensorData[effectiveLocation]
-        const slicedData = allData.slice(-dataPointLimit)
-
-        return slicedData.map(d => ({
-            time: new Date(d.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            tds: d.tds,
-            temp: d.temperature
-        }))
-    }, [selectedLocation, devices, sensorData, dataPointLimit])
-
-    const latestTDS = trendData.length > 0 ? trendData[trendData.length - 1].tds : 0
-    const prevTDS = trendData.length > 1 ? trendData[trendData.length - 2].tds : latestTDS
-    const tdsChange = latestTDS - prevTDS
-    const avgTemp = trendData.length > 0
-        ? (trendData.reduce((s, d) => s + d.temp, 0) / trendData.length).toFixed(1)
+    const avgTemp = chartData.length > 0
+        ? (chartData.reduce((s, d) => s + d.temp, 0) / chartData.length).toFixed(1)
         : '--'
 
-    // Calculate system health score
+    // Calculate system health score based on TDS status
     const systemHealth = useMemo(() => {
         const total = devices.length
         if (total === 0) return 0
-        return Math.round(((stats.online * 100) + (stats.warning * 50) + (stats.critical * 10)) / total)
-    }, [stats, devices.length])
+        return Math.round(((categorizedStats.safeTDS.count * 100) + (categorizedStats.online.count * 20)) / (total * 1.2))
+    }, [categorizedStats, devices.length])
 
     if (loading) return (
         <div className="flex items-center justify-center h-64">
@@ -239,56 +262,31 @@ export default function Dashboard() {
                     <div className="col-span-12 lg:col-span-4">
                         <GlassCard className="p-4 h-full transition-all duration-500 hover:shadow-xl">
                             <h3 className="text-sm font-medium mb-2">Device Overview</h3>
-                            <div className="h-[220px] relative">
-                                <DualPieChart
+                            <div className="h-[280px] relative">
+                                <PlotlyPieChart
                                     connectivityData={[
-                                        { name: 'Online', value: categorizedStats.online.count, fill: '#30d158' },
-                                        { name: 'Offline', value: categorizedStats.offline.count, fill: '#8e8e93' }
+                                        { name: 'Online', value: categorizedStats.online.count, color: '#30d158' },
+                                        { name: 'Offline', value: categorizedStats.offline.count, color: '#8e8e93' }
                                     ]}
                                     tdsData={[
-                                        { name: 'Safe TDS', value: categorizedStats.safeTDS.count, fill: '#30d158' },
-                                        { name: 'Critical TDS', value: categorizedStats.criticalTDS.count, fill: '#ff453a' }
+                                        { name: 'Safe TDS', value: categorizedStats.safeTDS.count, color: '#30d158' },
+                                        { name: 'Critical TDS', value: categorizedStats.criticalTDS.count, color: '#ff453a' }
                                     ]}
                                 />
                             </div>
                         </GlassCard>
                     </div>
 
-                    {/* Recent Activity - Same (4 cols) */}
+                    {/* Activity Panel - Enhanced with Collapsible Sections */}
                     <div className="col-span-12 lg:col-span-4">
                         <GlassCard className="p-4 h-full transition-all duration-500 hover:shadow-xl">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-sm font-medium">Recent Activity</h3>
-                                <span className="text-[10px] text-white/40 bg-white/5 px-2 py-0.5 rounded-full">{devices.length} devices</span>
-                            </div>
-                            <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
-                                {devices.map((d, idx) => {
-                                    const latest = sensorData[d.id]?.[sensorData[d.id]?.length - 1]
-                                    return (
-                                        <div
-                                            key={d.id}
-                                            className="flex items-center justify-between p-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] transition-all duration-300 cursor-pointer hover:scale-[1.01]"
-                                            style={{ animationDelay: `${idx * 30}ms` }}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <StatusIndicator status={d.status} size="sm" />
-                                                <div>
-                                                    <div className="text-xs font-medium">{d.location_name || d.name}</div>
-                                                    <div className="text-[10px] text-white/40">{d.location_name}</div>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-xs font-mono font-semibold">
-                                                    {latest?.tds || '--'} <span className="text-white/40 font-normal">ppm</span>
-                                                </div>
-                                                <div className="text-[10px] text-white/40 flex items-center gap-0.5 justify-end">
-                                                    <Clock className="w-2.5 h-2.5" /> {latest?.recorded_at ? new Date(latest.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
+                            <ActivityPanel
+                                safeTDSDevices={categorizedStats.safeTDS.devices}
+                                criticalTDSDevices={categorizedStats.criticalTDS.devices}
+                                onlineDevices={categorizedStats.online.devices}
+                                offlineDevices={categorizedStats.offline.devices}
+                                onDeviceClick={(deviceId) => setSelectedLocation(deviceId)}
+                            />
                         </GlassCard>
                     </div>
                 </div>
@@ -313,18 +311,8 @@ export default function Dashboard() {
                     </div>
                 )}
 
-                {/* Categorized Device List */}
-                <div>
-                    <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-                        <LayoutGrid className="w-4 h-4" />
-                        Devices by TDS Category
-                    </h3>
-                    <CategorizedDeviceList
-                        safeTDSDevices={categorizedStats.safeTDS.devices}
-                        criticalTDSDevices={categorizedStats.criticalTDS.devices}
-                        onDeviceClick={(deviceId) => setSelectedLocation(deviceId)}
-                    />
-                </div>
+                {/* Categorized Device List - Removed per Phase 3 requirements */}
+
 
                 {/* Controls Row */}
                 <div className="flex items-center justify-between py-1">
@@ -363,7 +351,7 @@ export default function Dashboard() {
                                     <SelectItem value="none" disabled className="text-xs text-white/40">No devices added</SelectItem>
                                 ) : (
                                     devices.map(d => (
-                                        <SelectItem key={d.id} value={d.id} className="text-xs">{d.location_name || d.name}</SelectItem>
+                                        <SelectItem key={d.id} value={d.id} className="text-xs">{getDeviceDisplayName(d)}</SelectItem>
                                     ))
                                 )}
                             </SelectContent>
@@ -382,7 +370,7 @@ export default function Dashboard() {
                     {/* TDS Chart */}
                     <div className="col-span-12 lg:col-span-6">
                         {/* Critical TDS Warning Banner */}
-                        {selectedDevice && selectedDevice.tds_category === 'critical' && (
+                        {currentDevice && currentDevice.tds_category === 'critical' && (
                             <div className="mb-3 rounded-lg border border-[#ff453a]/30 bg-[#ff453a]/10 p-3 flex items-center gap-2 animate-pulse">
                                 <Activity className="w-4 h-4 text-[#ff453a]" />
                                 <span className="text-xs font-medium text-[#ff453a]">⚠️ Critical TDS Level Detected</span>
@@ -393,13 +381,13 @@ export default function Dashboard() {
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-3">
                                     <div
-                                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 hover:scale-110 ${selectedDevice?.tds_category === 'critical'
+                                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 hover:scale-110 ${currentDevice?.tds_category === 'critical'
                                             ? 'bg-red-500/10'
                                             : 'bg-green-500/10'
                                             }`}
                                     >
                                         <Droplets
-                                            className={`w-5 h-5 ${selectedDevice?.tds_category === 'critical'
+                                            className={`w-5 h-5 ${currentDevice?.tds_category === 'critical'
                                                 ? 'text-red-500'
                                                 : 'text-green-500'
                                                 }`}
@@ -412,7 +400,7 @@ export default function Dashboard() {
                                 </div>
                                 <div className="text-right">
                                     <span
-                                        className={`text-xl font-bold font-mono ${selectedDevice?.tds_category === 'critical'
+                                        className={`text-xl font-bold font-mono ${currentDevice?.tds_category === 'critical'
                                             ? 'text-red-500'
                                             : 'text-green-500'
                                             }`}
@@ -424,33 +412,31 @@ export default function Dashboard() {
                             </div>
                             <div className="h-[300px]">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={trendData} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
+                                    <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
                                         <defs>
-                                            {/* Safe TDS Gradient (Green) */}
                                             <linearGradient id="tdsGradientSafe" x1="0" y1="0" x2="0" y2="1">
                                                 <stop offset="5%" stopColor="#30d158" stopOpacity={0.3} />
                                                 <stop offset="95%" stopColor="#30d158" stopOpacity={0} />
                                             </linearGradient>
-                                            {/* Critical TDS Gradient (Red) */}
                                             <linearGradient id="tdsGradientCritical" x1="0" y1="0" x2="0" y2="1">
                                                 <stop offset="5%" stopColor="#ff453a" stopOpacity={0.3} />
                                                 <stop offset="95%" stopColor="#ff453a" stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                                        <XAxis dataKey="time" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
+                                        <XAxis dataKey="name" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
                                         <YAxis stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
                                         <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)' }} />
                                         <Area
                                             type="monotone"
                                             dataKey="tds"
-                                            stroke={selectedDevice?.tds_category === 'critical' ? '#ff453a' : '#30d158'}
-                                            fill={selectedDevice?.tds_category === 'critical' ? 'url(#tdsGradientCritical)' : 'url(#tdsGradientSafe)'}
+                                            stroke={currentDevice?.tds_category === 'critical' ? '#ff453a' : '#30d158'}
+                                            fill={currentDevice?.tds_category === 'critical' ? 'url(#tdsGradientCritical)' : 'url(#tdsGradientSafe)'}
                                             strokeWidth={2.5}
                                             dot={false}
                                             activeDot={{
                                                 r: 5,
-                                                fill: selectedDevice?.tds_category === 'critical' ? '#ff453a' : '#30d158',
+                                                fill: currentDevice?.tds_category === 'critical' ? '#ff453a' : '#30d158',
                                                 strokeWidth: 2,
                                                 stroke: '#000'
                                             }}
@@ -483,9 +469,9 @@ export default function Dashboard() {
                             </div>
                             <div className="h-[300px]">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={trendData} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
+                                    <LineChart data={chartData} margin={{ top: 5, right: 10, left: -15, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                                        <XAxis dataKey="time" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
+                                        <XAxis dataKey="name" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
                                         <YAxis stroke="#555" fontSize={9} tickLine={false} axisLine={false} domain={['dataMin - 2', 'dataMax + 2']} />
                                         <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)' }} />
                                         <Line
@@ -512,6 +498,7 @@ export default function Dashboard() {
                     {devices.map((device, idx) => {
                         const data = sensorData[device.id] || []
                         const latest = data[data.length - 1]
+                        const displayName = getDeviceDisplayName(device)
 
                         return (
                             <GlassCard
@@ -521,7 +508,7 @@ export default function Dashboard() {
                             >
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <h4 className="text-sm font-medium truncate max-w-[100px]">{device.location_name || device.name}</h4>
+                                        <h4 className="text-sm font-medium truncate max-w-[100px]">{displayName}</h4>
                                         <p className="text-[10px] text-white/40 truncate max-w-[100px]">{device.location_name}</p>
                                     </div>
                                     <StatusIndicator status={device.status} size="sm" pulse />

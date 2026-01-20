@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import type { EnrichedDevice } from '@/lib/supabase'
+import { getDeviceDisplayName } from '@/lib/constants'
 
 interface DashboardCardProps {
     title: string
@@ -104,7 +105,7 @@ export function DashboardCard({
                             >
                                 {/* Device Name */}
                                 <span className="text-white/90 text-sm font-medium truncate flex-1">
-                                    {device.name}
+                                    {getDeviceDisplayName(device)}
                                 </span>
 
                                 {/* Status Badges */}

@@ -24,8 +24,8 @@ export const TDS_THRESHOLDS = {
 // Offline detection threshold (1 hour)
 export const OFFLINE_THRESHOLD_MS = 60 * 60 * 1000
 
-// 5 seconds for real-time monitoring (Phase 6: UI/UX Upgrade)
-export const THINGSPEAK_POLL_INTERVAL = 5000
+// 3 seconds for real-time monitoring (Phase 1: UI/UX Enhancement - faster updates)
+export const THINGSPEAK_POLL_INTERVAL = 3000
 
 /**
  * ThingSpeak API Configuration
@@ -104,3 +104,12 @@ export function getConnectivityStatus(lastReadingTime: string | null | undefined
  */
 export type TDSCategory = 'safe' | 'critical' | 'unknown'
 export type ConnectivityStatus = 'online' | 'offline'
+
+/**
+ * Helper function to get device display name
+ * Prefers location_name over device name
+ */
+export function getDeviceDisplayName(device: { location_name?: string | null; name: string }): string {
+    return device.location_name || device.name || 'Unknown Device'
+}
+

@@ -204,3 +204,29 @@ export function useDeviceSubscription() {
         }
     }, [queryClient])
 }
+
+/**
+ * Hook to fetch historical sensor data from Supabase (for charts)
+ * Used in hybrid strategy: Supabase for charts, ThingSpeak for real-time status
+ */
+export function useDeviceSensorData(deviceId: string | undefined, limit: number = 100) {
+    return useQuery({
+        queryKey: ['sensor_data', deviceId, limit],
+        queryFn: async () => {
+            if (!deviceId) return []
+
+            const { data, error } = await supabase
+                .from('sensor_data')
+                .select('*')
+                .eq('device_id', deviceId)
+                .order('recorded_at', { ascending: false })
+                .limit(limit)
+
+            if (error) throw error
+            return data || []
+        },
+        enabled: !!deviceId,
+        staleTime: 30 * 1000, // Cache for 30s (historical data doesn't change fast)
+        gcTime: 5 * 60 * 1000
+    })
+}
