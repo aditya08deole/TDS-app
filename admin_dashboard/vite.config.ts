@@ -106,8 +106,8 @@ export default defineConfig({
                     'react-vendor': ['react', 'react-dom', 'react-router-dom'],
                     // Chart library (large dependency)
                     'charts-vendor': ['recharts'],
-                    // Plotly (very large - 3MB+)
-                    'plotly-vendor': ['plotly.js', 'react-plotly.js'],
+                    // ECharts (replaced Plotly)
+                    'echarts-vendor': ['echarts', 'echarts-for-react'],
                     // UI component libraries
                     'ui-vendor': [
                         '@radix-ui/react-tabs',
