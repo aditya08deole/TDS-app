@@ -5,13 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' tsc && NODE_OPTIONS='--max-old-space-size=4096' vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.21",
-    "@types/plotly.js": "^3.0.9",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.2",
@@ -80,7 +79,6 @@
     "lucide-react": "^0.562.0",
     "motion": "^12.26.2",
     "next-themes": "^0.4.6",
-    "plotly.js": "^3.3.1",
     "postcss": "^8.5.6",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.3",
@@ -90,7 +88,6 @@
     "react-hook-form": "^7.71.1",
     "react-leaflet": "^5.0.0",
     "react-leaflet-cluster": "^4.0.0",
-    "react-plotly.js": "^2.6.0",
     "react-resizable-panels": "^4.4.1",
     "react-router-dom": "^7.12.0",
     "recharts": "^3.6.0",
