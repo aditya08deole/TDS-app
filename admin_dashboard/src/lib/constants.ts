@@ -21,8 +21,26 @@ export const TDS_THRESHOLDS = {
     CRITICAL_HIGH: TDS_RANGES.SAFE_MAX + TDS_RANGES.BUFFER_UPPER   // 165 ppm
 } as const
 
-// Offline detection threshold (1 hour)
-export const OFFLINE_THRESHOLD_MS = 60 * 60 * 1000
+/**
+ * Industrial IoT Heartbeat Detection Configuration
+ * Based on best practices for real-time device monitoring
+ */
+export const HEARTBEAT_CONFIG = {
+    // Expected heartbeat interval (devices send data every 15-30 seconds)
+    EXPECTED_INTERVAL_MS: 30 * 1000,        // 30 seconds
+
+    // Offline threshold: 2x expected interval (allows 1 missed heartbeat)
+    OFFLINE_THRESHOLD_MS: 60 * 1000,        // 60 seconds
+
+    // Grace period before marking device as offline
+    GRACE_PERIOD_MS: 30 * 1000,             // 30 seconds
+
+    // Maximum time before device is considered stale
+    STALE_THRESHOLD_MS: 5 * 60 * 1000       // 5 minutes
+} as const
+
+// Legacy constant for backward compatibility (now using HEARTBEAT_CONFIG)
+export const OFFLINE_THRESHOLD_MS = HEARTBEAT_CONFIG.OFFLINE_THRESHOLD_MS
 
 // 3 seconds for real-time monitoring (Phase 1: UI/UX Enhancement - faster updates)
 export const THINGSPEAK_POLL_INTERVAL = 3000
@@ -55,12 +73,13 @@ export function getTDSStatus(tds: number | null | undefined): 'online' | 'warnin
 
 /**
  * Check if a device is offline based on last reading timestamp
+ * @deprecated Use getConnectivityStatus instead for dual categorization
  */
 export function isDeviceOffline(lastReadingTime: string | null | undefined): boolean {
     if (!lastReadingTime) return true
     const lastReading = new Date(lastReadingTime).getTime()
     const now = Date.now()
-    return (now - lastReading) > OFFLINE_THRESHOLD_MS
+    return (now - lastReading) > HEARTBEAT_CONFIG.OFFLINE_THRESHOLD_MS
 }
 
 /**
@@ -88,15 +107,34 @@ export function getTDSCategory(tds: number | null | undefined): 'safe' | 'critic
 }
 
 /**
- * Determine connectivity status based on last reading timestamp
- * Online: Last reading within 1 hour
- * Offline: Last reading > 1 hour ago OR no reading
+ * Industrial IoT Heartbeat Detection Algorithm
+ * 
+ * Determines connectivity status based on last reading timestamp
+ * Uses 60-second threshold (2x expected 30s heartbeat interval)
+ * 
+ * Rules:
+ * 1. Device is ONLINE if last_reading_at < 60 seconds ago
+ * 2. Device is OFFLINE if last_reading_at >= 60 seconds ago
+ * 3. Grace period: Allows 1 missed heartbeat (30 seconds)
+ * 4. Independent of TDS status
+ * 
+ * @param lastReadingTime - ISO timestamp of last reading (last_reading_at or last_seen_at)
+ * @returns 'online' | 'offline'
  */
 export function getConnectivityStatus(lastReadingTime: string | null | undefined): 'online' | 'offline' {
     if (!lastReadingTime) return 'offline'
-    const lastReading = new Date(lastReadingTime).getTime()
-    const now = Date.now()
-    return (now - lastReading) > OFFLINE_THRESHOLD_MS ? 'offline' : 'online'
+
+    try {
+        const lastReading = new Date(lastReadingTime).getTime()
+        const now = Date.now()
+        const secondsSinceLastReading = (now - lastReading) / 1000
+
+        // Offline if no heartbeat for 60 seconds (2x expected interval)
+        return secondsSinceLastReading < 60 ? 'online' : 'offline'
+    } catch (error) {
+        // Invalid timestamp
+        return 'offline'
+    }
 }
 
 /**

@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronUp, Droplets, AlertTriangle, Wifi, WifiOff } from 'lucide-react'
+import { Droplets, AlertTriangle } from 'lucide-react'
 import type { EnrichedDevice } from '../lib/supabase'
 import { getDeviceDisplayName } from '../lib/constants'
 import { cn } from '../lib/utils'
@@ -7,23 +6,14 @@ import { cn } from '../lib/utils'
 interface ActivityPanelProps {
     safeTDSDevices: EnrichedDevice[]
     criticalTDSDevices: EnrichedDevice[]
-    onlineDevices: EnrichedDevice[]
-    offlineDevices: EnrichedDevice[]
     onDeviceClick?: (deviceId: string) => void
 }
 
 export function ActivityPanel({
     safeTDSDevices,
     criticalTDSDevices,
-    onlineDevices,
-    offlineDevices,
     onDeviceClick
 }: ActivityPanelProps) {
-    const [safeTDSExpanded, setSafeTDSExpanded] = useState(true)
-    const [criticalTDSExpanded, setCriticalTDSExpanded] = useState(true)
-    const [onlineExpanded, setOnlineExpanded] = useState(false)
-    const [offlineExpanded, setOfflineExpanded] = useState(false)
-
     const renderDeviceList = (devices: EnrichedDevice[], emptyMessage: string) => {
         if (devices.length === 0) {
             return (
@@ -34,7 +24,7 @@ export function ActivityPanel({
         }
 
         return (
-            <div className="space-y-1 max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+            <div className="space-y-1">
                 {devices.map((device) => (
                     <button
                         key={device.id}
@@ -52,9 +42,7 @@ export function ActivityPanel({
                         </div>
                         <div className={cn(
                             "ml-2 px-2 py-1 rounded text-xs font-medium",
-                            device.tds_category === 'safe' && "bg-emerald-500/20 text-emerald-400",
-                            device.tds_category === 'critical' && "bg-red-500/20 text-red-400",
-                            device.connectivity_status === 'online' && !device.tds_category && "bg-blue-500/20 text-blue-400",
+                            device.connectivity_status === 'online' && "bg-emerald-500/20 text-emerald-400",
                             device.connectivity_status === 'offline' && "bg-slate-500/20 text-slate-400"
                         )}>
                             {device.connectivity_status === 'online' ? 'Online' : 'Offline'}
@@ -65,28 +53,21 @@ export function ActivityPanel({
         )
     }
 
-    const CollapsibleSection = ({
+    const ScrollableSection = ({
         title,
         count,
         icon: Icon,
         color,
-        expanded,
-        onToggle,
         children
     }: {
         title: string
         count: number
         icon: any
         color: string
-        expanded: boolean
-        onToggle: () => void
         children: React.ReactNode
     }) => (
         <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
-            <button
-                onClick={onToggle}
-                className="w-full flex items-center justify-between p-4 hover:bg-slate-800/30 transition-colors"
-            >
+            <div className="flex items-center justify-between p-4 border-b border-slate-800/50">
                 <div className="flex items-center gap-3">
                     <div className={cn("p-2 rounded-lg", color)}>
                         <Icon className="w-4 h-4" />
@@ -96,17 +77,10 @@ export function ActivityPanel({
                         <p className="text-xs text-slate-400">{count} device{count !== 1 ? 's' : ''}</p>
                     </div>
                 </div>
-                {expanded ? (
-                    <ChevronUp className="w-5 h-5 text-slate-400" />
-                ) : (
-                    <ChevronDown className="w-5 h-5 text-slate-400" />
-                )}
-            </button>
-            {expanded && (
-                <div className="px-4 pb-4 border-t border-slate-800/50">
-                    {children}
-                </div>
-            )}
+            </div>
+            <div className="px-4 pb-4 pt-2 max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent hover:scrollbar-thumb-slate-600">
+                {children}
+            </div>
         </div>
     )
 
@@ -114,53 +88,25 @@ export function ActivityPanel({
         <div className="space-y-3">
             <h2 className="text-lg font-bold text-white mb-4">Activity Panel</h2>
 
-            {/* Safe TDS Section */}
-            <CollapsibleSection
+            {/* Safe TDS Section - Always Visible, Scrollable */}
+            <ScrollableSection
                 title="Safe TDS"
                 count={safeTDSDevices.length}
                 icon={Droplets}
                 color="bg-emerald-500/20 text-emerald-400"
-                expanded={safeTDSExpanded}
-                onToggle={() => setSafeTDSExpanded(!safeTDSExpanded)}
             >
                 {renderDeviceList(safeTDSDevices, "No devices with safe TDS levels")}
-            </CollapsibleSection>
+            </ScrollableSection>
 
-            {/* Critical TDS Section */}
-            <CollapsibleSection
+            {/* Critical TDS Section - Always Visible, Scrollable */}
+            <ScrollableSection
                 title="Critical TDS"
                 count={criticalTDSDevices.length}
                 icon={AlertTriangle}
                 color="bg-red-500/20 text-red-400"
-                expanded={criticalTDSExpanded}
-                onToggle={() => setCriticalTDSExpanded(!criticalTDSExpanded)}
             >
                 {renderDeviceList(criticalTDSDevices, "No devices with critical TDS levels")}
-            </CollapsibleSection>
-
-            {/* Online Devices Section */}
-            <CollapsibleSection
-                title="Online Devices"
-                count={onlineDevices.length}
-                icon={Wifi}
-                color="bg-blue-500/20 text-blue-400"
-                expanded={onlineExpanded}
-                onToggle={() => setOnlineExpanded(!onlineExpanded)}
-            >
-                {renderDeviceList(onlineDevices, "No devices online")}
-            </CollapsibleSection>
-
-            {/* Offline Devices Section */}
-            <CollapsibleSection
-                title="Offline Devices"
-                count={offlineDevices.length}
-                icon={WifiOff}
-                color="bg-slate-500/20 text-slate-400"
-                expanded={offlineExpanded}
-                onToggle={() => setOfflineExpanded(!offlineExpanded)}
-            >
-                {renderDeviceList(offlineDevices, "All devices are online")}
-            </CollapsibleSection>
+            </ScrollableSection>
         </div>
     )
 }

@@ -165,6 +165,43 @@ export function useAllDevicesThingSpeakData(devices: Device[]) {
 }
 
 /**
+ * Fetch ThingSpeak data for charts (real-time)
+ * This replaces Supabase sensor_data for real-time chart updates
+ */
+export function useDeviceThingSpeakChartData(
+    device: Device | undefined,
+    results: number = 100
+) {
+    return useQuery({
+        queryKey: ['thingspeak_chart_data', device?.id, results],
+        queryFn: async () => {
+            if (!device?.thingspeak_channel_id || !device?.thingspeak_read_key) {
+                return []
+            }
+
+            const mapping: FieldMapping = {
+                tds: device.tds_field_number || 1,
+                temperature: device.temperature_field_number || 2,
+                voltage: device.voltage_field_number || 3
+            }
+
+            const data = await fetchFeeds(
+                device.thingspeak_channel_id,
+                device.thingspeak_read_key,
+                mapping,
+                results
+            )
+
+            return data
+        },
+        enabled: !!device?.thingspeak_channel_id && !!device?.thingspeak_read_key,
+        staleTime: 10 * 1000, // 10 seconds for real-time feel
+        refetchInterval: 15 * 1000, // Auto-refresh every 15 seconds
+        gcTime: 60 * 1000
+    })
+}
+
+/**
  * Log cache performance metrics
  */
 export function useThingSpeakCacheMetrics() {
