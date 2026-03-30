@@ -106,34 +106,41 @@ export async function processQueue(): Promise<{ processed: number; failed: numbe
  * Add your action handlers here
  */
 async function executeAction(action: QueuedAction): Promise<void> {
-    const { supabase } = await import('./supabase')
+    const { db } = await import('./firebase')
+    const { doc, updateDoc, addDoc, collection, setDoc } = await import('firebase/firestore')
 
     switch (action.type) {
         case 'UPDATE_DEVICE_STATUS': {
             const { deviceId, status } = action.payload as { deviceId: string; status: string }
-            await supabase.from('devices').update({ status }).eq('id', deviceId)
+            const docRef = doc(db, 'devices', deviceId)
+            await updateDoc(docRef, { status })
             break
         }
 
         case 'ADD_MAINTENANCE_LOG': {
             const logData = action.payload as Record<string, unknown>
-            await supabase.from('maintenance_logs').insert(logData)
+            await addDoc(collection(db, 'maintenance_logs'), {
+                ...logData,
+                created_at: new Date().toISOString()
+            })
             break
         }
 
         case 'UPDATE_SETTINGS': {
             const { userId, settings } = action.payload as { userId: string; settings: Record<string, unknown> }
-            await supabase.from('user_settings').upsert({ user_id: userId, ...settings })
+            const docRef = doc(db, 'users', userId)
+            await setDoc(docRef, settings, { merge: true })
             break
         }
 
         case 'ACKNOWLEDGE_ALERT': {
             const { alertId, userId } = action.payload as { alertId: string; userId: string }
-            await supabase.from('alerts').update({
-                acknowledged: true,
+            const docRef = doc(db, 'alerts', alertId)
+            await updateDoc(docRef, {
+                status: 'acknowledged',
                 acknowledged_by: userId,
                 acknowledged_at: new Date().toISOString()
-            }).eq('id', alertId)
+            })
             break
         }
 

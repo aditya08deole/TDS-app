@@ -1,9 +1,10 @@
 import { useQuery, useQueries } from '@tanstack/react-query'
-import { type Device, type EnrichedDevice } from '../lib/supabase'
+import { type Device, type EnrichedDevice } from '../types'
 import { fetchFeeds, fetchLastEntry, type FieldMapping, type ParsedSensorData } from '../lib/thingspeak'
 import { queryKeys } from '../lib/queryClient'
 import { cacheSensorData, getCachedSensorData } from '../lib/cache'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
+import { getConnectivityStatus } from '../lib/constants'
 
 /**
  * Helper function to get field mapping from device
@@ -26,11 +27,16 @@ async function fetchDeviceThingSpeakData(
         return []
     }
 
-    // Try cache first
-    const cached = await getCachedSensorData(device.id)
-    if (cached) {
-        console.log(`📦 Using cached sensor data for ${device.location_name || device.name}`)
-        return cached
+    // Use network-first strategy for real-time monitoring
+    // Cache is used only as a fallback if network fails
+    let cachedData: ParsedSensorData[] = []
+    try {
+        const cached = await getCachedSensorData(device.id)
+        if (cached) {
+            cachedData = cached
+        }
+    } catch (e) {
+        console.warn('Cache read failed', e)
     }
 
     const mapping: FieldMapping = {
@@ -39,19 +45,24 @@ async function fetchDeviceThingSpeakData(
         voltage: device.voltage_field_number || 3
     }
 
-    const data = await fetchFeeds(
-        device.thingspeak_channel_id,
-        device.thingspeak_read_key,
-        mapping,
-        2000 // Fetch last 2000 readings
-    )
+    try {
+        const data = await fetchFeeds(
+            device.thingspeak_channel_id,
+            device.thingspeak_read_key,
+            mapping,
+            2000 // Fetch last 2000 readings
+        )
 
-    // Cache the result
-    if (data.length > 0) {
-        await cacheSensorData(device.id, data)
+        // Cache the result for future offline use
+        if (data.length > 0) {
+            await cacheSensorData(device.id, data)
+        }
+
+        return data
+    } catch (error) {
+        console.warn(`Network fetch failed for ${device.id}, falling back to cache`)
+        return cachedData
     }
-
-    return data
 }
 
 /**
@@ -125,48 +136,51 @@ export function useAllDevicesThingSpeakData(devices: Device[]) {
             queryKey: queryKeys.sensorData(device.id),
             queryFn: () => fetchDeviceThingSpeakData(device),
             enabled: !!device.thingspeak_channel_id && !!device.thingspeak_read_key,
-            staleTime: 15 * 1000,
-            refetchInterval: 15 * 1000,
+            staleTime: 30 * 1000, // 30 seconds stale for historical data
+            refetchInterval: 30 * 1000, // 30s poll for background historical updates
             gcTime: 30 * 60 * 1000,
         }))
     })
 
-    // Combine results into a map
-    const deviceDataMap = new Map<string, ParsedSensorData[]>()
-    const enrichedDevices: EnrichedDevice[] = []
+    const enrichedDevices: EnrichedDevice[] = useMemo(() => {
+        return devices.map((device, index) => {
+            const query = queries[index]
+            const data = query.data || []
+            const latest = data.length > 0 ? data[data.length - 1] : null
+            
+            return {
+                ...device,
+                latest_tds: latest?.tds,
+                latest_temperature: latest?.temperature,
+                latest_voltage: latest?.voltage,
+                last_reading_at: latest?.timestamp,
+                is_offline: getConnectivityStatus(latest?.timestamp) === 'offline'
+            } as any
+        })
+    }, [devices, queries])
 
-    devices.forEach((device, index) => {
-        const query = queries[index]
-        const data = query.data || []
+    const deviceDataMap = useMemo(() => {
+        const map = new Map<string, ParsedSensorData[]>()
+        devices.forEach((device, index) => {
+            map.set(device.id, queries[index].data || [])
+        })
+        return map
+    }, [devices, queries])
 
-        deviceDataMap.set(device.id, data)
+    const isLoading = useMemo(() => queries.some(q => q.isLoading), [queries])
+    const isError = useMemo(() => queries.some(q => q.isError), [queries])
 
-        // Enrich device with latest data (cast to any for runtime properties)
-        const latest = data.length > 0 ? data[data.length - 1] : null
-        enrichedDevices.push({
-            ...device,
-            latest_tds: latest?.tds,
-            latest_temperature: latest?.temperature,
-            latest_voltage: latest?.voltage,
-            last_reading_at: latest?.timestamp,
-            is_offline: !latest || (Date.now() - new Date(latest.timestamp).getTime()) > 60 * 60 * 1000
-        } as any)
-    })
-
-    const isLoading = queries.some(q => q.isLoading)
-    const isError = queries.some(q => q.isError)
-
-    return {
+    return useMemo(() => ({
         devices: enrichedDevices,
         deviceData: deviceDataMap,
         isLoading,
         isError
-    }
+    }), [enrichedDevices, deviceDataMap, isLoading, isError])
 }
 
 /**
  * Fetch ThingSpeak data for charts (real-time)
- * This replaces Supabase sensor_data for real-time chart updates
+ * This provides high-frequency sensor data for real-time chart updates
  */
 export function useDeviceThingSpeakChartData(
     device: Device | undefined,

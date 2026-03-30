@@ -1,173 +1,256 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { auth } from '../lib/firebase'
+import { 
+    signInWithEmailAndPassword, 
+    createUserWithEmailAndPassword,
+    GoogleAuthProvider, 
+    signInWithPopup 
+} from 'firebase/auth'
 import { Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react'
 
+// Custom Google Icon
+const GoogleIcon = () => (
+    <svg className="w-5 h-5" viewBox="0 0 24 24">
+        <path
+            fill="#4285F4"
+            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+        />
+        <path
+            fill="#34A853"
+            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+        />
+        <path
+            fill="#FBBC05"
+            d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94L5.84 14.1z"
+        />
+        <path
+            fill="#EA4335"
+            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+        />
+    </svg>
+)
+
 export default function Login() {
+    const [isSignUp, setIsSignUp] = useState(false)
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+    const [confirmPassword, setConfirmPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [showPassword, setShowPassword] = useState(false)
-    const [rememberMe, setRememberMe] = useState(false)
 
     const navigate = useNavigate()
     const location = useLocation()
     const from = location.state?.from?.pathname || '/'
 
-    const handleLogin = async (e: React.FormEvent) => {
+    // Cursor Glow Effect
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            const x = e.clientX;
+            const y = e.clientY;
+            document.documentElement.style.setProperty('--mouse-x', `${x}px`);
+            document.documentElement.style.setProperty('--mouse-y', `${y}px`);
+        };
+        window.addEventListener('mousemove', handleMouseMove);
+        return () => window.removeEventListener('mousemove', handleMouseMove);
+    }, []);
+
+    const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
         setError(null)
 
-        try {
-            const { error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-            })
+        if (isSignUp && password !== confirmPassword) {
+            setError("Passwords do not match")
+            setLoading(false)
+            return
+        }
 
-            if (error) throw error
-            navigate(from, { replace: true })
-        } catch (err) {
-            if (err instanceof Error) {
-                setError(err.message)
+        try {
+            if (isSignUp) {
+                await createUserWithEmailAndPassword(auth, email, password)
             } else {
-                setError('Failed to login')
+                await signInWithEmailAndPassword(auth, email, password)
             }
+            navigate(from, { replace: true })
+        } catch (err: any) {
+            setError(err.message || 'Authentication failed')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleGoogleLogin = async () => {
+        const provider = new GoogleAuthProvider()
+        setLoading(true)
+        setError(null)
+        try {
+            await signInWithPopup(auth, provider)
+            navigate(from, { replace: true })
+        } catch (err: any) {
+            setError(err.message || 'Google login failed')
         } finally {
             setLoading(false)
         }
     }
 
     return (
-        <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
-            {/* Animated Background Gradient */}
-            <div className="absolute inset-0 overflow-hidden">
-                <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-blue-600/20 via-transparent to-transparent rounded-full blur-3xl animate-pulse" />
-                <div className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-to-tl from-cyan-500/15 via-transparent to-transparent rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-                <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-gradient-to-br from-purple-500/10 via-transparent to-transparent rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
+        <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden font-sans selection:bg-primary/30">
+            {/* Interactive Cursor Glow */}
+            <div 
+                className="fixed inset-0 pointer-events-none z-0"
+                style={{
+                    background: `radial-gradient(400px circle at var(--mouse-x) var(--mouse-y), rgba(6, 182, 212, 0.08), transparent 80%)`
+                }}
+            />
+
+            {/* Background Decorative Elements */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40">
+                <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px] animate-pulse" />
+                <div className="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-cyan-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }} />
             </div>
 
-            {/* Partner Logos - Top Corners */}
-            <div className="absolute top-6 left-6 z-10">
-                <img
-                    src="/evaratech-logo.png"
-                    alt="EvaraTech"
-                    className="h-10 md:h-12 object-contain opacity-90 hover:opacity-100 transition-opacity"
-                />
-            </div>
-            <div className="absolute top-6 right-6 z-10">
-                <img
-                    src="/iiith-logo.png"
-                    alt="IIIT Hyderabad"
-                    className="h-10 md:h-12 object-contain opacity-90 hover:opacity-100 transition-opacity invert"
-                />
+            {/* Partner Logos */}
+            <div className="absolute top-8 left-8 z-10 hidden sm:block">
+                <img src="/evaratech-logo.png" alt="EvaraTech" className="h-14 opacity-60 hover:opacity-100 transition-opacity" />
             </div>
 
-            {/* Login Card */}
-            <div className="w-full max-w-md relative z-10">
-                {/* Glass Card */}
-                <div className="bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl p-8 md:p-10">
-                    {/* App Logo & Title */}
-                    <div className="flex flex-col items-center mb-8">
-                        <div className="relative mb-6">
-                            <div className="absolute inset-0 bg-blue-500/30 rounded-full blur-xl animate-pulse" />
+            {/* Login Card - Wider & More Compact */}
+            <div className="w-full max-w-[440px] relative z-10 animate-in fade-in zoom-in-95 duration-700">
+                <div className="bg-secondary/80 backdrop-blur-3xl border border-accent rounded-[2rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)] p-8 md:px-10 md:py-8 ring-1 ring-accent overflow-hidden">
+                    
+                    {/* App Logo & Title - Compact Alignment */}
+                    <div className="flex items-center justify-center gap-5 mb-8">
+                        <div className="relative group shrink-0">
+                            <div className="absolute inset-0 bg-cyan-500/20 rounded-2xl blur-xl group-hover:bg-cyan-500/40 transition-all duration-500" />
                             <img
-                                src="/pwa-512x512.png"
+                                src="/pwa-192x192.png"
                                 alt="EvaraTDS"
-                                className="relative h-20 w-20 rounded-2xl shadow-lg shadow-blue-500/20"
+                                className="relative h-14 w-14 rounded-2xl shadow-2xl transition-transform duration-500 group-hover:scale-105"
                             />
                         </div>
-                        <h1 className="text-3xl font-bold text-white tracking-tight">Sign in to your account</h1>
-                        <p className="text-white/50 mt-2 text-sm">Water Quality Monitoring System</p>
+                        <div className="text-left">
+                            <h1 className="text-2xl font-bold text-foreground tracking-tight leading-none">
+                                {isSignUp ? 'Create Account' : 'Welcome'}
+                            </h1>
+                            <p className="text-muted-foreground/60 mt-1.5 text-[9px] font-bold uppercase tracking-[0.2em]">
+                                TDS Monitoring System
+                            </p>
+                        </div>
                     </div>
 
                     {/* Error Message */}
                     {error && (
-                        <div className="mb-6 bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-center gap-3 text-red-400">
-                            <AlertCircle className="h-5 w-5 flex-shrink-0" />
-                            <span className="text-sm">{error}</span>
+                        <div className="mb-5 bg-red-500/5 border border-red-500/10 rounded-xl p-3 flex items-center gap-2.5 text-red-400 animate-in slide-in-from-top-1">
+                            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                            <span className="text-xs font-medium">{error}</span>
                         </div>
                     )}
 
-                    {/* Login Form */}
-                    <form onSubmit={handleLogin} className="space-y-5">
-                        {/* Email Input */}
-                        <div className="space-y-2">
-                            <div className="relative">
-                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-white/30" />
+                    {/* Auth Form */}
+                    <form onSubmit={handleAuth} className="space-y-4">
+                        <div className="grid grid-cols-1 gap-3.5">
+                            {/* Email Input */}
+                            <div className="relative group">
+                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 group-focus-within:text-cyan-400 transition-colors" />
                                 <input
                                     type="email"
                                     required
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full bg-white/5 border border-white/10 rounded-full py-3.5 pl-12 pr-4 text-white focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 placeholder:text-white/30 transition-all text-sm"
-                                    placeholder="Your Email"
+                                    className="w-full bg-background/20 border border-accent rounded-xl py-3 pl-11 pr-4 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/30 transition-all text-xs"
+                                    placeholder="Enter your email"
                                 />
                             </div>
-                        </div>
 
-                        {/* Password Input */}
-                        <div className="space-y-2">
-                            <div className="relative">
-                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-white/30" />
+                            {/* Password Input */}
+                            <div className="relative group">
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 group-focus-within:text-cyan-400 transition-colors" />
                                 <input
                                     type={showPassword ? 'text' : 'password'}
                                     required
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full bg-white/5 border border-white/10 rounded-full py-3.5 pl-12 pr-12 text-white focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 placeholder:text-white/30 transition-all text-sm"
+                                    className="w-full bg-background/20 border border-accent rounded-xl py-3 pl-11 pr-11 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/30 transition-all text-xs"
                                     placeholder="Password"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-foreground transition-colors"
                                 >
-                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
                             </div>
+
+                            {/* Confirm Password (only for Sign Up) */}
+                            {isSignUp && (
+                                <div className="relative group animate-in slide-in-from-top-1">
+                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 group-focus-within:text-cyan-400 transition-colors" />
+                                    <input
+                                        type={showPassword ? 'text' : 'password'}
+                                        required
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        className="w-full bg-background/20 border border-accent rounded-xl py-3 pl-11 pr-11 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/30 transition-all text-xs"
+                                        placeholder="Confirm password"
+                                    />
+                                </div>
+                            )}
                         </div>
 
-                        {/* Login Button */}
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-semibold py-3.5 rounded-full shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm tracking-wide"
-                        >
-                            {loading ? 'Authenticating...' : 'Login'}
-                        </button>
+                        {/* Buttons Row - Side by Side for better aspect ratio if possible, or just optimized spacing */}
+                        <div className="flex flex-col gap-3 pt-2">
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-cyan-900/10 transition-all active:scale-[0.98] disabled:opacity-50 text-sm tracking-wide"
+                            >
+                                {loading ? (
+                                    <div className="flex items-center justify-center gap-2">
+                                        <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                                    </div>
+                                ) : (
+                                    <span>{isSignUp ? 'Create Account' : 'Sign In'}</span>
+                                )}
+                            </button>
 
-                        {/* Remember Me & Forgot Password */}
-                        <div className="flex items-center justify-between text-sm">
-                            <label className="flex items-center gap-2 text-white/50 cursor-pointer hover:text-white/70 transition-colors">
-                                <input
-                                    type="checkbox"
-                                    checked={rememberMe}
-                                    onChange={(e) => setRememberMe(e.target.checked)}
-                                    className="w-4 h-4 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500/20"
-                                />
-                                Remember me
-                            </label>
-                            <a href="#" className="text-white/50 hover:text-white transition-colors">
-                                Forgot Password
-                            </a>
+                            <button
+                                type="button"
+                                onClick={handleGoogleLogin}
+                                disabled={loading}
+                                className="w-full bg-background/20 border border-accent hover:bg-background/40 text-foreground/80 font-medium py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all duration-300 active:scale-[0.98] disabled:opacity-50 text-xs border-dashed"
+                            >
+                                <GoogleIcon />
+                                <span>Google login</span>
+                            </button>
                         </div>
 
-                        {/* Sign Up Link */}
-                        <div className="text-center pt-4 border-t border-white/5">
-                            <p className="text-white/40 text-sm">
-                                If you do not have an account, <a href="#" className="text-white/70 hover:text-white underline transition-colors">Sign up</a>
+                        {/* Action Links */}
+                        <div className="flex items-center justify-between pt-5 border-t border-accent">
+                            <p className="text-muted-foreground/40 text-xs">
+                                {isSignUp ? "Joined?" : "New here?"}
+                                <button 
+                                    type="button"
+                                    onClick={() => setIsSignUp(!isSignUp)}
+                                    className="ml-1.5 text-cyan-400 hover:text-cyan-300 font-bold transition-colors"
+                                >
+                                    {isSignUp ? 'Sign In' : 'Create One'}
+                                </button>
                             </p>
+                            {!isSignUp && (
+                                <button type="button" className="text-[10px] text-muted-foreground/20 hover:text-muted-foreground transition-colors">
+                                    Forgot Password?
+                                </button>
+                            )}
                         </div>
                     </form>
                 </div>
-
-                {/* Footer Text */}
-                <p className="text-center text-white/30 text-xs mt-6">
-                    A collaboration between EvaraTech & IIIT Hyderabad
-                </p>
             </div>
         </div>
     )
 }
+
+
+

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
-import type { Device } from '../lib/supabase'
+import { type Device } from '../types'
 import ConfidenceRing from './ConfidenceRing'
 
 interface DeviceTableProps {
@@ -83,7 +83,7 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
 
             <div className="overflow-x-auto flex-1 custom-scrollbar">
                 <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-[#000000]/80 backdrop-blur-xl z-20">
+                    <thead className="sticky top-0 bg-white/5 backdrop-blur-2xl z-20">
                         <tr className="text-xs text-[#6e6e73] font-medium border-b border-white/5 uppercase tracking-wider">
                             <th className="p-4 pl-6 w-12">
                                 <button

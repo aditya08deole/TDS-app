@@ -1,11 +1,27 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import { supabase, type Device } from '../lib/supabase'
+import { 
+    collection, 
+    query, 
+    where, 
+    getDocs, 
+    getDoc, 
+    doc, 
+    addDoc, 
+    updateDoc, 
+    deleteDoc, 
+    onSnapshot, 
+    orderBy, 
+    limit as firestoreLimit,
+    serverTimestamp
+} from 'firebase/firestore'
+import { db } from '../lib/firebase'
+import type { Device } from '../types'
 import { queryKeys } from '../lib/queryClient'
 import { cacheDevices, getCachedDevices } from '../lib/cache'
 
 /**
- * Fetch all devices from Supabase
+ * Fetch all devices from Firestore
  */
 async function fetchDevices(): Promise<Device[]> {
     // Try cache first
@@ -15,13 +31,13 @@ async function fetchDevices(): Promise<Device[]> {
         return cached
     }
 
-    // Fetch from Supabase
-    const { data, error } = await supabase
-        .from('devices')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-    if (error) throw error
+    // Fetch from Firestore
+    const q = query(collection(db, 'devices'), orderBy('created_at', 'desc'))
+    const querySnapshot = await getDocs(q)
+    const data = querySnapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
+    })) as Device[]
 
     // Cache the result
     if (data) {
@@ -38,8 +54,8 @@ export function useDevices() {
     return useQuery({
         queryKey: queryKeys.devices,
         queryFn: fetchDevices,
-        staleTime: 5 * 60 * 1000, // 5 minutes
-        gcTime: 10 * 60 * 1000, // 10 minutes
+        staleTime: 5 * 60 * 1000,
+        gcTime: 10 * 60 * 1000,
     })
 }
 
@@ -52,14 +68,14 @@ export function useDevice(deviceId: string | undefined) {
         queryFn: async () => {
             if (!deviceId) return null
 
-            const { data, error } = await supabase
-                .from('devices')
-                .select('*')
-                .eq('id', deviceId)
-                .single()
+            const docRef = doc(db, 'devices', deviceId)
+            const docSnap = await getDoc(docRef)
 
-            if (error) throw error
-            return data
+            if (!docSnap.exists()) {
+                throw new Error('Device not found')
+            }
+
+            return { id: docSnap.id, ...docSnap.data() } as Device
         },
         enabled: !!deviceId,
         staleTime: 5 * 60 * 1000,
@@ -74,17 +90,16 @@ export function useAddDevice() {
 
     return useMutation({
         mutationFn: async (newDevice: Partial<Device>) => {
-            const { data, error } = await supabase
-                .from('devices')
-                .insert([newDevice])
-                .select()
-                .single()
-
-            if (error) throw error
-            return data
+            const docRef = await addDoc(collection(db, 'devices'), {
+                ...newDevice,
+                created_at: serverTimestamp(),
+                status: newDevice.status || 'offline'
+            })
+            
+            const docSnap = await getDoc(docRef)
+            return { id: docSnap.id, ...docSnap.data() } as Device
         },
         onSuccess: () => {
-            // Invalidate devices query to refetch
             queryClient.invalidateQueries({ queryKey: queryKeys.devices })
         },
     })
@@ -98,18 +113,13 @@ export function useUpdateDevice() {
 
     return useMutation({
         mutationFn: async ({ id, updates }: { id: string; updates: Partial<Device> }) => {
-            const { data, error } = await supabase
-                .from('devices')
-                .update(updates)
-                .eq('id', id)
-                .select()
-                .single()
-
-            if (error) throw error
-            return data
+            const docRef = doc(db, 'devices', id)
+            await updateDoc(docRef, updates)
+            
+            const docSnap = await getDoc(docRef)
+            return { id: docSnap.id, ...docSnap.data() } as Device
         },
         onSuccess: (data) => {
-            // Update cache optimistically
             queryClient.setQueryData(queryKeys.device(data.id), data)
             queryClient.invalidateQueries({ queryKey: queryKeys.devices })
         },
@@ -124,12 +134,8 @@ export function useDeleteDevice() {
 
     return useMutation({
         mutationFn: async (deviceId: string) => {
-            const { error } = await supabase
-                .from('devices')
-                .delete()
-                .eq('id', deviceId)
-
-            if (error) throw error
+            const docRef = doc(db, 'devices', deviceId)
+            await deleteDoc(docRef)
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.devices })
@@ -139,94 +145,80 @@ export function useDeleteDevice() {
 
 /**
  * Subscribe to real-time device changes
- * Optimized to update cache directly instead of invalidating
  */
 export function useDeviceSubscription() {
     const queryClient = useQueryClient()
 
     useEffect(() => {
-        console.log('🔌 Setting up Supabase realtime subscription for devices')
+        console.log('🔥 Setting up Firestore realtime subscription for devices')
 
-        const subscription = supabase
-            .channel('devices_realtime')
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'devices'
-            }, (payload) => {
-                const newDevice = payload.new as Device | null
-                const oldDevice = payload.old as Device | null
-                console.log('🔄 Device change detected:', payload.eventType, newDevice?.name || oldDevice?.name)
+        const q = collection(db, 'devices')
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                const deviceData = { id: change.doc.id, ...change.doc.data() } as Device
+                console.log(`🔄 Device ${change.type}:`, deviceData.name)
 
-                // Update cache directly based on event type
                 queryClient.setQueryData<Device[]>(queryKeys.devices, (oldDevices) => {
                     if (!oldDevices) return oldDevices
 
-                    switch (payload.eventType) {
-                        case 'INSERT':
-                            // Add new device to cache
-                            return [payload.new as Device, ...oldDevices]
+                    switch (change.type) {
+                        case 'added':
+                            // If it's already in the cache, ignore (TanStack Query might have it)
+                            if (oldDevices.find(d => d.id === deviceData.id)) return oldDevices
+                            return [deviceData, ...oldDevices]
 
-                        case 'UPDATE':
-                            // Update existing device in cache
+                        case 'modified':
                             return oldDevices.map(device =>
-                                device.id === payload.new.id ? payload.new as Device : device
+                                device.id === deviceData.id ? deviceData : device
                             )
 
-                        case 'DELETE':
-                            // Remove device from cache
-                            return oldDevices.filter(device => device.id !== payload.old.id)
+                        case 'removed':
+                            return oldDevices.filter(device => device.id !== deviceData.id)
 
                         default:
                             return oldDevices
                     }
                 })
+            })
 
-                // Also update IndexedDB cache
-                if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-                    const currentDevices = queryClient.getQueryData<Device[]>(queryKeys.devices)
-                    if (currentDevices) {
-                        cacheDevices(currentDevices).catch(console.error)
-                    }
-                }
-            })
-            .subscribe((status) => {
-                if (status === 'SUBSCRIBED') {
-                    console.log('✅ Realtime subscription active')
-                } else if (status === 'CHANNEL_ERROR') {
-                    console.error('❌ Realtime subscription error')
-                }
-            })
+            // Update IndexedDB cache
+            const currentDevices = queryClient.getQueryData<Device[]>(queryKeys.devices)
+            if (currentDevices) {
+                cacheDevices(currentDevices).catch(console.error)
+            }
+        })
 
         return () => {
-            console.log('🔌 Cleaning up realtime subscription')
-            subscription.unsubscribe()
+            console.log('🔥 Cleaning up Firestore subscription')
+            unsubscribe()
         }
     }, [queryClient])
 }
 
 /**
- * Hook to fetch historical sensor data from Supabase (for charts)
- * Used in hybrid strategy: Supabase for charts, ThingSpeak for real-time status
+ * Hook to fetch historical sensor data from Firestore (for charts)
  */
-export function useDeviceSensorData(deviceId: string | undefined, limit: number = 100) {
+export function useDeviceSensorData(deviceId: string | undefined, limitCount: number = 100) {
     return useQuery({
-        queryKey: ['sensor_data', deviceId, limit],
+        queryKey: ['sensor_data', deviceId, limitCount],
         queryFn: async () => {
             if (!deviceId) return []
 
-            const { data, error } = await supabase
-                .from('sensor_data')
-                .select('*')
-                .eq('device_id', deviceId)
-                .order('recorded_at', { ascending: false })
-                .limit(limit)
+            const q = query(
+                collection(db, 'sensor_data'),
+                where('device_id', '==', deviceId),
+                orderBy('recorded_at', 'desc'),
+                firestoreLimit(limitCount)
+            )
 
-            if (error) throw error
-            return data || []
+            const querySnapshot = await getDocs(q)
+            return querySnapshot.docs.map(doc => ({ 
+                id: doc.id, 
+                ...doc.data() 
+            })) as any[] // SensorData mapping
         },
         enabled: !!deviceId,
-        staleTime: 30 * 1000, // Cache for 30s (historical data doesn't change fast)
+        staleTime: 30 * 1000,
         gcTime: 5 * 60 * 1000
     })
 }

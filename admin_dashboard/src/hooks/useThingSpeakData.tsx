@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchFeeds, type ParsedSensorData, type FieldMapping } from '../lib/thingspeak'
 import { THINGSPEAK_POLL_INTERVAL, isDeviceOffline } from '../lib/constants'
-import type { Device } from '../lib/supabase'
+import type { Device } from '../types'
 
 export interface DeviceWithSensorData extends Device {
     latest_tds?: number

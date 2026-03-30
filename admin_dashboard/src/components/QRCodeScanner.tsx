@@ -20,6 +20,8 @@ interface ScanResult {
     tds_field?: number
     temp_field?: number
     voltage_field?: number
+    safe_tds_min?: number
+    safe_tds_max?: number
 }
 
 interface QRCodeScannerProps {
@@ -64,7 +66,9 @@ export function QRCodeScanner({ isOpen, onClose, onScan }: QRCodeScannerProps) {
                 thingspeak_read_key: decoded.data.api_key || '',
                 tds_field: decoded.data.f_tds || 1,
                 temp_field: decoded.data.f_temp || 2,
-                voltage_field: decoded.data.f_volt || 3
+                voltage_field: decoded.data.f_volt || 3,
+                safe_tds_min: decoded.data.s_min || 35,
+                safe_tds_max: decoded.data.s_max || 175
             }
 
             setSuccess(true)

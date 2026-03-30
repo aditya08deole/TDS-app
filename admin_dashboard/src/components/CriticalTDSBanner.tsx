@@ -1,6 +1,6 @@
 import { AlertTriangle, X } from 'lucide-react'
 import { useState } from 'react'
-import type { EnrichedDevice } from '../lib/supabase'
+import type { EnrichedDevice } from '../types'
 import { getDeviceDisplayName } from '../lib/constants'
 
 interface CriticalTDSBannerProps {

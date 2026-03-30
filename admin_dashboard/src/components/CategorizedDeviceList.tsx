@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import type { EnrichedDevice } from '@/lib/supabase'
+import type { EnrichedDevice } from '@/types'
 import { getDeviceDisplayName } from '@/lib/constants'
 
 interface CategorizedDeviceListProps {

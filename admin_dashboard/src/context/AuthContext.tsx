@@ -1,10 +1,19 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import type { Session, User } from '@supabase/supabase-js'
-import { supabase } from '../lib/supabase'
-import type { Profile } from '../lib/supabase'
+import type { User } from 'firebase/auth'
+import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth'
+import { doc, getDoc } from 'firebase/firestore'
+import { auth, db } from '../lib/firebase'
+
+export type Profile = {
+    id: string
+    email: string
+    name?: string
+    role: 'viewer' | 'field_engineer' | 'admin' | 'super_admin'
+    avatar_url?: string
+    created_at: string
+}
 
 type AuthContextType = {
-    session: Session | null
     user: User | null
     profile: Profile | null
     loading: boolean
@@ -15,43 +24,84 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-    const [session, setSession] = useState<Session | null>(null)
     const [user, setUser] = useState<User | null>(null)
     const [profile, setProfile] = useState<Profile | null>(null)
     const [loading, setLoading] = useState(true)
+    const [adminEmails, setAdminEmails] = useState<string[]>([
+        'adityadeole08@gmail.com',
+        'ritik@evaratech.com',
+        'yasha@evaratech.com',
+        'aditya@evaratech.com'
+    ])
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session)
-            setUser(session?.user ?? null)
-            if (session?.user) fetchProfile(session.user.id)
-            else setLoading(false)
-        })
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session)
-            setUser(session?.user ?? null)
-            if (session?.user) {
-                fetchProfile(session.user.id)
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+            setUser(firebaseUser)
+            
+            if (firebaseUser) {
+                await Promise.all([
+                    fetchProfile(firebaseUser.uid, firebaseUser.email),
+                    fetchAdminConfig()
+                ])
             } else {
                 setProfile(null)
                 setLoading(false)
             }
         })
 
-        return () => subscription.unsubscribe()
+        return () => unsubscribe()
     }, [])
 
-    async function fetchProfile(userId: string) {
+    async function fetchAdminConfig() {
         try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', userId)
-                .single()
+            const configRef = doc(db, 'app_config', 'admin_emails')
+            const configSnap = await getDoc(configRef)
+            if (configSnap.exists()) {
+                const data = configSnap.data()
+                if (data.emails && Array.isArray(data.emails)) {
+                    console.log('🛡️ Admin config loaded from Firestore')
+                    setAdminEmails(data.emails.map((e: string) => e.toLowerCase()))
+                }
+            }
+        } catch (err) {
+            console.warn('⚠️ Failed to fetch admin config, using code fallbacks', err)
+        }
+    }
 
-            if (error) throw error
-            setProfile(data)
+    async function fetchProfile(userId: string, email?: string | null) {
+        try {
+            const docRef = doc(db, 'users', userId)
+            const docSnap = await getDoc(docRef)
+
+            if (docSnap.exists()) {
+                setProfile(docSnap.data() as Profile)
+            } else if (email) {
+                // Determine role: Use local admin list as source of truth for auto-profile
+                const isHardcoded = adminEmails.includes(email.toLowerCase())
+                const role = isHardcoded ? 'super_admin' : 'viewer'
+                
+                console.log(`🆕 Creating auto-profile for ${email} as ${role}`)
+                
+                const newProfile: Profile = {
+                    id: userId,
+                    email: email,
+                    name: email.split('@')[0],
+                    role: role as any,
+                    created_at: new Date().toISOString()
+                }
+                
+                setProfile(newProfile)
+                
+                import('firebase/firestore').then(({ setDoc, serverTimestamp }) => {
+                    setDoc(docRef, {
+                        ...newProfile,
+                        created_at: serverTimestamp(),
+                        status: 'active'
+                    }, { merge: true }).catch(err => console.error('Auto-profile failed:', err))
+                })
+            } else {
+                setProfile(null)
+            }
         } catch (error) {
             console.error('Error fetching profile:', error)
         } finally {
@@ -60,15 +110,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const signOut = async () => {
-        await supabase.auth.signOut()
+        await firebaseSignOut(auth)
     }
 
+    const isHardcodedAdmin = React.useMemo(() => 
+        user?.email && adminEmails.includes(user.email.toLowerCase())
+    , [user?.email, adminEmails])
+
+    // SYNCHRONOUS DERIVED PROFILE: Ensures immediate Admin UI even if DB hangs
+    const effectiveProfile = React.useMemo(() => {
+        if (profile) return profile
+        if (isHardcodedAdmin && user?.email) {
+            return {
+                id: user.uid,
+                email: user.email,
+                name: user.email.split('@')[0],
+                role: 'super_admin' as const,
+                created_at: new Date().toISOString(),
+                status: 'active'
+            }
+        }
+        return null
+    }, [profile, isHardcodedAdmin, user])
+
     const value = {
-        session,
         user,
-        profile,
-        loading,
-        isAdmin: profile?.role === 'admin' || profile?.role === 'super_admin',
+        profile: effectiveProfile,
+        loading: loading && !isHardcodedAdmin,
+        isAdmin: isHardcodedAdmin || effectiveProfile?.role === 'admin' || effectiveProfile?.role === 'super_admin',
         signOut
     }
 

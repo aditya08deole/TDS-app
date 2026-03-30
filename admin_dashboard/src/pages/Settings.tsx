@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/firebase'
+import { doc, getDoc, setDoc } from 'firebase/firestore'
 import {
     User, Bell, Shield, LogOut, Moon, Mail, ChevronRight, Save, Loader2, CheckCircle,
     Globe, Lock, Layout, BellRing, UserCircle
@@ -38,13 +39,11 @@ export default function Settings() {
             if (!user) return
             setLoading(true)
             try {
-                const { data } = await supabase
-                    .from('user_settings')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .single()
+                const docRef = doc(db, 'user_settings', user.uid)
+                const docSnap = await getDoc(docRef)
 
-                if (data) {
+                if (docSnap.exists()) {
+                    const data = docSnap.data()
                     setSettings({
                         notifications_enabled: data.notifications_enabled ?? true,
                         email_alerts: data.email_alerts ?? false,
@@ -64,13 +63,12 @@ export default function Settings() {
         if (!user) return
         setSaving(true)
         try {
-            await supabase
-                .from('user_settings')
-                .upsert({
-                    user_id: user.id,
-                    ...settings,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'user_id' })
+            const docRef = doc(db, 'user_settings', user.uid)
+            await setDoc(docRef, {
+                ...settings,
+                user_id: user.uid,
+                updated_at: new Date().toISOString()
+            }, { merge: true })
 
             setSaved(true)
             setTimeout(() => setSaved(false), 2000)
@@ -108,8 +106,8 @@ export default function Settings() {
             {/* Sidebar (Left Panel) */}
             <div className="w-full lg:w-64 shrink-0 space-y-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-white tracking-tight">Settings</h1>
-                    <p className="text-[#86868b] text-sm mt-1">System Preferences</p>
+                    <h1 className="text-2xl font-bold text-foreground tracking-tight">Settings</h1>
+                    <p className="text-muted-foreground text-sm mt-1">System Preferences</p>
                 </div>
 
                 <GlassCard className="p-2 flex flex-col gap-1">
@@ -118,11 +116,11 @@ export default function Settings() {
                             key={item.id}
                             onClick={() => setActiveTab(item.id as SettingsTab)}
                             className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === item.id
-                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                                : 'text-[#86868b] hover:text-white hover:bg-white/5'
+                                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
                                 }`}
                         >
-                            <item.icon className={`w-4 h-4 ${activeTab === item.id ? 'text-white' : 'text-[#86868b]'}`} />
+                            <item.icon className={`w-4 h-4 ${activeTab === item.id ? 'text-primary-foreground' : 'text-muted-foreground'}`} />
                             {item.label}
                         </button>
                     ))}
@@ -130,12 +128,12 @@ export default function Settings() {
 
                 <GlassCard className="p-4">
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-primary-foreground font-bold">
                             {user?.email?.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
-                            <p className="text-sm font-medium text-white truncate">{user?.email}</p>
-                            <p className="text-xs text-[#86868b]">Administrator</p>
+                            <p className="text-sm font-medium text-foreground truncate">{user?.email}</p>
+                            <p className="text-xs text-muted-foreground">Administrator</p>
                         </div>
                     </div>
                     <Button
@@ -156,17 +154,17 @@ export default function Settings() {
                     {activeTab === 'general' && (
                         <div className="space-y-6 animate-fade-in">
                             <div>
-                                <h2 className="text-xl font-bold text-white">General Settings</h2>
-                                <p className="text-[#86868b] text-sm">Customize viewing experience</p>
+                                <h2 className="text-xl font-bold text-foreground">General Settings</h2>
+                                <p className="text-muted-foreground text-sm">Customize viewing experience</p>
                             </div>
 
-                            <div className="bg-[#1c1c1e] rounded-xl overflow-hidden border border-white/5 divide-y divide-white/5">
+                            <div className="bg-secondary/50 rounded-xl overflow-hidden border border-accent divide-y divide-accent">
                                 <div className="p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-4">
                                         <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500"><Moon className="w-5 h-5" /></div>
                                         <div>
-                                            <p className="text-white font-medium">Dark Mode</p>
-                                            <p className="text-xs text-[#86868b]">Force application wide dark theme</p>
+                                            <p className="text-foreground font-medium">Dark Mode</p>
+                                            <p className="text-xs text-muted-foreground">Force application wide dark theme</p>
                                         </div>
                                     </div>
                                     <Switch
@@ -178,11 +176,11 @@ export default function Settings() {
                                     <div className="flex items-center gap-4">
                                         <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500"><Globe className="w-5 h-5" /></div>
                                         <div>
-                                            <p className="text-white font-medium">Language</p>
-                                            <p className="text-xs text-[#86868b]">English (US)</p>
+                                            <p className="text-foreground font-medium">Language</p>
+                                            <p className="text-xs text-muted-foreground">English (US)</p>
                                         </div>
                                     </div>
-                                    <ChevronRight className="w-5 h-5 text-[#86868b]" />
+                                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
                                 </div>
                             </div>
                         </div>
@@ -191,17 +189,17 @@ export default function Settings() {
                     {activeTab === 'notifications' && (
                         <div className="space-y-6 animate-fade-in">
                             <div>
-                                <h2 className="text-xl font-bold text-white">Notifications</h2>
-                                <p className="text-[#86868b] text-sm">Manage alert delivery</p>
+                                <h2 className="text-xl font-bold text-foreground">Notifications</h2>
+                                <p className="text-muted-foreground text-sm">Manage alert delivery</p>
                             </div>
 
-                            <div className="bg-[#1c1c1e] rounded-xl overflow-hidden border border-white/5 divide-y divide-white/5">
+                            <div className="bg-secondary/50 rounded-xl overflow-hidden border border-accent divide-y divide-accent">
                                 <div className="p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-4">
                                         <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500"><BellRing className="w-5 h-5" /></div>
                                         <div>
-                                            <p className="text-white font-medium">Push Notifications</p>
-                                            <p className="text-xs text-[#86868b]">Receive critical alerts on device</p>
+                                            <p className="text-foreground font-medium">Push Notifications</p>
+                                            <p className="text-xs text-muted-foreground">Receive critical alerts on device</p>
                                         </div>
                                     </div>
                                     <Switch
@@ -213,8 +211,8 @@ export default function Settings() {
                                     <div className="flex items-center gap-4">
                                         <div className="p-2 rounded-lg bg-green-500/10 text-green-500"><Mail className="w-5 h-5" /></div>
                                         <div>
-                                            <p className="text-white font-medium">Email Alerts</p>
-                                            <p className="text-xs text-[#86868b]">Weekly digest and critical errors</p>
+                                            <p className="text-foreground font-medium">Email Alerts</p>
+                                            <p className="text-xs text-muted-foreground">Weekly digest and critical errors</p>
                                         </div>
                                     </div>
                                     <Switch
@@ -229,37 +227,37 @@ export default function Settings() {
                     {activeTab === 'account' && (
                         <div className="space-y-6 animate-fade-in">
                             <div>
-                                <h2 className="text-xl font-bold text-white">Account & Security</h2>
-                                <p className="text-[#86868b] text-sm">Update profile and security keys</p>
+                                <h2 className="text-xl font-bold text-foreground">Account & Security</h2>
+                                <p className="text-muted-foreground text-sm">Update profile and security keys</p>
                             </div>
 
-                            <div className="bg-[#1c1c1e] rounded-xl overflow-hidden border border-white/5 divide-y divide-white/5">
-                                <div className="p-4 flex items-center justify-between hover:bg-white/5 cursor-pointer transition-colors">
+                            <div className="bg-secondary/50 rounded-xl overflow-hidden border border-accent divide-y divide-accent">
+                                <div className="p-4 flex items-center justify-between hover:bg-accent/50 cursor-pointer transition-colors">
                                     <div className="flex items-center gap-4">
                                         <div className="p-2 rounded-lg bg-slate-500/10 text-slate-400"><User className="w-5 h-5" /></div>
                                         <div>
-                                            <p className="text-white font-medium">Edit Profile</p>
-                                            <p className="text-xs text-[#86868b]">Name, Avatar</p>
+                                            <p className="text-foreground font-medium">Edit Profile</p>
+                                            <p className="text-xs text-muted-foreground">Name, Avatar</p>
                                         </div>
                                     </div>
-                                    <ChevronRight className="w-5 h-5 text-[#86868b]" />
+                                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
                                 </div>
-                                <div className="p-4 flex items-center justify-between hover:bg-white/5 cursor-pointer transition-colors">
+                                <div className="p-4 flex items-center justify-between hover:bg-accent/50 cursor-pointer transition-colors">
                                     <div className="flex items-center gap-4">
                                         <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500"><Lock className="w-5 h-5" /></div>
                                         <div>
-                                            <p className="text-white font-medium">Change Password</p>
-                                            <p className="text-xs text-[#86868b]">Last changed 3 months ago</p>
+                                            <p className="text-foreground font-medium">Change Password</p>
+                                            <p className="text-xs text-muted-foreground">Last changed 3 months ago</p>
                                         </div>
                                     </div>
-                                    <ChevronRight className="w-5 h-5 text-[#86868b]" />
+                                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
                                 </div>
-                                <div className="p-4 flex items-center justify-between hover:bg-white/5 cursor-pointer transition-colors">
+                                <div className="p-4 flex items-center justify-between hover:bg-accent/50 cursor-pointer transition-colors">
                                     <div className="flex items-center gap-4">
                                         <div className="p-2 rounded-lg bg-green-500/10 text-green-500"><Shield className="w-5 h-5" /></div>
                                         <div>
-                                            <p className="text-white font-medium">2FA Authentication</p>
-                                            <p className="text-xs text-[#86868b]">Enabled</p>
+                                            <p className="text-foreground font-medium">2FA Authentication</p>
+                                            <p className="text-xs text-muted-foreground">Enabled</p>
                                         </div>
                                     </div>
                                     <span className="text-xs text-green-500 font-medium bg-green-500/10 px-2 py-1 rounded">Active</span>
@@ -268,7 +266,7 @@ export default function Settings() {
                         </div>
                     )}
 
-                    <div className="pt-6 border-t border-white/10">
+                    <div className="pt-6 border-t border-accent">
                         <Button
                             onClick={saveSettings}
                             disabled={saving}

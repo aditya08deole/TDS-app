@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
+import { collection, query as firestoreQuery, where, getDocs, limit } from 'firebase/firestore'
 import { Search, Command, ArrowRight, Monitor, AlertTriangle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/firebase'
 import { useUI } from '../context/UIContext'
 
 interface SearchResult {
@@ -65,30 +66,37 @@ export default function CommandPalette() {
                 return
             }
 
-            // Using the RPC if available, or direct query fallback
             try {
-                const { data, error } = await supabase.rpc('global_search', { search_term: query })
-                if (!error && data) {
-                    setResults(data)
-                } else {
-                    // Fallback client-side search if RPC not created
-                    const { data: devices } = await supabase
-                        .from('devices')
-                        .select('id, name, location_name, status')
-                        .ilike('name', `%${query}%`)
-                        .limit(3)
-
-                    const fallbackResults: SearchResult[] = (devices || []).map(d => ({
-                        id: d.id,
+                // Since Firestore doesn't have a native global search RPC like PostgREST,
+                // we'll perform a query on the devices collection.
+                const q = firestoreQuery(
+                    collection(db, 'devices'),
+                    where('name', '>=', query),
+                    where('name', '<=', query + '\uf8ff'),
+                    limit(5)
+                )
+                
+                const querySnapshot = await getDocs(q)
+                const deviceResults: SearchResult[] = []
+                
+                querySnapshot.forEach((doc) => {
+                    const d = doc.data() as any
+                    deviceResults.push({
+                        id: doc.id,
                         type: 'device',
-                        title: d.name,
-                        subtitle: d.location_name,
+                        title: d.name || 'Unnamed Device',
+                        subtitle: d.location_name || 'No location',
                         metadata: { status: d.status }
-                    }))
-                    setResults(fallbackResults)
-                }
+                    })
+                })
+                
+                setResults(deviceResults.length > 0 ? deviceResults : [
+                    { id: 'nav-map', type: 'nav', title: 'Go to Map', url: '/map', subtitle: 'View geolocation' },
+                    { id: 'nav-alerts', type: 'nav', title: 'Go to Alerts', url: '/alerts', subtitle: 'View system warnings' },
+                    { id: 'nav-devices', type: 'nav', title: 'Go to Devices', url: '/devices', subtitle: 'Manage inventory' },
+                ])
             } catch (e) {
-                console.error(e)
+                console.error('Search error:', e)
             }
         }
 
@@ -103,8 +111,6 @@ export default function CommandPalette() {
             navigate(result.url)
         } else if (result.type === 'device') {
             openInspector(result.id)
-            // Navigate to devices page if not already there, to show context? 
-            // Better to stay on current page and just show inspector overlay.
         }
         setIsOpen(false)
     }

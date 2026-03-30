@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/firebase'
+import { collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, limit } from 'firebase/firestore'
 import { Bell, BellOff, Volume2, VolumeX, X, AlertTriangle, CheckCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -145,43 +146,48 @@ export default function NotificationManager() {
         }
     }, [permission])
 
-    // Subscribe to real-time alerts
+    // Subscribe to real-time alerts via Firestore
     useEffect(() => {
         if (!user) return
 
-        const channel = supabase
-            .channel('alerts_realtime')
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'alerts'
-            }, (payload) => {
-                const alert = payload.new as { severity?: string; message?: string; type?: string }
+        const q = query(
+            collection(db, 'alerts'),
+            orderBy('created_at', 'desc'),
+            limit(1)
+        )
 
-                const severity = alert.severity?.toLowerCase()
-                const type = severity === 'critical' ? 'error' :
-                    severity === 'high' ? 'warning' :
-                        severity === 'medium' ? 'warning' : 'info'
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added') {
+                    const alert = change.doc.data() as { severity?: string; message?: string; type?: string; created_at?: any }
+                    
+                    // Simple debounce/check for newness (Firestore sends initial snapshot)
+                    const isNew = alert.created_at?.toDate ? (new Date().getTime() - alert.created_at.toDate().getTime()) < 5000 : true;
+                    if (!isNew) return;
 
-                showToast({
-                    type,
-                    title: `${alert.type || 'Alert'}`.toUpperCase(),
-                    message: alert.message || 'New alert received'
-                })
+                    const severity = alert.severity?.toLowerCase()
+                    const type = severity === 'critical' ? 'error' :
+                        severity === 'high' ? 'warning' :
+                            severity === 'medium' ? 'warning' : 'info'
 
-                // Desktop notification for critical/high severity
-                if (severity === 'critical' || severity === 'high') {
-                    showDesktopNotification(
-                        `⚠️ ${alert.type || 'Critical Alert'}`,
-                        alert.message || 'Immediate attention required'
-                    )
+                    showToast({
+                        type,
+                        title: `${alert.type || 'Alert'}`.toUpperCase(),
+                        message: alert.message || 'New alert received'
+                    })
+
+                    // Desktop notification for critical/high severity
+                    if (severity === 'critical' || severity === 'high') {
+                        showDesktopNotification(
+                            `⚠️ ${alert.type || 'Critical Alert'}`,
+                            alert.message || 'Immediate attention required'
+                        )
+                    }
                 }
             })
-            .subscribe()
+        })
 
-        return () => {
-            channel.unsubscribe()
-        }
+        return () => unsubscribe()
     }, [user, showToast, showDesktopNotification])
 
     // Check subscription status
@@ -233,11 +239,12 @@ export default function NotificationManager() {
 
             if (!p256dh || !auth) throw new Error('Missing keys')
 
-            await supabase.from('notification_subscriptions').insert({
-                user_id: user.id,
+            await addDoc(collection(db, 'notification_subscriptions'), {
+                user_id: user.uid,
                 endpoint: subscription.endpoint,
                 p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(p256dh) as unknown as number[])),
-                auth: btoa(String.fromCharCode.apply(null, new Uint8Array(auth) as unknown as number[]))
+                auth: btoa(String.fromCharCode.apply(null, new Uint8Array(auth) as unknown as number[])),
+                created_at: serverTimestamp()
             })
 
             setIsSubscribed(true)

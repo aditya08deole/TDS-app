@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { cn } from '@/lib/utils'
 import type { LucideIcon } from 'lucide-react'
-import type { EnrichedDevice } from '@/lib/supabase'
+import type { EnrichedDevice } from '@/types'
 import { getDeviceDisplayName } from '@/lib/constants'
+import { useTheme } from '../context/ThemeContext'
 
 interface DashboardCardProps {
     title: string
@@ -30,6 +32,8 @@ export function DashboardCard({
     devices,
     showDeviceList = true
 }: DashboardCardProps) {
+    const { resolvedTheme } = useTheme()
+    const isDark = resolvedTheme === 'dark'
     const [isHovered, setIsHovered] = useState(false)
 
     return (
@@ -39,12 +43,12 @@ export function DashboardCard({
             onMouseLeave={() => setIsHovered(false)}
         >
             {/* Main Card */}
-            <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl p-6 transition-all duration-300 hover:border-white/20 hover:bg-black/50">
+            <div className="relative overflow-hidden glass-card p-6 transition-all duration-300 hover:scale-[1.01] hover:bg-secondary/20">
                 {/* Icon */}
                 <div
                     className="absolute top-4 left-4 p-2 rounded-xl transition-all duration-300"
                     style={{
-                        backgroundColor: `${color}20`,
+                        backgroundColor: `${color}15`,
                         color: color
                     }}
                 >
@@ -62,14 +66,14 @@ export function DashboardCard({
                     </div>
 
                     {/* Title */}
-                    <div className="text-white/60 text-sm font-medium">
+                    <div className="text-muted-foreground text-sm font-medium">
                         {title}
                     </div>
                 </div>
 
                 {/* Hover Indicator */}
                 {showDeviceList && devices.length > 0 && (
-                    <div className="absolute bottom-3 right-3 text-white/30 text-xs opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <div className="absolute bottom-3 right-3 text-muted-foreground/30 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                         Hover to view
                     </div>
                 )}
@@ -78,16 +82,16 @@ export function DashboardCard({
             {/* Device List Popup (on hover) */}
             {showDeviceList && devices.length > 0 && (
                 <div
-                    className={`absolute top-0 left-0 w-full h-full rounded-2xl border border-white/20 bg-black/95 backdrop-blur-2xl p-6 transition-all duration-300 pointer-events-none ${isHovered
-                        ? 'opacity-100 scale-100'
-                        : 'opacity-0 scale-95'
-                        }`}
+                    className={cn(
+                        "absolute top-0 left-0 w-full h-full rounded-2xl glass-card p-6 transition-all duration-500 pointer-events-none",
+                        isHovered ? "opacity-100 scale-100" : "opacity-0 scale-95"
+                    )}
                     style={{ zIndex: 10 }}
                 >
                     {/* Header */}
                     <div className="flex items-center gap-2 mb-4">
                         <Icon className="w-4 h-4" style={{ color: color }} />
-                        <span className="text-white/80 text-sm font-medium">
+                        <span className="text-foreground/80 text-sm font-medium">
                             {title} ({count})
                         </span>
                     </div>
@@ -97,14 +101,14 @@ export function DashboardCard({
                         {devices.map((device, index) => (
                             <div
                                 key={device.id}
-                                className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors duration-200"
+                                className="flex items-center justify-between px-3 py-2 rounded-lg bg-background/40 hover:bg-background/60 transition-colors duration-200 border border-black/5"
                                 style={{
                                     animationDelay: `${index * 30}ms`,
                                     animation: isHovered ? 'fadeInUp 0.3s ease-out forwards' : 'none'
                                 }}
                             >
                                 {/* Device Name */}
-                                <span className="text-white/90 text-sm font-medium truncate flex-1">
+                                <span className="text-foreground/90 text-sm font-medium truncate flex-1">
                                     {getDeviceDisplayName(device)}
                                 </span>
 
@@ -115,8 +119,8 @@ export function DashboardCard({
                                         <span
                                             className="px-2 py-0.5 rounded text-[10px] font-medium"
                                             style={{
-                                                backgroundColor: device.tds_category === 'safe' ? '#30d15820' : '#ff453a20',
-                                                color: device.tds_category === 'safe' ? '#30d158' : '#ff453a'
+                                                backgroundColor: device.tds_category === 'safe' ? '#00df8120' : '#ff005520',
+                                                color: device.tds_category === 'safe' ? '#00df81' : '#ff0055'
                                             }}
                                         >
                                             {device.tds_category === 'safe' ? 'Safe' : 'Critical'}
@@ -128,8 +132,8 @@ export function DashboardCard({
                                         <span
                                             className="px-2 py-0.5 rounded text-[10px] font-medium"
                                             style={{
-                                                backgroundColor: device.connectivity_status === 'online' ? '#30d15820' : '#8e8e9320',
-                                                color: device.connectivity_status === 'online' ? '#30d158' : '#8e8e93'
+                                                backgroundColor: device.connectivity_status === 'online' ? '#00f2ff20' : (isDark ? '#47556920' : '#94a3b820'),
+                                                color: device.connectivity_status === 'online' ? '#00f2ff' : (isDark ? '#475569' : '#94a3b8')
                                             }}
                                         >
                                             {device.connectivity_status === 'online' ? '●' : '○'}
@@ -141,7 +145,7 @@ export function DashboardCard({
                     </div>
 
                     {/* Footer hint */}
-                    <div className="mt-4 text-white/30 text-xs text-center">
+                    <div className="mt-4 text-muted-foreground/30 text-[10px] text-center">
                         Move mouse away to close
                     </div>
                 </div>

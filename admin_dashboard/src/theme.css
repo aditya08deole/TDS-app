@@ -1,49 +1,49 @@
 @layer base {
     :root {
-        /* Light Mode - Clean Off-White */
-        --background: 0 0% 97%;
-        --foreground: 0 0% 9%;
+        /* Light Mode - Professional Airy & Soft Glass */
+        --background: 210 20% 98%;
+        --foreground: 222 47% 11%;
 
-        --card: 0 0% 100%;
-        --card-foreground: 0 0% 9%;
+        --card: 0 0% 100% / 0.7;
+        --card-foreground: 222 47% 11%;
 
         --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 9%;
+        --popover-foreground: 222 47% 11%;
 
-        --primary: 211 100% 50%;
-        --primary-foreground: 0 0% 100%;
+        --primary: 221 83% 53%;
+        --primary-foreground: 210 40% 98%;
 
-        --secondary: 0 0% 96%;
-        --secondary-foreground: 0 0% 9%;
+        --secondary: 210 40% 96%;
+        --secondary-foreground: 222 47% 11%;
 
-        --muted: 0 0% 96%;
-        --muted-foreground: 0 0% 45%;
+        --muted: 210 40% 96%;
+        --muted-foreground: 215 16% 47%;
 
-        --accent: 0 0% 96%;
-        --accent-foreground: 0 0% 9%;
+        --accent: 210 40% 96%;
+        --accent-foreground: 222 47% 11%;
 
         --destructive: 0 84% 60%;
-        --destructive-foreground: 0 0% 100%;
+        --destructive-foreground: 210 40% 98%;
 
-        --border: 0 0% 90%;
-        --input: 0 0% 90%;
-        --ring: 211 100% 50%;
+        --border: 214 32% 91%;
+        --input: 214 32% 91%;
+        --ring: 221 83% 53%;
         --radius: 0.75rem;
 
-        --sidebar: 0 0% 98%;
-        --sidebar-foreground: 0 0% 20%;
-        --sidebar-primary: 211 100% 50%;
-        --sidebar-primary-foreground: 0 0% 100%;
-        --sidebar-accent: 0 0% 96%;
-        --sidebar-accent-foreground: 0 0% 9%;
-        --sidebar-border: 0 0% 90%;
-        --sidebar-ring: 211 100% 50%;
+        --sidebar: transparent;
+        --sidebar-foreground: 215 20% 25%;
+        --sidebar-border: 214 32% 91% / 0.5;
+        
+        --glass-bg: rgba(255, 255, 255, 0.12);
+        --glass-border: rgba(255, 255, 255, 0.35);
+        --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.04);
+        --glass-shine: rgba(255, 255, 255, 0.15);
 
-        --chart-1: 142 76% 36%;
-        --chart-2: 211 100% 50%;
-        --chart-3: 24 95% 53%;
-        --chart-4: 270 60% 52%;
-        --chart-5: 0 72% 50%;
+        --premium-border: rgba(0, 0, 0, 0.08);
+        --premium-shadow: 
+            0 2px 4px rgba(0, 0, 0, 0.05),
+            0 12px 32px rgba(0, 0, 0, 0.1),
+            0 20px 60px -10px rgba(0, 0, 0, 0.08);
     }
 
     .dark {
@@ -51,40 +51,40 @@
         --background: 0 0% 0%;
         --foreground: 0 0% 95%;
 
-        /* Transparent Cards for Glassmorphism */
-        --card: 0 0% 100% / 0.05;
+        /* Matte Black Surfaces - Deepened for premium feel */
+        --card: 0 0% 100% / 0.02;
         --card-foreground: 0 0% 95%;
 
-        --popover: 0 0% 8%;
+        --popover: 0 0% 2%;
         --popover-foreground: 0 0% 95%;
 
         --primary: 211 100% 55%;
         --primary-foreground: 0 0% 100%;
 
-        --secondary: 0 0% 100% / 0.08;
+        --secondary: 0 0% 100% / 0.04;
         --secondary-foreground: 0 0% 95%;
 
-        --muted: 0 0% 100% / 0.06;
+        --muted: 0 0% 100% / 0.03;
         --muted-foreground: 0 0% 60%;
 
-        --accent: 0 0% 100% / 0.08;
+        --accent: 0 0% 100% / 0.06;
         --accent-foreground: 0 0% 95%;
 
         --destructive: 0 72% 51%;
         --destructive-foreground: 0 0% 100%;
 
-        --border: 0 0% 100% / 0.1;
-        --input: 0 0% 100% / 0.08;
+        --border: 0 0% 100% / 0.05;
+        --input: 0 0% 100% / 0.04;
         --ring: 211 100% 55%;
 
-        /* Sidebar - Near Black */
-        --sidebar: 0 0% 4%;
+        /* Sidebar - Deeper Matte Black */
+        --sidebar: transparent;
         --sidebar-foreground: 0 0% 95%;
         --sidebar-primary: 211 100% 55%;
         --sidebar-primary-foreground: 0 0% 100%;
-        --sidebar-accent: 0 0% 100% / 0.08;
+        --sidebar-accent: 0 0% 100% / 0.04;
         --sidebar-accent-foreground: 0 0% 95%;
-        --sidebar-border: 0 0% 100% / 0.08;
+        --sidebar-border: 0 0% 100% / 0.03;
         --sidebar-ring: 211 100% 55%;
 
         /* Chart Colors */
@@ -93,22 +93,140 @@
         --chart-3: 30 95% 55%;
         --chart-4: 280 65% 60%;
         --chart-5: 0 72% 55%;
+
+        --glass-bg: rgba(255, 255, 255, 0.015);
+        --glass-border: rgba(255, 255, 255, 0.04);
+        --glass-shadow: none;
+        --glass-shine: rgba(255, 255, 255, 0.05);
+
+        --premium-border: rgba(255, 255, 255, 0.08); /* White edge for dark mode definition */
+        --premium-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 15px 25px -10px rgba(0, 0, 0, 0.5);
     }
 }
 
-/* Glass Card Effect for Dark Mode */
-.dark .glass-card {
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+/* Adaptive Glassmorphism Classes - ULTRA Liquid Glass Effect */
+.glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(120px) saturate(280%) contrast(105%) brightness(102%);
+    -webkit-backdrop-filter: blur(120px) saturate(280%) contrast(105%) brightness(102%);
+    border: 1px solid var(--premium-border);
+    box-shadow: 
+        var(--premium-shadow),
+        inset 0 1px 1px rgba(255, 255, 255, 0.05);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
 }
 
-/* Ensure all cards in dark mode are transparent */
-.dark [class*="bg-card"],
-.dark [class*="bg-slate-900"],
-.dark [class*="bg-slate-800"] {
-    background: rgba(255, 255, 255, 0.05) !important;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+.glass-sidebar {
+    @apply glass-surface-unified;
+    border-right: none;
+    transition: all 0.4s ease;
+    height: 100%;
+}
+
+.dark .glass-sidebar {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+/* Universal Liquid Glass Surface - Unified Material Layer */
+.glass-surface-unified {
+    background: var(--glass-bg);
+    backdrop-filter: blur(160px) saturate(250%) contrast(105%) brightness(102%);
+    -webkit-backdrop-filter: blur(160px) saturate(250%) contrast(105%) brightness(102%);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Fine Grain Texture to simulate real glass */
+.glass-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    opacity: 0.015;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Specular Surface Shine */
+.glass-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 300%;
+    height: 100%;
+    background: linear-gradient(
+        135deg,
+        var(--glass-shine) 0%,
+        rgba(255, 255, 255, 0) 40%,
+        rgba(255, 255, 255, 0) 60%,
+        rgba(255, 255, 255, 0.05) 100%
+    );
+    pointer-events: none;
+    z-index: 10;
+    transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover::after {
+    transform: translateX(33%);
+}
+
+.glass-panel {
+    @apply glass-surface-unified;
+    border-bottom: 1px solid var(--glass-border);
+    position: relative;
+    overflow: hidden;
+}
+
+.glass-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    opacity: 0.01;
+    pointer-events: none;
+}
+
+/* Liquid Glow animations */
+.dark .liquid-glow {
+    box-shadow: 0 0 20px rgba(6, 182, 212, 0.15);
+}
+
+.light .liquid-glow {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.08);
+}
+
+/* Active Navigation Glow - Liquid Glass Blue */
+.glass-active-glow {
+    background: rgba(0, 122, 255, 0.12) !important;
+    box-shadow: 
+        0 0 15px rgba(0, 122, 255, 0.25),
+        inset 0 0 8px rgba(0, 122, 255, 0.15) !important;
+    border: 1px solid rgba(0, 122, 255, 0.3) !important;
+    color: #40a9ff !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.glass-active-glow::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    animation: flow-shine 3s infinite linear;
+}
+
+@keyframes flow-shine {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.dark .glass-active-glow {
+    background: rgba(0, 122, 255, 0.18) !important;
+    box-shadow: 
+        0 0 20px rgba(0, 122, 255, 0.35),
+        inset 0 0 10px rgba(0, 122, 255, 0.2) !important;
+    border: 1px solid rgba(0, 122, 255, 0.45) !important;
+    color: #69c0ff !important;
 }

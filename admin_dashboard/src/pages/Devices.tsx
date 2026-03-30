@@ -1,11 +1,18 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
-import { supabase } from '../lib/supabase'
-import type { Device } from '../lib/supabase'
+import { useState, useMemo } from 'react'
+import { type Device } from '../types'
 import { useAuth } from '../context/AuthContext'
 import { useUI } from '../context/UIContext'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { QRCodeGenerator } from '../components/QRCodeGenerator'
 import { QRCodeScanner } from '../components/QRCodeScanner'
+import { 
+    useDevices, 
+    useAddDevice, 
+    useDeleteDevice, 
+    useUpdateDevice,
+    useDeviceSubscription 
+} from '../hooks/useDeviceQueries'
+import { useAllDevicesThingSpeakData } from '../hooks/useThingSpeakQueries'
 import {
     Plus,
     Trash2,
@@ -21,13 +28,26 @@ import {
     QrCode,
     ScanLine
 } from 'lucide-react'
+import { getConnectivityStatus } from '../lib/constants'
 
 type StatusFilter = 'all' | 'online' | 'offline' | 'maintenance'
 
 export default function Devices() {
     const { isAdmin } = useAuth()
     const { isMobile, openInspector } = useUI()
-    const [devices, setDevices] = useState<Device[]>([])
+    
+    // Use Firestore hooks
+    const { data: devices = [], isLoading, refetch } = useDevices()
+    const { mutate: addDevice, isPending: addingDevice } = useAddDevice()
+    const { mutate: deleteDevice } = useDeleteDevice()
+    const { mutate: updateDevice } = useUpdateDevice()
+    
+    // Realtime subscription
+    useDeviceSubscription()
+
+    // Enrich with ThingSpeak data for real-time status
+    const { devices: enrichedDevices } = useAllDevicesThingSpeakData(devices)
+
     const [newDevice, setNewDevice] = useState({
         name: '',
         location_name: '',
@@ -39,10 +59,13 @@ export default function Devices() {
         thingspeak_read_key: '',
         tds_field: 1,
         temp_field: 2,
-        voltage_field: 3
+        voltage_field: 3,
+        safe_tds_min: '35',
+        safe_tds_max: '175'
     })
-    const [loading, setLoading] = useState(false)
-    const [refreshing, setRefreshing] = useState(false)
+
+    const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null)
+    
     const [showQRGenerator, setShowQRGenerator] = useState(false)
     const [showQRScanner, setShowQRScanner] = useState(false)
 
@@ -54,42 +77,15 @@ export default function Devices() {
     const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set())
     const [selectionMode, setSelectionMode] = useState(false)
 
-    // Modal State - REMOVED for Phase 5 Global Inspector
-    // const [selectedDevice, setSelectedDevice] = useState<Device | null>(null)
-    // const [isModalOpen, setIsModalOpen] = useState(false)
-
-    const refreshDevices = useCallback(async () => {
-        setRefreshing(true)
-        const { data } = await supabase.from('devices').select('*').order('created_at', { ascending: false })
-        if (data) setDevices(data)
-        setRefreshing(false)
-    }, [])
-
     // Pull to Refresh hook
     const { handlers, PullIndicator } = usePullToRefresh({
-        onRefresh: refreshDevices,
+        onRefresh: async () => { await refetch() },
         disabled: !isMobile
     })
 
-    useEffect(() => {
-        refreshDevices()
-
-        // Subscribe to device changes
-        const subscription = supabase
-            .channel('devices_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, () => {
-                refreshDevices()
-            })
-            .subscribe()
-
-        return () => {
-            subscription.unsubscribe()
-        }
-    }, [refreshDevices])
-
     // Filtered devices
     const filteredDevices = useMemo(() => {
-        return devices.filter(device => {
+        return enrichedDevices.filter(device => {
             // Search filter
             const matchesSearch = searchQuery === '' ||
                 device.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -97,19 +93,21 @@ export default function Devices() {
                 (device.thingspeak_channel_id?.toString() || '').includes(searchQuery)
 
             // Status filter
-            const deviceStatus = device.status?.toLowerCase() || 'offline'
+            const deviceStatus = device.status === 'maintenance' 
+                ? 'maintenance' 
+                : getConnectivityStatus(device.last_reading_at || device.last_seen_at)
+            
             const matchesStatus = statusFilter === 'all' || deviceStatus === statusFilter
 
             return matchesSearch && matchesStatus
         })
-    }, [devices, searchQuery, statusFilter])
+    }, [enrichedDevices, searchQuery, statusFilter])
 
     const handleAddDevice = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!isAdmin) return
-        setLoading(true)
 
-        const { error } = await supabase.from('devices').insert([{
+        const devicePayload = {
             name: newDevice.name,
             location_name: newDevice.location_name,
             latitude: parseFloat(newDevice.latitude),
@@ -121,35 +119,54 @@ export default function Devices() {
             tds_field_number: newDevice.tds_field,
             temperature_field_number: newDevice.temp_field,
             voltage_field_number: newDevice.voltage_field,
-            status: 'offline'
-        }])
-
-        if (!error) {
-            alert('✅ Device added successfully!')
-            setNewDevice({
-                name: '',
-                location_name: '',
-                latitude: '',
-                longitude: '',
-                sim_number: '',
-                node_number: '',
-                thingspeak_channel_id: '',
-                thingspeak_read_key: '',
-                tds_field: 1,
-                temp_field: 2,
-                voltage_field: 3
-            })
-            refreshDevices()
-        } else {
-            alert('Error adding device: ' + error.message)
+            safe_tds_min: parseFloat(newDevice.safe_tds_min),
+            safe_tds_max: parseFloat(newDevice.safe_tds_max),
+            status: 'offline' as const
         }
-        setLoading(false)
+
+        if (editingDeviceId) {
+            updateDevice({ id: editingDeviceId, updates: devicePayload }, {
+                onSuccess: () => {
+                    setEditingDeviceId(null)
+                    resetForm()
+                },
+                onError: (error) => {
+                    alert('Error updating device: ' + error.message)
+                }
+            })
+        } else {
+            addDevice(devicePayload, {
+                onSuccess: () => {
+                    resetForm()
+                },
+                onError: (error) => {
+                    alert('Error adding device: ' + error.message)
+                }
+            })
+        }
     }
 
-    const handleDelete = async (id: string) => {
+    const resetForm = () => {
+        setNewDevice({
+            name: '',
+            location_name: '',
+            latitude: '',
+            longitude: '',
+            sim_number: '',
+            node_number: '',
+            thingspeak_channel_id: '',
+            thingspeak_read_key: '',
+            tds_field: 1,
+            temp_field: 2,
+            voltage_field: 3,
+            safe_tds_min: '35',
+            safe_tds_max: '175'
+        })
+    }
+
+    const handleDelete = (id: string) => {
         if (!isAdmin || !confirm('Are you sure you want to delete this device?')) return
-        await supabase.from('devices').delete().eq('id', id)
-        refreshDevices()
+        deleteDevice(id)
     }
 
     const handleDeviceClick = (device: Device) => {
@@ -180,27 +197,25 @@ export default function Devices() {
         }
     }
 
-    const handleBulkDelete = async () => {
+    const handleBulkDelete = () => {
         if (!isAdmin || selectedDevices.size === 0) return
         if (!confirm(`Delete ${selectedDevices.size} devices?`)) return
 
-        for (const id of selectedDevices) {
-            await supabase.from('devices').delete().eq('id', id)
-        }
+        selectedDevices.forEach(id => deleteDevice(id))
 
         setSelectedDevices(new Set())
         setSelectionMode(false)
-        refreshDevices()
     }
 
-    const handleBulkMaintenanceMode = async () => {
+    const handleBulkMaintenanceMode = () => {
         if (!isAdmin || selectedDevices.size === 0) return
 
-        for (const id of selectedDevices) {
-            await supabase.from('devices').update({ status: 'maintenance' }).eq('id', id)
-        }
-
-        refreshDevices()
+        selectedDevices.forEach(id => {
+            updateDevice({ id, updates: { status: 'maintenance' } })
+        })
+        
+        setSelectedDevices(new Set())
+        setSelectionMode(false)
     }
 
     const exportToCSV = () => {
@@ -243,22 +258,22 @@ export default function Devices() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Devices</h1>
-                    <p className="text-slate-400 mt-1 text-sm lg:text-base">
+                    <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">Devices</h1>
+                    <p className="text-muted-foreground mt-1 text-sm lg:text-base">
                         {filteredDevices.length} of {devices.length} devices
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={refreshDevices}
-                        disabled={refreshing}
-                        className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                        onClick={() => refetch()}
+                        disabled={isLoading}
+                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
                     >
-                        <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+                        <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
                     </button>
                     <button
                         onClick={exportToCSV}
-                        className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
                         title="Export to CSV"
                     >
                         <Download className="h-5 w-5" />
@@ -271,7 +286,7 @@ export default function Devices() {
                             }}
                             className={`p-2 rounded-lg transition-colors ${selectionMode
                                 ? 'bg-cyan-500/20 text-cyan-400'
-                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                                 }`}
                         >
                             <CheckSquare className="h-5 w-5" />
@@ -284,18 +299,18 @@ export default function Devices() {
             <div className="flex flex-col sm:flex-row gap-3">
                 {/* Search */}
                 <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <input
                         type="text"
                         placeholder="Search devices..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-slate-200 placeholder-slate-500 focus:border-cyan-500 outline-none"
+                        className="w-full bg-secondary border border-accent rounded-xl pl-10 pr-4 py-2.5 text-foreground placeholder-muted-foreground focus:border-primary outline-none"
                     />
                     {searchQuery && (
                         <button
                             onClick={() => setSearchQuery('')}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                         >
                             <X className="h-4 w-4" />
                         </button>
@@ -304,14 +319,14 @@ export default function Devices() {
 
                 {/* Status Filter Chips */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                    <Filter className="h-4 w-4 text-slate-500 flex-shrink-0" />
+                    <Filter className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                     {statusFilters.map((filter) => (
                         <button
                             key={filter.value}
                             onClick={() => setStatusFilter(filter.value)}
                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${statusFilter === filter.value
                                 ? `${filter.color} text-white`
-                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                                : 'bg-secondary text-muted-foreground hover:bg-accent'
                                 }`}
                         >
                             <span className={`w-2 h-2 rounded-full ${filter.color}`} />
@@ -352,11 +367,11 @@ export default function Devices() {
 
             {/* Add Device Form (Admin Only) */}
             {isAdmin && !selectionMode && (
-                <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 lg:p-6 backdrop-blur-sm">
+                <div className="bg-secondary/30 border border-accent rounded-2xl p-4 lg:p-6 backdrop-blur-sm">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                             <Plus className="h-5 w-5 text-blue-400" />
-                            Add New Device
+                            {editingDeviceId ? 'Edit Device Settings' : 'Add New Device'}
                         </h3>
                         <div className="flex gap-2">
                             <button
@@ -365,8 +380,20 @@ export default function Devices() {
                                 className="flex items-center gap-2 px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 font-medium rounded-lg transition-all text-sm"
                             >
                                 <ScanLine className="h-4 w-4" />
-                                Scan QR
+                                {editingDeviceId ? 'Update Metadata' : 'Scan QR'}
                             </button>
+                            {editingDeviceId && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setEditingDeviceId(null)
+                                        resetForm()
+                                    }}
+                                    className="flex items-center gap-2 px-3 py-2 bg-secondary hover:bg-accent text-foreground font-medium rounded-lg transition-all text-sm"
+                                >
+                                    Cancel Edit
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 onClick={() => setShowQRGenerator(true)}
@@ -380,124 +407,147 @@ export default function Devices() {
                     <form onSubmit={handleAddDevice} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Device Name */}
                         <div>
-                            <label className="text-sm text-slate-400 mb-1.5 block">Device Name *</label>
+                            <label className="text-sm text-muted-foreground mb-1.5 block">Device Name *</label>
                             <input
                                 type="text"
                                 required
                                 value={newDevice.name}
                                 onChange={e => setNewDevice({ ...newDevice, name: e.target.value })}
-                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
                                 placeholder="e.g., NodeMCU-01"
                             />
                         </div>
 
                         {/* Location Name */}
                         <div>
-                            <label className="text-sm text-slate-400 mb-1.5 block">Location Name *</label>
+                            <label className="text-sm text-muted-foreground mb-1.5 block">Location Name *</label>
                             <input
                                 type="text"
                                 required
                                 value={newDevice.location_name}
                                 onChange={e => setNewDevice({ ...newDevice, location_name: e.target.value })}
-                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
                                 placeholder="e.g., Tank A - Block 3"
                             />
                         </div>
 
                         {/* Node Number */}
                         <div>
-                            <label className="text-sm text-slate-400 mb-1.5 block">Node Number *</label>
+                            <label className="text-sm text-muted-foreground mb-1.5 block">Node Number *</label>
                             <input
                                 type="text"
                                 required
                                 value={newDevice.node_number}
                                 onChange={e => setNewDevice({ ...newDevice, node_number: e.target.value })}
-                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
                                 placeholder="e.g., NODE-001"
                             />
                         </div>
 
                         {/* Latitude */}
                         <div>
-                            <label className="text-sm text-slate-400 mb-1.5 block">Latitude *</label>
+                            <label className="text-sm text-muted-foreground mb-1.5 block">Latitude *</label>
                             <input
                                 type="number"
                                 step="any"
                                 required
                                 value={newDevice.latitude}
                                 onChange={e => setNewDevice({ ...newDevice, latitude: e.target.value })}
-                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
                                 placeholder="e.g., 20.5937"
                             />
                         </div>
 
                         {/* Longitude */}
                         <div>
-                            <label className="text-sm text-slate-400 mb-1.5 block">Longitude *</label>
+                            <label className="text-sm text-muted-foreground mb-1.5 block">Longitude *</label>
                             <input
                                 type="number"
                                 step="any"
                                 required
                                 value={newDevice.longitude}
                                 onChange={e => setNewDevice({ ...newDevice, longitude: e.target.value })}
-                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
                                 placeholder="e.g., 78.9629"
                             />
                         </div>
 
                         {/* SIM Number */}
                         <div>
-                            <label className="text-sm text-slate-400 mb-1.5 block">SIM Number *</label>
+                            <label className="text-sm text-muted-foreground mb-1.5 block">SIM Number *</label>
                             <input
                                 type="text"
                                 required
                                 value={newDevice.sim_number}
                                 onChange={e => setNewDevice({ ...newDevice, sim_number: e.target.value })}
-                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
                                 placeholder="e.g., +91-9876543210"
                             />
                         </div>
 
                         {/* ThingSpeak Channel ID */}
                         <div>
-                            <label className="text-sm text-slate-400 mb-1.5 block">ThingSpeak Channel ID *</label>
+                            <label className="text-sm text-muted-foreground mb-1.5 block">ThingSpeak Channel ID *</label>
                             <input
                                 type="text"
                                 required
                                 value={newDevice.thingspeak_channel_id}
                                 onChange={e => setNewDevice({ ...newDevice, thingspeak_channel_id: e.target.value })}
-                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground font-mono focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
                                 placeholder="e.g., 2713286"
                             />
                         </div>
 
                         {/* ThingSpeak Read API Key */}
-                        <div className="md:col-span-2">
-                            <label className="text-sm text-slate-400 mb-1.5 block">ThingSpeak Read API Key *</label>
+                        <div className="md:col-span-1 lg:col-span-1">
+                            <label className="text-sm text-muted-foreground mb-1.5 block">ThingSpeak Read API Key *</label>
                             <input
                                 type="text"
                                 required
                                 value={newDevice.thingspeak_read_key}
                                 onChange={e => setNewDevice({ ...newDevice, thingspeak_read_key: e.target.value })}
-                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground font-mono focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
                                 placeholder="e.g., XXXXXXXXXXXXXX"
+                            />
+                        </div>
+
+                        {/* Safe TDS Range */}
+                        <div>
+                            <label className="text-sm text-muted-foreground mb-1.5 block">Safe TDS Min (Default: 35)</label>
+                            <input
+                                type="number"
+                                value={newDevice.safe_tds_min}
+                                onChange={e => setNewDevice({ ...newDevice, safe_tds_min: e.target.value })}
+                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
+                                placeholder="35"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-sm text-muted-foreground mb-1.5 block">Safe TDS Max (Default: 175)</label>
+                            <input
+                                type="number"
+                                value={newDevice.safe_tds_max}
+                                onChange={e => setNewDevice({ ...newDevice, safe_tds_max: e.target.value })}
+                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
+                                placeholder="175"
                             />
                         </div>
 
                         {/* Field Mapping Section */}
                         <div className="md:col-span-2 lg:col-span-3">
-                            <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                            <h4 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
                                 <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
                                 ThingSpeak Field Mapping
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 {/* TDS Field */}
                                 <div>
-                                    <label className="text-sm text-slate-400 mb-1.5 block">TDS Field Number</label>
+                                    <label className="text-sm text-muted-foreground mb-1.5 block">TDS Field Number</label>
                                     <select
                                         value={newDevice.tds_field}
                                         onChange={e => setNewDevice({ ...newDevice, tds_field: parseInt(e.target.value) })}
-                                        className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                        className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
                                     >
                                         {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
                                             <option key={num} value={num}>Field {num}</option>
@@ -507,11 +557,11 @@ export default function Devices() {
 
                                 {/* Temperature Field */}
                                 <div>
-                                    <label className="text-sm text-slate-400 mb-1.5 block">Temperature Field Number</label>
+                                    <label className="text-sm text-muted-foreground mb-1.5 block">Temperature Field Number</label>
                                     <select
                                         value={newDevice.temp_field}
                                         onChange={e => setNewDevice({ ...newDevice, temp_field: parseInt(e.target.value) })}
-                                        className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                        className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
                                     >
                                         {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
                                             <option key={num} value={num}>Field {num}</option>
@@ -521,11 +571,11 @@ export default function Devices() {
 
                                 {/* Voltage Field */}
                                 <div>
-                                    <label className="text-sm text-slate-400 mb-1.5 block">Voltage Field Number</label>
+                                    <label className="text-sm text-muted-foreground mb-1.5 block">Voltage Field Number</label>
                                     <select
                                         value={newDevice.voltage_field}
                                         onChange={e => setNewDevice({ ...newDevice, voltage_field: parseInt(e.target.value) })}
-                                        className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none text-sm transition-all"
+                                        className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
                                     >
                                         {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
                                             <option key={num} value={num}>Field {num}</option>
@@ -539,10 +589,13 @@ export default function Devices() {
                         <div className="md:col-span-2 lg:col-span-3 flex justify-end">
                             <button
                                 type="submit"
-                                disabled={loading}
-                                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white font-medium rounded-lg transition-all shadow-lg shadow-blue-500/20 text-sm"
+                                disabled={addingDevice}
+                                className="px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:bg-primary/50 text-primary-foreground font-medium rounded-lg transition-all shadow-lg shadow-primary/20 text-sm"
                             >
-                                {loading ? 'Adding Device...' : 'Add Device'}
+                                {editingDeviceId 
+                                    ? (addingDevice ? 'Updating...' : 'Update Device') 
+                                    : (addingDevice ? 'Adding...' : 'Add Device')
+                                }
                             </button>
                         </div>
                     </form>
@@ -555,53 +608,85 @@ export default function Devices() {
                     <div
                         key={device.id}
                         onClick={() => handleDeviceClick(device)}
-                        className={`bg-slate-900 border rounded-xl p-4 lg:p-6 transition-all cursor-pointer ${selectionMode && selectedDevices.has(device.id)
-                            ? 'border-cyan-500 bg-cyan-500/5'
-                            : 'border-slate-800 hover:border-slate-700'
+                        className={`bg-secondary/40 border rounded-xl p-4 lg:p-6 transition-all cursor-pointer ${selectionMode && selectedDevices.has(device.id)
+                            ? 'border-primary bg-primary/5'
+                            : 'border-accent hover:border-border'
                             }`}
                     >
                         <div className="flex justify-between items-start mb-3">
-                            <div className="h-10 w-10 lg:h-12 lg:w-12 bg-slate-800/50 rounded-xl flex items-center justify-center border border-slate-700">
+                            <div className="h-10 w-10 lg:h-12 lg:w-12 bg-secondary/80 rounded-xl flex items-center justify-center border border-accent">
                                 {selectionMode ? (
                                     selectedDevices.has(device.id) ? (
-                                        <CheckSquare className="h-5 w-5 text-cyan-400" />
+                                        <CheckSquare className="h-5 w-5 text-primary" />
                                     ) : (
-                                        <Square className="h-5 w-5 text-slate-500" />
+                                        <Square className="h-5 w-5 text-muted-foreground" />
                                     )
                                 ) : (
-                                    <Smartphone className="h-5 w-5 lg:h-6 lg:w-6 text-cyan-400" />
+                                    <Smartphone className="h-5 w-5 lg:h-6 lg:w-6 text-primary" />
                                 )}
                             </div>
                             {isAdmin && !selectionMode && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleDelete(device.id)
-                                    }}
-                                    className="p-2 hover:bg-red-500/10 rounded-lg text-slate-600 hover:text-red-400 transition-colors"
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </button>
+                                <div className="flex gap-1">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            setEditingDeviceId(device.id)
+                                            setNewDevice({
+                                                name: device.name,
+                                                location_name: device.location_name || '',
+                                                latitude: String(device.latitude),
+                                                longitude: String(device.longitude),
+                                                sim_number: device.sim_number || '',
+                                                node_number: device.node_number || '',
+                                                thingspeak_channel_id: device.thingspeak_channel_id || '',
+                                                thingspeak_read_key: device.thingspeak_read_key || '',
+                                                tds_field: device.tds_field_number || 1,
+                                                temp_field: device.temperature_field_number || 2,
+                                                voltage_field: device.voltage_field_number || 3,
+                                                safe_tds_min: String(device.safe_tds_min || 35),
+                                                safe_tds_max: String(device.safe_tds_max || 175)
+                                            })
+                                            window.scrollTo({ top: 0, behavior: 'smooth' })
+                                        }}
+                                        className="p-2 hover:bg-primary/10 rounded-lg text-muted-foreground hover:text-primary transition-colors"
+                                        title="Edit Device"
+                                    >
+                                        <Plus className="h-4 w-4 rotate-45" /> {/* Using Plus rotated for edit or just another icon */}
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            handleDelete(device.id)
+                                        }}
+                                        className="p-2 hover:bg-red-500/10 rounded-lg text-muted-foreground hover:text-red-400 transition-colors"
+                                        title="Delete Device"
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
+                                </div>
                             )}
                         </div>
-                        <h3 className="text-lg lg:text-xl font-bold text-slate-100 mb-1 truncate">{device.location_name || device.name}</h3>
-                        <p className="text-slate-500 text-xs mb-3 truncate">CH: {device.thingspeak_channel_id || 'N/A'}</p>
+                        <h3 className="text-lg lg:text-xl font-bold text-foreground mb-1 truncate">{device.location_name || device.name}</h3>
+                        <p className="text-muted-foreground text-xs mb-3 truncate">CH: {device.thingspeak_channel_id || 'N/A'}</p>
 
                         <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-sm text-slate-400 bg-slate-950/50 p-2 rounded-lg border border-slate-800/50">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-background/50 p-2 rounded-lg border border-accent/50">
                                 <Key className="h-4 w-4 text-emerald-500 flex-shrink-0" />
                                 <code className="font-mono text-xs truncate max-w-[150px]">{device.thingspeak_read_key || 'No Key'}</code>
                             </div>
-                            <div className="flex justify-between items-center text-xs text-slate-500">
+                            <div className="flex justify-between items-center text-xs text-muted-foreground">
                                 <div className="flex gap-2 lg:gap-4 truncate">
                                     <span>Lat: {device.latitude?.toFixed(2)}</span>
                                     <span>Lng: {device.longitude?.toFixed(2)}</span>
                                 </div>
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase border flex-shrink-0 ${device.status === 'online' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
-                                    device.status === 'maintenance' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
-                                        'bg-slate-500/10 text-slate-500 border-slate-500/20'
-                                    }`}>
-                                    {device.status || 'offline'}
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase border flex-shrink-0 ${
+                                    (device.status === 'maintenance' ? 'maintenance' : getConnectivityStatus(device.last_reading_at || device.last_seen_at)) === 'online' 
+                                        ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                                    (device.status === 'maintenance' ? 'maintenance' : getConnectivityStatus(device.last_reading_at || device.last_seen_at)) === 'maintenance' 
+                                        ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
+                                    'bg-muted text-muted-foreground border-muted-foreground/20'
+                                }`}>
+                                    {device.status === 'maintenance' ? 'maintenance' : getConnectivityStatus(device.last_reading_at || device.last_seen_at)}
                                 </span>
                             </div>
                         </div>
@@ -609,7 +694,7 @@ export default function Devices() {
                 ))}
 
                 {filteredDevices.length === 0 && (
-                    <div className="col-span-full text-center py-12 text-slate-500">
+                    <div className="col-span-full text-center py-12 text-muted-foreground">
                         {searchQuery || statusFilter !== 'all'
                             ? 'No devices match your filters'
                             : 'No devices found. Add your first device above.'}
@@ -634,15 +719,17 @@ export default function Devices() {
                     setNewDevice({
                         name: data.name,
                         location_name: data.location_name,
-                        latitude: data.latitude,
-                        longitude: data.longitude,
+                        latitude: String(data.latitude),
+                        longitude: String(data.longitude),
                         sim_number: data.sim_number,
                         node_number: data.node_number,
                         thingspeak_channel_id: data.thingspeak_channel_id || '',
                         thingspeak_read_key: data.thingspeak_read_key,
                         tds_field: data.tds_field || 1,
                         temp_field: data.temp_field || 2,
-                        voltage_field: data.voltage_field || 3
+                        voltage_field: data.voltage_field || 3,
+                        safe_tds_min: String(data.safe_tds_min || 35),
+                        safe_tds_max: String(data.safe_tds_max || 175)
                     })
                 }}
             />

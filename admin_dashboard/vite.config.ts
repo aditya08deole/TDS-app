@@ -23,11 +23,11 @@ export default defineConfig({
                 globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
                 runtimeCaching: [
                     {
-                        // Supabase API caching
-                        urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+                        // Firebase/Firestore API caching
+                        urlPattern: /^https:\/\/firestore\.googleapis\.com\/.*/i,
                         handler: 'NetworkFirst',
                         options: {
-                            cacheName: 'supabase-api-cache',
+                            cacheName: 'firebase-api-cache',
                             expiration: {
                                 maxEntries: 100,
                                 maxAgeSeconds: 60 * 60 // 1 hour

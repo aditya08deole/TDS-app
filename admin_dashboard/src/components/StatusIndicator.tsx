@@ -11,11 +11,11 @@ interface StatusIndicatorProps {
 export function StatusIndicator({ status, size = 'md', showLabel, className }: StatusIndicatorProps) {
     const getColor = (s: string) => {
         switch (s) {
-            case 'online': return 'bg-[#30d158]';
-            case 'critical': return 'bg-[#ff453a]';
-            case 'warning': return 'bg-[#ffd60a]';
+            case 'online': return 'bg-[#00f2ff]';
+            case 'critical': return 'bg-[#ff0055]';
+            case 'warning': return 'bg-[#ff9f0a]';
             case 'maintenance': return 'bg-blue-500';
-            default: return 'bg-[#636366]';
+            default: return 'bg-[#1e293b]';
         }
     };
 
@@ -37,7 +37,7 @@ export function StatusIndicator({ status, size = 'md', showLabel, className }: S
                     )}></span>
                 )}
                 <span className={cn(
-                    "relative inline-flex rounded-full shadow-[0_0_8px_currentColor]",
+                    "relative inline-flex rounded-full shadow-[0_0_12px_currentColor]",
                     getSize(size),
                     getColor(status)
                 )}></span>
@@ -46,10 +46,10 @@ export function StatusIndicator({ status, size = 'md', showLabel, className }: S
                 <span className={cn(
                     "capitalize font-medium",
                     size === 'sm' ? 'text-xs' : 'text-sm',
-                    status === 'critical' ? 'text-[#ff453a]' :
-                        status === 'warning' ? 'text-[#ffd60a]' :
-                            status === 'online' ? 'text-[#30d158]' :
-                                'text-[#8e8e93]'
+                    status === 'critical' ? 'text-[#ff0055]' :
+                        status === 'warning' ? 'text-[#ff9f0a]' :
+                            status === 'online' ? 'text-[#00f2ff]' :
+                                'text-[#64748b]'
                 )}>
                     {status}
                 </span>

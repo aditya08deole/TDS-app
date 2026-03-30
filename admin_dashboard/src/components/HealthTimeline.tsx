@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/firebase'
+import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore'
 import { Activity, AlertTriangle, CheckCircle, WifiOff } from 'lucide-react'
 
 interface DeviceEvent {
@@ -22,17 +23,24 @@ export default function HealthTimeline({ deviceId }: { deviceId: string }) {
 
     const fetchEvents = async () => {
         setLoading(true)
-        const { data } = await supabase
-            .from('device_state_events')
-            .select('*')
-            .eq('device_id', deviceId)
-            .order('started_at', { ascending: false })
-            .limit(20) // Show last 20 events
-
-        if (data) {
-            setEvents(data as DeviceEvent[])
+        try {
+            const q = query(
+                collection(db, 'device_state_events'),
+                where('device_id', '==', deviceId),
+                orderBy('started_at', 'desc'),
+                limit(20)
+            )
+            const querySnapshot = await getDocs(q)
+            const data = querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            })) as DeviceEvent[]
+            setEvents(data)
+        } catch (error) {
+            console.error('Error fetching health events:', error)
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     const getColor = (state: string) => {
@@ -77,7 +85,7 @@ export default function HealthTimeline({ deviceId }: { deviceId: string }) {
     // Let's stick to a visual list first, labeled "Health Timeline"
 
     return (
-        <div className="bg-slate-800/50 rounded-xl p-4">
+        <div className="glass-card p-4 border-black/5 bg-white/5">
             <h3 className="text-xs font-medium text-slate-400 mb-3 flex items-center gap-2">
                 <Activity className="w-3 h-3" />
                 Health Timeline (Last 20 Events)

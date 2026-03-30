@@ -3,6 +3,7 @@ import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from './AppSidebar'
 import { TopBar } from './TopBar'
 import ParticleBackground from './ParticleBackground'
+import CursorGlow from './CursorGlow'
 import CommandPalette from './CommandPalette'
 import DeviceInspector from './DeviceInspector'
 import { Toaster } from '@/components/ui/sonner'
@@ -14,6 +15,12 @@ export default function Layout() {
             <div className="fixed inset-0 z-0 pointer-events-none">
                 <ParticleBackground />
             </div>
+
+            {/* Interactive Cursor Glow - z-[1] */}
+            <CursorGlow />
+
+            {/* Global Frost Layer - Centralized Glass Material - z-[3] */}
+            <div className="fixed inset-0 z-[3] pointer-events-none glass-surface-unified" />
 
             <AppSidebar />
 

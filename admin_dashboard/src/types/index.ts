@@ -1,19 +1,12 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing Supabase environment variables')
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export type UserRole = 'super_admin' | 'admin' | 'operator' | 'engineer' | 'viewer'
 
 export type Profile = {
     id: string
     organization_id: string | null
     name: string | null
-    role: 'super_admin' | 'admin' | 'operator' | 'engineer' | 'viewer'
+    role: UserRole
+    email: string
+    avatar_url?: string
     created_at: string
 }
 
@@ -35,7 +28,7 @@ export type Device = {
     sim_number?: string
     serial_number?: string
 
-    // Field Mapping (which ThingSpeak field contains which data)
+    // Field Mapping
     tds_field_number?: number
     temperature_field_number?: number
     voltage_field_number?: number
@@ -47,34 +40,42 @@ export type Device = {
     confidence_score?: number
     last_reading_at?: string
 
+    // TDS Thresholds (Custom per device)
+    safe_tds_min?: number
+    safe_tds_max?: number
+
     created_at: string
 }
 
-/**
- * Enriched Device type with runtime sensor data from ThingSpeak
- * Properties added by useAllDevicesThingSpeakData hook
- */
+export interface AuditLogEntry {
+    id: string;
+    created_at: string;
+    actor_id: string;
+    action: string;
+    details: any;
+    entity_type: string;
+    entity_id: string;
+    target_resource?: string; // Legacy support
+}
+
 export type EnrichedDevice = Device & {
     latest_tds?: number
     latest_temperature?: number
     latest_voltage?: number
     is_offline?: boolean
-    // last_reading_at is inherited from Device
-
-    // Dual categorization (Phase 1: UI/UX Upgrade)
     tds_category?: 'safe' | 'critical' | 'unknown'
     connectivity_status?: 'online' | 'offline'
-
-    // Legacy status (kept for backward compatibility)
-    status?: 'online' | 'warning' | 'critical' | 'offline'
 }
 
 export type SensorData = {
-    id: number
+    id: string // Changed to string for Firestore ID
     device_id: string
-    tds: number
-    temperature: number
-    voltage: number
+    payload: {
+        tds: number
+        temperature: number
+        voltage: number
+        [key: string]: any // Flexible for future sensors
+    }
     recorded_at: string
 }
 
@@ -92,33 +93,5 @@ export type Alert = {
     resolved_at?: string
     resolved_by?: string
     escalation_level?: number
-    devices?: {
-        name: string
-    }
-}
-
-export type DeviceHeartbeat = {
-    device_id: string
-    last_seen: string
-    voltage: number
-    status: 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'MAINTENANCE'
-}
-
-export type DeviceStateHistory = {
-    id: number
-    device_id: string
-    old_state: string
-    new_state: string
-    changed_at: string
-}
-
-export type AuditLogEntry = {
-    id: number
-    user_id: string
-    action: string
-    table_name: string
-    record_id: string
-    old_data: any
-    new_data: any
-    created_at: string
+    device_name?: string // Added for convenience in UI
 }

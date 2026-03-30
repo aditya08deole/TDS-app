@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { supabase, type Device } from '../lib/supabase'
+import { doc, getDoc, updateDoc } from 'firebase/firestore'
+import { db } from '../lib/firebase'
+import type { Device } from '../types'
 import { getDeviceDisplayName } from '../lib/constants'
 import { toast } from 'sonner'
 import {
@@ -74,18 +76,19 @@ export default function DeviceInspector() {
         setUpdating(true)
         try {
             const updatedMetadata = { ...device.metadata, firmware_version: editForm.firmware_version }
-            const { error } = await supabase.from('devices').update({
+            const docRef = doc(db, 'devices', device.id)
+            await updateDoc(docRef, {
                 name: editForm.name,
                 location_name: editForm.location_name,
                 metadata: updatedMetadata
-            }).eq('id', device.id)
+            })
 
-            if (!error) {
-                setDevice(prev => prev ? { ...prev, ...editForm, metadata: updatedMetadata } : null)
-                setIsEditing(false)
-            }
+            setDevice(prev => prev ? { ...prev, ...editForm, metadata: updatedMetadata } : null)
+            setIsEditing(false)
+            toast.success('Configuration saved successfully')
         } catch (err) {
             console.error('Failed to save config', err)
+            toast.error('Failed to save configuration')
         }
         setUpdating(false)
     }
@@ -101,10 +104,15 @@ export default function DeviceInspector() {
         const toastId = toast.loading('Regenerating QR code...')
 
         try {
-            const { error } = await supabase.rpc('rotate_qr_code', { p_device_id: device.id })
-            if (error) throw error
-
-            toast.success('QR Code rotated successfully!', { id: toastId })
+            // Note: rotation logic should be moved to a Cloud Function
+            // For now, we update a trigger field in Firestore
+            const docRef = doc(db, 'devices', device.id)
+            await updateDoc(docRef, {
+                qr_rotation_pending: true,
+                updated_at: new Date().toISOString()
+            })
+            
+            toast.success('QR Code rotation requested!', { id: toastId })
         } catch (err) {
             console.error('Failed to rotate QR', err)
             toast.error('Failed to rotate QR code', {
@@ -131,8 +139,15 @@ export default function DeviceInspector() {
 
     const fetchDeviceDetails = async (id: string) => {
         setLoading(true)
-        const { data } = await supabase.from('devices').select('*').eq('id', id).single()
-        if (data) setDevice(data)
+        try {
+            const docRef = doc(db, 'devices', id)
+            const docSnap = await getDoc(docRef)
+            if (docSnap.exists()) {
+                setDevice({ id: docSnap.id, ...docSnap.data() } as InspectorDevice)
+            }
+        } catch (err) {
+            console.error('Failed to fetch device details', err)
+        }
         setLoading(false)
     }
 
@@ -167,25 +182,8 @@ export default function DeviceInspector() {
                 }
             }
 
-            // Fallback: Try to fetch from Supabase readings table
-            const { data } = await supabase
-                .from('readings')
-                .select('*')
-                .eq('device_id', device.id)
-                .order('created_at', { ascending: false })
-                .limit(50)
-
-            if (data && data.length > 0) {
-                setSensorHistory([...data].reverse().map((r, i) => ({
-                    id: i.toString(),
-                    tds: r.tds || 0,
-                    temperature: r.temperature,
-                    recorded_at: r.created_at
-                })))
-            } else {
-                // No data available
-                setSensorHistory([])
-            }
+            // Fallback: No longer using legacy readings table
+            setSensorHistory([])
         } catch (err) {
             console.error(err)
             setSensorHistory([])
@@ -199,10 +197,13 @@ export default function DeviceInspector() {
         setUpdating(true)
         try {
             const newStatus = device.status === 'maintenance' ? 'online' : 'maintenance'
-            await supabase.from('devices').update({ status: newStatus }).eq('id', device.id)
+            const docRef = doc(db, 'devices', device.id)
+            await updateDoc(docRef, { status: newStatus })
             setDevice(prev => prev ? { ...prev, status: newStatus } : null)
+            toast.success(`Device ${newStatus === 'maintenance' ? 'entered maintenance mode' : 'is now online'}`)
         } catch (err) {
             console.error(err)
+            toast.error('Failed to update maintenance mode')
         }
         setUpdating(false)
     }

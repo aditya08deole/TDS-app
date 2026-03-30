@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { supabase, type Device } from '../lib/supabase'
+import { db } from '../lib/firebase'
+import { collection, query, where, orderBy, limit, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'
+import { type Device } from '../types'
 import { getDeviceDisplayName } from '../lib/constants'
 import {
     X,
@@ -72,16 +74,18 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
         if (!device) return
         setLoading(true)
         try {
-            const { data } = await supabase
-                .from('sensor_data')
-                .select('*')
-                .eq('device_id', device.id)
-                .order('recorded_at', { ascending: false })
-                .limit(50)
-
-            if (data) {
-                setSensorHistory([...data].reverse())
-            }
+            const q = query(
+                collection(db, 'sensor_data'),
+                where('device_id', '==', device.id),
+                orderBy('recorded_at', 'desc'),
+                limit(50)
+            )
+            const querySnapshot = await getDocs(q)
+            const data = querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            })) as SensorReading[]
+            setSensorHistory([...data].reverse())
         } catch (err) {
             console.error('Error fetching sensor history:', err)
         }
@@ -91,16 +95,18 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
     const fetchMaintenanceLogs = async () => {
         if (!device) return
         try {
-            const { data } = await supabase
-                .from('maintenance_logs')
-                .select('*')
-                .eq('device_id', device.id)
-                .order('performed_at', { ascending: false })
-                .limit(20)
-
-            if (data) {
-                setMaintenanceLogs(data)
-            }
+            const q = query(
+                collection(db, 'maintenance_logs'),
+                where('device_id', '==', device.id),
+                orderBy('performed_at', 'desc'),
+                limit(20)
+            )
+            const querySnapshot = await getDocs(q)
+            const data = querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            })) as MaintenanceLog[]
+            setMaintenanceLogs(data)
         } catch (err) {
             console.error('Error fetching maintenance logs:', err)
         }
@@ -111,16 +117,15 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
         setUpdating(true)
         try {
             const newStatus = device.status === 'maintenance' ? 'online' : 'maintenance'
-            await supabase
-                .from('devices')
-                .update({ status: newStatus })
-                .eq('id', device.id)
+            const deviceRef = doc(db, 'devices', device.id)
+            await updateDoc(deviceRef, { status: newStatus })
 
             // Log the action
-            await supabase.from('maintenance_logs').insert({
+            await addDoc(collection(db, 'maintenance_logs'), {
                 device_id: device.id,
                 action: newStatus === 'maintenance' ? 'Entered Maintenance Mode' : 'Exited Maintenance Mode',
                 performed_by: 'Admin',
+                performed_at: serverTimestamp(),
                 notes: 'Status changed via dashboard'
             })
 

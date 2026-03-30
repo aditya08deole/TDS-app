@@ -1,6 +1,6 @@
 import { X, Thermometer, Droplets, ExternalLink, Activity } from 'lucide-react'
 import { getDeviceDisplayName } from '../lib/constants'
-import type { Device } from '../lib/supabase'
+import type { Device } from '../types'
 import { AreaChart, Area, ResponsiveContainer, YAxis } from 'recharts'
 
 interface DevicePanelProps {
@@ -21,8 +21,8 @@ export default function DevicePanel({ device, onClose, isMobile, chartData = [] 
                     'bg-slate-500';
 
     const panelClasses = isMobile
-        ? "fixed bottom-[64px] left-0 right-0 bg-[#0f172a] border-t border-slate-800 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-40 p-6 animate-slide-up pb-safe"
-        : "absolute top-4 right-4 bottom-4 w-[400px] bg-[#0f172a]/95 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-[-10px_0_40px_rgba(0,0,0,0.5)] z-[1000] p-6 animate-slide-in-right flex flex-col";
+        ? "fixed bottom-[64px] left-0 right-0 glass-surface-unified border-t border-black/10 shadow-[0_-20px_50px_rgba(0,0,0,0.4)] z-40 p-6 animate-slide-up pb-safe rounded-t-[2.5rem]"
+        : "absolute top-4 right-4 bottom-4 w-[400px] glass-surface-unified border border-black/10 rounded-3xl shadow-[-20px_0_60px_rgba(0,0,0,0.5)] z-[1000] p-6 animate-slide-in-right flex flex-col";
 
     const tdsValue = device.latest_tds || 0
     const tempValue = device.latest_temperature || 0
@@ -55,21 +55,21 @@ export default function DevicePanel({ device, onClose, isMobile, chartData = [] 
                 {/* Key Metrics Grid */}
                 <div className="grid grid-cols-2 gap-4 mb-8">
                     {/* TDS Card */}
-                    <div className="p-4 bg-slate-900/80 rounded-2xl border border-slate-800/80 relative overflow-hidden group">
-                        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="p-4 glass-card border-black/5 relative overflow-hidden group">
+                        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                         <div className="flex items-center gap-2 text-cyan-400 mb-2">
                             <Droplets className="h-4 w-4" />
                             <span className="text-xs font-semibold uppercase tracking-wider">TDS Level</span>
                         </div>
                         <div className="text-3xl font-bold text-white tracking-tight flex items-baseline gap-1">
                             {tdsValue}
-                            <span className="text-sm font-medium text-slate-500">ppm</span>
+                            <span className="text-sm font-medium text-slate-500 uppercase">ppm</span>
                         </div>
                     </div>
 
                     {/* Temp Card */}
-                    <div className="p-4 bg-slate-900/80 rounded-2xl border border-slate-800/80 relative overflow-hidden group">
-                        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="p-4 glass-card border-black/5 relative overflow-hidden group">
+                        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                         <div className="flex items-center gap-2 text-amber-400 mb-2">
                             <Thermometer className="h-4 w-4" />
                             <span className="text-xs font-semibold uppercase tracking-wider">Temp</span>
@@ -82,7 +82,7 @@ export default function DevicePanel({ device, onClose, isMobile, chartData = [] 
                 </div>
 
                 {/* Mini Chart */}
-                <div className="mb-8 p-5 bg-slate-900/50 rounded-2xl border border-slate-800/50 flex-1 min-h-[180px] flex flex-col">
+                <div className="mb-8 p-5 glass-card border-black/5 flex-1 min-h-[180px] flex flex-col">
                     <div className="flex items-center justify-between mb-4">
                         <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                             <Activity className="w-3 h-3 text-cyan-400" />

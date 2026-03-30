@@ -8,7 +8,8 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Download, Copy, Check, QrCode, UploadCloud } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { storage } from '../lib/firebase'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 
 interface DeviceData {
     name: string
@@ -23,6 +24,8 @@ interface DeviceData {
     tds_field?: number
     temp_field?: number
     voltage_field?: number
+    safe_tds_min: string
+    safe_tds_max: string
 }
 
 interface QRCodeGeneratorProps {
@@ -53,7 +56,9 @@ export function QRCodeGenerator({ deviceData, isOpen, onClose }: QRCodeGenerator
                 // Field mappings
                 f_tds: deviceData.tds_field || 1,
                 f_temp: deviceData.temp_field || 2,
-                f_volt: deviceData.voltage_field || 3
+                f_volt: deviceData.voltage_field || 3,
+                s_min: parseFloat(deviceData.safe_tds_min) || 35,
+                s_max: parseFloat(deviceData.safe_tds_max) || 175
             }
         }
         return btoa(JSON.stringify(payload))
@@ -102,26 +107,18 @@ export function QRCodeGenerator({ deviceData, isOpen, onClose }: QRCodeGenerator
         URL.revokeObjectURL(url)
     }
 
-    const saveToSupabase = async () => {
+    const saveToFirebase = async () => {
         if (!deviceData.name) return
         setUploading(true)
         try {
             const blob = await generateBlob()
             if (!blob) throw new Error('Failed to generate image')
 
-            const fileName = `${deviceData.name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.png`
-            const { error } = await supabase.storage
-                .from('qr_codes') // Correct bucket name created in migration
-                .upload(fileName, blob, {
-                    contentType: 'image/png',
-                    upsert: true
-                })
-
-            if (error) throw error
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('qr_codes')
-                .getPublicUrl(fileName)
+            const fileName = `qr_codes/${deviceData.name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.png`
+            const storageRef = ref(storage, fileName)
+            
+            await uploadBytes(storageRef, blob)
+            const publicUrl = await getDownloadURL(storageRef)
 
             alert(`✅ QR Code saved to cloud successfully!\nURL: ${publicUrl}`)
         } catch (error: any) {
@@ -204,7 +201,7 @@ export function QRCodeGenerator({ deviceData, isOpen, onClose }: QRCodeGenerator
                                     <Button
                                         variant="outline"
                                         className="flex-1"
-                                        onClick={saveToSupabase}
+                                        onClick={saveToFirebase}
                                         disabled={uploading}
                                     >
                                         <UploadCloud className="h-4 w-4 mr-2" />
