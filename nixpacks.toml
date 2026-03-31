@@ -1,14 +1,17 @@
-# Force the node provider
+# Force Node.js provider
 providers = ["node"]
 
 [phases.setup]
 nixPkgs = ["nodejs"]
 
 [phases.install]
+# Only install in the subfolder to keep root clean
 cmds = ["cd admin_dashboard && npm install"]
 
 [phases.build]
+# Build in the subfolder
 cmds = ["cd admin_dashboard && npm run build"]
 
 [start]
+# Start serve from the dist folder
 cmd = "cd admin_dashboard && npx serve -s dist"
