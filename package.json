@@ -7,6 +7,6 @@
   },
   "scripts": {
     "build": "cd admin_dashboard && npm install && npm run build",
-    "start": "cd admin_dashboard && npx serve -s dist"
+    "start": "cd admin_dashboard && npm run start"
   }
 }
