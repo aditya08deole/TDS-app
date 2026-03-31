@@ -29,10 +29,10 @@ export default function StatusCard({ title, value, icon: Icon, color, subtext }:
         <div className={`relative p-5 rounded-2xl border backdrop-blur-sm shadow-xl transition-all hover:scale-[1.02] ${colorClasses[color]}`}>
             <div className="flex justify-between items-start">
                 <div>
-                    <h3 className="text-sm font-medium opacity-80 uppercase tracking-wide">{title}</h3>
+                    <h3 className="text-sm font-bold uppercase tracking-wide text-foreground">{title}</h3>
                     <div className="mt-2 flex items-baseline gap-2">
-                        <span className="text-3xl font-bold text-white">{value}</span>
-                        {subtext && <span className="text-xs opacity-70">{subtext}</span>}
+                        <span className="text-3xl font-bold text-foreground">{value}</span>
+                        {subtext && <span className="text-xs text-muted-foreground">{subtext}</span>}
                     </div>
                 </div>
                 <div className={`p-2.5 rounded-xl ${iconBgClasses[color]}`}>

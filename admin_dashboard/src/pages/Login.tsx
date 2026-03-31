@@ -118,7 +118,7 @@ export default function Login() {
 
             {/* Login Card - Wider & More Compact */}
             <div className="w-full max-w-[440px] relative z-10 animate-in fade-in zoom-in-95 duration-700">
-                <div className="bg-secondary/80 backdrop-blur-3xl border border-accent rounded-[2rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)] p-8 md:px-10 md:py-8 ring-1 ring-accent overflow-hidden">
+                <div className="premium-glass rounded-[2rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)] p-8 md:px-10 md:py-8 ring-1 ring-accent overflow-hidden">
                     
                     {/* App Logo & Title - Compact Alignment */}
                     <div className="flex items-center justify-center gap-5 mb-8">
@@ -202,10 +202,10 @@ export default function Login() {
 
                         {/* Buttons Row - Side by Side for better aspect ratio if possible, or just optimized spacing */}
                         <div className="flex flex-col gap-3 pt-2">
-                            <button
+                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-cyan-900/10 transition-all active:scale-[0.98] disabled:opacity-50 text-sm tracking-wide"
+                                className="w-full premium-button text-white font-bold py-3.5 rounded-xl shadow-lg shadow-cyan-900/10 active:scale-[0.98] disabled:opacity-50 text-sm tracking-wide"
                             >
                                 {loading ? (
                                     <div className="flex items-center justify-center gap-2">
@@ -220,7 +220,7 @@ export default function Login() {
                                 type="button"
                                 onClick={handleGoogleLogin}
                                 disabled={loading}
-                                className="w-full bg-background/20 border border-accent hover:bg-background/40 text-foreground/80 font-medium py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all duration-300 active:scale-[0.98] disabled:opacity-50 text-xs border-dashed"
+                                className="w-full premium-button text-foreground/80 font-medium py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all duration-300 active:scale-[0.98] disabled:opacity-50 text-xs border-dashed"
                             >
                                 <GoogleIcon />
                                 <span>Google login</span>

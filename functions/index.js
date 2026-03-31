@@ -4,6 +4,10 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
+// Global in-memory cache for device configurations (persists across warm starts)
+const deviceCache = {};
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 /**
  * Triggered when a new sensor reading is added.
  * Checks for TDS violations and creates alerts.
@@ -12,18 +16,40 @@ exports.checkSensorData = functions.firestore
   .document("sensor_data/{docId}")
   .onCreate(async (snap, context) => {
     const data = snap.data();
-    const { deviceId, payload, recorded_at } = data;
+    const { deviceId, payload } = data;
     const tds = payload?.tds;
 
     if (tds === undefined) return null;
 
-    // Threshold logic (matching getTDSCategory in constants.ts)
-    if (tds > 1000) {
-      console.log(`🚨 TDS Violation: ${tds} ppm for device ${deviceId}`);
-      
-      // Get device name for the alert
+    let device;
+    const now = Date.now();
+
+    // Check cache first
+    if (deviceCache[deviceId] && (now - deviceCache[deviceId].timestamp < CACHE_TTL)) {
+      device = deviceCache[deviceId].data;
+      console.log(`ℹ️ Using cached config for device ${deviceId}`);
+    } else {
+      // Get device configuration for dynamic thresholds
       const deviceSnap = await db.collection("devices").doc(deviceId).get();
-      const deviceName = deviceSnap.exists ? deviceSnap.data().name : deviceId;
+      if (!deviceSnap.exists) {
+        console.warn(`Device ${deviceId} not found for sensor check.`);
+        return null;
+      }
+      device = deviceSnap.data();
+      // Update cache
+      deviceCache[deviceId] = {
+        data: device,
+        timestamp: now
+      };
+      console.log(`📥 Fetched and cached config for device ${deviceId}`);
+    }
+    
+    const threshold = device.safe_tds_max ? Number(device.safe_tds_max) : 1000;
+    const deviceName = device.location_name || device.name || deviceId;
+
+    // Dynamic threshold logic
+    if (tds > threshold) {
+      console.log(`🚨 TDS Violation: ${tds} ppm for device ${deviceName} (Threshold: ${threshold})`);
 
       // Create an alert
       return db.collection("alerts").add({
@@ -31,7 +57,7 @@ exports.checkSensorData = functions.firestore
         device_name: deviceName,
         type: "CRITICAL_TDS",
         severity: "critical",
-        message: `High TDS detected: ${tds} PPM`,
+        message: `High TDS detected: ${tds} PPM (Threshold: ${threshold})`,
         value_at_time: tds,
         status: "open",
         created_at: admin.firestore.FieldValue.serverTimestamp(),
@@ -57,7 +83,7 @@ exports.scheduledHealthCheck = functions.pubsub
     devicesSnap.forEach(doc => {
       const device = doc.data();
       const lastSeen = device.last_reading_at 
-        ? new Date(device.last_reading_at).getTime() 
+        ? (device.last_reading_at._seconds ? device.last_reading_at._seconds * 1000 : new Date(device.last_reading_at).getTime())
         : 0;
 
       if (lastSeen < oneHourAgo && device.connectivity_status !== "offline") {

@@ -221,22 +221,22 @@ export default function DeviceInspector() {
     if (!inspectorDeviceId) return null
 
     return (
-        <div className={`fixed top-0 right-0 h-full bg-[#1c1c1e]/95 backdrop-blur-xl border-l border-white/10 shadow-2xl z-40 transition-transform duration-300 ease-in-out flex flex-col ${isMobile ? 'w-full' : 'w-[400px]'} ${inspectorDeviceId ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className={`fixed top-0 right-0 h-full bg-background/95 backdrop-blur-2xl border-l border-border shadow-2xl z-40 transition-transform duration-300 ease-in-out flex flex-col ${isMobile ? 'w-full' : 'w-[400px]'} ${inspectorDeviceId ? 'translate-x-0' : 'translate-x-full'}`}>
 
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-white/5 bg-white/5">
+            <div className="flex items-center justify-between p-4 border-b border-border bg-accent/5">
                 <div className="flex items-center gap-3">
                     {device && <div className={`w-3 h-3 rounded-full ${getStatusColor(device.status)} shadow-[0_0_8px_currentColor]`} />}
                     <div>
-                        <h2 className="text-sm font-bold text-white tracking-wide uppercase">{device ? getDeviceDisplayName(device) : 'Loading...'}</h2>
-                        <p className="text-[10px] text-slate-400 font-mono">{device?.id?.slice(0, 8)}...</p>
+                        <h2 className="text-sm font-black text-foreground tracking-wide uppercase">{device ? getDeviceDisplayName(device) : 'Loading...'}</h2>
+                        <p className="text-[10px] text-muted-foreground font-mono">{device?.id?.slice(0, 8)}...</p>
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={closeInspector} className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors">
+                    <button onClick={closeInspector} className="p-2 hover:bg-accent/10 rounded-lg text-muted-foreground hover:text-foreground transition-colors">
                         <Minimize2 className="h-4 w-4" />
                     </button>
-                    <button onClick={closeInspector} className="p-2 hover:bg-red-500/20 rounded-lg text-slate-400 hover:text-red-400 transition-colors">
+                    <button onClick={closeInspector} className="p-2 hover:bg-red-500/20 rounded-lg text-muted-foreground hover:text-red-400 transition-colors">
                         <X className="h-4 w-4" />
                     </button>
                 </div>
@@ -249,7 +249,7 @@ export default function DeviceInspector() {
             ) : device ? (
                 <>
                     {/* Tabs */}
-                    <div className="flex border-b border-white/5">
+                    <div className="flex border-b border-border">
                         {[
                             { id: 'overview', icon: Activity },
                             { id: 'history', icon: History },
@@ -258,7 +258,7 @@ export default function DeviceInspector() {
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id as TabType)}
-                                className={`flex-1 py-3 flex justify-center transition-colors ${activeTab === tab.id ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5' : 'text-slate-500 hover:text-slate-300'}`}
+                                className={`flex-1 py-3 flex justify-center transition-colors ${activeTab === tab.id ? 'text-primary border-b-2 border-primary bg-primary/5' : 'text-muted-foreground hover:text-foreground'}`}
                             >
                                 <tab.icon className="h-4 w-4" />
                             </button>
@@ -271,25 +271,25 @@ export default function DeviceInspector() {
                         {activeTab === 'overview' && (
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-3">
-                                    <div className="bg-white/5 rounded-xl p-3 border border-white/5">
-                                        <p className="text-xs text-slate-400 mb-1">Confidence</p>
+                                    <div className="bg-accent/5 rounded-xl p-3 border border-border">
+                                        <p className="text-xs text-muted-foreground mb-1 font-bold">Confidence</p>
                                         <div className="flex justify-center py-2">
                                             <ConfidenceRing score={device.confidence_score ?? 100} size={60} status={device.status} />
                                         </div>
                                     </div>
-                                    <div className="bg-white/5 rounded-xl p-3 border border-white/5 space-y-3">
+                                    <div className="bg-accent/5 rounded-xl p-3 border border-border space-y-3">
                                         <div>
-                                            <p className="text-xs text-slate-400">Last Reading</p>
+                                            <p className="text-xs text-muted-foreground font-bold">Last Reading</p>
                                             {device.last_reading_at ? (
                                                 <p className={`text-sm font-mono ${new Date(device.last_reading_at).getTime() < Date.now() - 15 * 60 * 1000 ? 'text-orange-400' : 'text-emerald-400'}`}>
                                                     {new Date(device.last_reading_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </p>
                                             ) : (
-                                                <p className="text-sm font-mono text-slate-500">No Data</p>
+                                                <p className="text-sm font-mono text-muted-foreground">No Data</p>
                                             )}
                                         </div>
                                         <div>
-                                            <p className="text-xs text-slate-400">Heatbeat</p>
+                                            <p className="text-xs text-muted-foreground font-bold">Heatbeat</p>
                                             <p className="text-sm font-mono text-emerald-400">
                                                 {device.last_seen_at ? new Date(device.last_seen_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
                                             </p>
@@ -382,55 +382,75 @@ export default function DeviceInspector() {
                                         </div>
 
                                         <div className="space-y-1">
-                                            <span className="text-slate-400 text-xs">Location Name</span>
+                                            <span className="text-muted-foreground text-xs font-bold uppercase tracking-wider">Location Name</span>
                                             {isEditing ? (
                                                 <input
-                                                    className="w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-white focus:outline-none focus:border-blue-500"
+                                                    className="w-full bg-background border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:border-primary"
                                                     value={editForm.location_name}
                                                     onChange={e => setEditForm({ ...editForm, location_name: e.target.value })}
                                                 />
                                             ) : (
-                                                <div className="text-white">{device.location_name || '-'}</div>
+                                                <div className="text-foreground font-medium">{device.location_name || '-'}</div>
                                             )}
                                         </div>
 
                                         <div className="space-y-1">
-                                            <span className="text-slate-400 text-xs">Firmware Version</span>
+                                            <span className="text-muted-foreground text-xs font-bold uppercase tracking-wider">Firmware Version</span>
                                             {isEditing ? (
                                                 <input
-                                                    className="w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-white focus:outline-none focus:border-blue-500"
+                                                    className="w-full bg-background border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:border-primary"
                                                     value={editForm.firmware_version}
                                                     onChange={e => setEditForm({ ...editForm, firmware_version: e.target.value })}
                                                 />
                                             ) : (
-                                                <div className="text-white font-mono">{device.metadata?.firmware_version || 'v1.0.0'}</div>
+                                                <div className="text-foreground font-mono">{device.metadata?.firmware_version || 'v1.0.0'}</div>
                                             )}
+                                        </div>
+
+                                        <div className="bg-accent/5 rounded-xl p-4 border border-border">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h3 className="text-xs font-black text-muted-foreground uppercase tracking-widest">Live Metrics</h3>
+                                                <div className="animate-pulse flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-[10px] font-bold text-emerald-500 border border-emerald-500/20">
+                                                    <span className="w-1 h-1 rounded-full bg-emerald-500" />
+                                                    Live
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-tighter">Current TDS</span>
+                                                    <div className="text-2xl font-black font-mono text-foreground">{device.latest_tds || '--'}</div>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-tighter">Water Temp</span>
+                                                    <div className="text-2xl font-black font-mono text-foreground">{device.latest_temperature ? `${device.latest_temperature.toFixed(1)}°` : '--'}</div>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-4 pt-2">
                                             <div>
-                                                <span className="text-slate-400 text-xs block mb-1">Installed</span>
-                                                <div className="text-white">{new Date(device.deployment_date || device.created_at || Date.now()).toLocaleDateString()}</div>
+                                                <span className="text-muted-foreground text-xs block mb-1 font-bold uppercase">Installed</span>
+                                                <div className="text-foreground font-medium">{new Date(device.deployment_date || device.created_at || Date.now()).toLocaleDateString()}</div>
                                             </div>
                                             <div>
-                                                <span className="text-slate-400 text-xs block mb-1">Last Maintenance</span>
-                                                <div className="text-white">{device.metadata?.last_maintenance ? new Date(device.metadata.last_maintenance).toLocaleDateString() : '-'}</div>
+                                                <span className="text-muted-foreground text-xs block mb-1 font-bold uppercase">Maintenance</span>
+                                                <div className="text-foreground font-medium">{device.metadata?.last_maintenance ? new Date(device.metadata.last_maintenance).toLocaleDateString() : '-'}</div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
                                 {isAtLeast('admin') && (
-                                    <div className="mt-4 pt-4 border-t border-white/5">
-                                        <h4 className="text-xs font-bold text-red-400 uppercase mb-2">Security Zone</h4>
+                                    <div className="mt-4 pt-4 border-t border-border">
+                                        <h4 className="text-xs font-bold text-red-500 uppercase mb-2">Security Zone</h4>
                                         <button
                                             onClick={handleRegenerateQR}
                                             disabled={updating}
-                                            className="w-full py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg text-xs font-medium transition-colors border border-red-500/20"
+                                            className="w-full py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg text-xs font-bold transition-colors border border-red-500/20 shadow-sm"
                                         >
-                                            {updating ? 'Rotated...' : 'Regenerate QR Code'}
+                                            {updating ? 'Rotating...' : 'Regenerate QR Code'}
                                         </button>
-                                        <p className="text-[10px] text-slate-500 mt-2 text-center">
+                                        <p className="text-[10px] text-muted-foreground mt-2 text-center font-medium">
                                             Warning: This will immediately invalidate the physical QR code.
                                         </p>
                                     </div>

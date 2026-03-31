@@ -19,7 +19,6 @@ import {
     SidebarContent,
     SidebarFooter,
     SidebarGroup,
-    SidebarGroupLabel,
     SidebarHeader,
     SidebarMenu,
     SidebarMenuButton,
@@ -103,7 +102,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     ]
 
     return (
-        <Sidebar collapsible="icon" {...props}>
+        <Sidebar collapsible="icon" className="glass-nav-unified border-r border-border" {...props}>
             <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>
@@ -119,8 +118,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                                         className="size-8 rounded-lg"
                                     />
                                     <div className="grid flex-1 text-left text-sm leading-tight">
-                                        <span className="truncate font-semibold">EvaraTDS</span>
-                                        <span className="truncate text-xs opacity-60">Water Quality Monitor</span>
+                                        <span className="truncate font-black tracking-tight text-foreground">EvaraTDS</span>
+                                        <span className="truncate text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Water Quality Monitor</span>
                                     </div>
                                     {/* <ChevronsUpDown className="ml-auto" /> */}
                                 </SidebarMenuButton>
@@ -186,7 +185,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarContent>
             <SidebarFooter>
                 {/* Partner Logo */}
-                <div className="px-3 py-4 border-b border-white/5 group-data-[collapsible=icon]:hidden">
+                <div className="px-3 py-4 border-b border-border group-data-[collapsible=icon]:hidden">
                     <div className="flex items-center justify-center">
                         <img
                             src="/evaratech-logo.png"
@@ -217,7 +216,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent
                                 side="top"
-                                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg liquid-ios-glass glass-layer-4 border border-white/20 shadow-2xl"
                             >
                                 <DropdownMenuItem onClick={() => navigate('/settings')}>
                                     <Settings className="mr-2 h-4 w-4" />

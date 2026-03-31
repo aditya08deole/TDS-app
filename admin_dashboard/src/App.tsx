@@ -8,6 +8,8 @@ import { UIProvider } from './context/UIContext'
 import { AlertProvider } from './context/AlertContext'
 import { RoleProvider } from './context/RoleContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { NotificationProvider } from './context/NotificationContext'
+import { GlassEffectProvider } from './components/GlassEffectProvider'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import AuthGuard from './components/AuthGuard'
@@ -105,6 +107,74 @@ function AppWrapper({ children }: { children: React.ReactNode }) {
     return <>{children}</>
 }
 
+// Note: 'motion' from dependencies is actually framer-motion
+
+function RoutesWrapper() {
+    return (
+        <Routes>
+            <Route path="/login" element={
+                <Suspense fallback={<PageLoader />}>
+                    <Login />
+                </Suspense>
+            } />
+            <Route path="/" element={
+                <Suspense fallback={<PageLoader />}>
+                    <AuthGuard>
+                        <Layout />
+                    </AuthGuard>
+                </Suspense>
+            }>
+                <Route index element={<Dashboard />} />
+                <Route path="map" element={
+                    <Suspense fallback={<PageLoader />}>
+                        <MapPage />
+                    </Suspense>
+                } />
+                <Route path="devices" element={
+                    <Suspense fallback={<PageLoader />}>
+                        <DeviceList />
+                    </Suspense>
+                } />
+                <Route path="alerts" element={
+                    <Suspense fallback={<PageLoader />}>
+                        <Alerts />
+                    </Suspense>
+                } />
+                <Route path="scan" element={
+                    <Suspense fallback={<PageLoader />}>
+                        <ScanDevice />
+                    </Suspense>
+                } />
+                <Route path="audit" element={
+                    <Suspense fallback={<PageLoader />}>
+                        <AuthGuard requiredRole="admin">
+                            <AuditLog />
+                        </AuthGuard>
+                    </Suspense>
+                } />
+                <Route path="reports" element={
+                    <Suspense fallback={<PageLoader />}>
+                        <Reports />
+                    </Suspense>
+                } />
+                <Route path="users" element={
+                    <Suspense fallback={<PageLoader />}>
+                        <AuthGuard requiredRole="admin">
+                            <Users />
+                        </AuthGuard>
+                    </Suspense>
+                } />
+                <Route path="settings" element={
+                    <Suspense fallback={<PageLoader />}>
+                        <Settings />
+                    </Suspense>
+                } />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+    )
+}
+
 function App() {
     return (
         <SafeErrorBoundary>
@@ -112,78 +182,21 @@ function App() {
                 <ThemeProvider>
                     <BrowserRouter>
                         <UIProvider>
-                                        <AlertProvider>
-                            <AuthProvider>
-                                <RoleProvider>
-                                    <AppWrapper>
-                                        <Routes>
-                                            {/* Public Routes */}
-                                            <Route path="/login" element={<Login />} />
-
-                                            {/* Protected Routes - Wrapped with AuthGuard */}
-                                            <Route element={<AuthGuard />}>
-                                                <Route path="/" element={<Layout />}>
-                                                    <Route index element={
-                                                        <Suspense fallback={<PageLoader />}>
-                                                            <Dashboard />
-                                                        </Suspense>
-                                                    } />
-                                                    <Route path="map" element={
-                                                        <Suspense fallback={<PageLoader />}>
-                                                            <MapPage />
-                                                        </Suspense>
-                                                    } />
-                                                    <Route path="devices" element={
-                                                        <Suspense fallback={<PageLoader />}>
-                                                            <DeviceList />
-                                                        </Suspense>
-                                                    } />
-                                                    <Route path="alerts" element={
-                                                        <Suspense fallback={<PageLoader />}>
-                                                            <Alerts />
-                                                        </Suspense>
-                                                    } />
-                                                    <Route path="scan" element={
-                                                        <Suspense fallback={<PageLoader />}>
-                                                            <AuthGuard requiredRole="admin">
-                                                                <ScanDevice />
-                                                            </AuthGuard>
-                                                        </Suspense>
-                                                    } />
-                                                    <Route path="audit" element={
-                                                        <Suspense fallback={<PageLoader />}>
-                                                            <AuthGuard requiredRole="admin">
-                                                                <AuditLog />
-                                                            </AuthGuard>
-                                                        </Suspense>
-                                                    } />
-                                                    <Route path="reports" element={
-                                                        <Suspense fallback={<PageLoader />}>
-                                                            <Reports />
-                                                        </Suspense>
-                                                    } />
-                                                    <Route path="users" element={
-                                                        <Suspense fallback={<PageLoader />}>
-                                                            <AuthGuard requiredRole="admin">
-                                                                <Users />
-                                                            </AuthGuard>
-                                                        </Suspense>
-                                                    } />
-                                                    <Route path="settings" element={
-                                                        <Suspense fallback={<PageLoader />}>
-                                                            <Settings />
-                                                        </Suspense>
-                                                    } />
-                                                </Route>
-                                                <Route path="*" element={<Navigate to="/" replace />} />
-                                            </Route>
-                                        </Routes>
-                                        <ReloadPrompt />
-                                        <NotificationManager />
-                                    </AppWrapper>
-                                </RoleProvider>
-                            </AuthProvider>
-                                        </AlertProvider>
+                            <AlertProvider>
+                                <AuthProvider>
+                                    <RoleProvider>
+                                        <NotificationProvider>
+                                            <GlassEffectProvider>
+                                                <AppWrapper>
+                                                    <RoutesWrapper />
+                                                    <ReloadPrompt />
+                                                    <NotificationManager />
+                                                </AppWrapper>
+                                            </GlassEffectProvider>
+                                        </NotificationProvider>
+                                    </RoleProvider>
+                                </AuthProvider>
+                            </AlertProvider>
                         </UIProvider>
                     </BrowserRouter>
                     <Toaster richColors position="top-right" />

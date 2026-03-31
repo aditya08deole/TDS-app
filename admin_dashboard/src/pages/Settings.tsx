@@ -5,11 +5,22 @@ import { db } from '../lib/firebase'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import {
     User, Bell, Shield, LogOut, Moon, Mail, ChevronRight, Save, Loader2, CheckCircle,
-    Globe, Lock, Layout, BellRing, UserCircle
+    Globe, Lock, Layout, BellRing, UserCircle, Volume2, VolumeX
 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { useNotification } from '../context/NotificationContext'
+import { toast } from 'sonner'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+
+import { useTheme } from '../context/ThemeContext'
 
 interface UserSettings {
     notifications_enabled: boolean
@@ -21,17 +32,32 @@ type SettingsTab = 'general' | 'notifications' | 'data' | 'account'
 
 export default function Settings() {
     const { user, signOut } = useAuth()
+    const { theme, setTheme } = useTheme()
     const navigate = useNavigate()
     const [activeTab, setActiveTab] = useState<SettingsTab>('general')
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
 
+    const { 
+        soundEnabled, 
+        toggleSound, 
+        subscribe, 
+        isSubscribed, 
+        permission, 
+        loading: notificationLoading 
+    } = useNotification()
+
     const [settings, setSettings] = useState<UserSettings>({
         notifications_enabled: true,
         email_alerts: false,
-        dark_mode: true
+        dark_mode: theme === 'dark'
     })
+
+    // Sync local settings state when global theme changes (e.g. from header toggle)
+    useEffect(() => {
+        setSettings(prev => ({ ...prev, dark_mode: theme === 'dark' }))
+    }, [theme])
 
     // Load user settings
     useEffect(() => {
@@ -41,14 +67,16 @@ export default function Settings() {
             try {
                 const docRef = doc(db, 'user_settings', user.uid)
                 const docSnap = await getDoc(docRef)
-
                 if (docSnap.exists()) {
                     const data = docSnap.data()
+                    const isDark = data.dark_mode ?? (theme === 'dark')
                     setSettings({
                         notifications_enabled: data.notifications_enabled ?? true,
                         email_alerts: data.email_alerts ?? false,
-                        dark_mode: data.dark_mode ?? true
+                        dark_mode: isDark
                     })
+                    // Sync global theme with Firestore preference on load
+                    setTheme(isDark ? 'dark' : 'light')
                 }
             } catch (err) {
                 console.log('No settings found, using defaults')
@@ -58,7 +86,6 @@ export default function Settings() {
         loadSettings()
     }, [user])
 
-    // Save settings
     const saveSettings = async () => {
         if (!user) return
         setSaving(true)
@@ -69,11 +96,14 @@ export default function Settings() {
                 user_id: user.uid,
                 updated_at: new Date().toISOString()
             }, { merge: true })
-
             setSaved(true)
+            toast.success('Settings saved successfully', {
+                description: 'System preferences have been updated.'
+            })
             setTimeout(() => setSaved(false), 2000)
         } catch (err) {
             console.error('Failed to save settings:', err)
+            toast.error('Failed to save settings')
         }
         setSaving(false)
     }
@@ -84,7 +114,13 @@ export default function Settings() {
     }
 
     const toggleSetting = (key: keyof UserSettings) => {
-        setSettings(prev => ({ ...prev, [key]: !prev[key] }))
+        const newValue = !settings[key]
+        setSettings(prev => ({ ...prev, [key]: newValue }))
+        
+        // Immediate theme application if dark_mode toggled
+        if (key === 'dark_mode') {
+            setTheme(newValue ? 'dark' : 'light')
+        }
     }
 
     const menuItems = [
@@ -102,7 +138,7 @@ export default function Settings() {
     }
 
     return (
-        <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-140px)] animate-fade-in">
+        <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-140px)] animate-fade-in text-left">
             {/* Sidebar (Left Panel) */}
             <div className="w-full lg:w-64 shrink-0 space-y-6">
                 <div>
@@ -139,7 +175,7 @@ export default function Settings() {
                     <Button
                         variant="destructive"
                         onClick={handleLogout}
-                        className="w-full h-9 text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20"
+                        className="w-full h-9 text-xs font-semibold"
                     >
                         <LogOut className="h-3.5 w-3.5 mr-2" />
                         Sign Out
@@ -160,7 +196,7 @@ export default function Settings() {
 
                             <div className="bg-secondary/50 rounded-xl overflow-hidden border border-accent divide-y divide-accent">
                                 <div className="p-4 flex items-center justify-between">
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-4 text-left">
                                         <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500"><Moon className="w-5 h-5" /></div>
                                         <div>
                                             <p className="text-foreground font-medium">Dark Mode</p>
@@ -173,14 +209,24 @@ export default function Settings() {
                                     />
                                 </div>
                                 <div className="p-4 flex items-center justify-between">
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-4 text-left">
                                         <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500"><Globe className="w-5 h-5" /></div>
                                         <div>
                                             <p className="text-foreground font-medium">Language</p>
-                                            <p className="text-xs text-muted-foreground">English (US)</p>
+                                            <p className="text-xs text-muted-foreground">Regional preference</p>
                                         </div>
                                     </div>
-                                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                                    <Select defaultValue="en">
+                                        <SelectTrigger className="w-[140px] h-9 bg-transparent border-accent">
+                                            <SelectValue placeholder="Language" />
+                                        </SelectTrigger>
+                                        <SelectContent className="glass-card border-accent">
+                                            <SelectItem value="en">English (US)</SelectItem>
+                                            <SelectItem value="hi">Hindi (IN)</SelectItem>
+                                            <SelectItem value="es">Español</SelectItem>
+                                            <SelectItem value="fr">Français</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
                         </div>
@@ -189,30 +235,64 @@ export default function Settings() {
                     {activeTab === 'notifications' && (
                         <div className="space-y-6 animate-fade-in">
                             <div>
-                                <h2 className="text-xl font-bold text-foreground">Notifications</h2>
-                                <p className="text-muted-foreground text-sm">Manage alert delivery</p>
+                                <h2 className="text-xl font-bold text-foreground">Notifications & Sound</h2>
+                                <p className="text-muted-foreground text-sm">Manage alert delivery and audio</p>
                             </div>
 
                             <div className="bg-secondary/50 rounded-xl overflow-hidden border border-accent divide-y divide-accent">
+                                {/* Desktop Notifications */}
                                 <div className="p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-4">
-                                        <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500"><BellRing className="w-5 h-5" /></div>
+                                        <div className={`p-2 rounded-lg ${isSubscribed ? 'bg-cyan-500/10 text-cyan-500' : 'bg-slate-500/10 text-slate-400'}`}>
+                                            <BellRing className="w-5 h-5" />
+                                        </div>
                                         <div>
-                                            <p className="text-foreground font-medium">Push Notifications</p>
-                                            <p className="text-xs text-muted-foreground">Receive critical alerts on device</p>
+                                            <p className="text-foreground font-medium">Desktop Notifications</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {permission === 'denied' ? 'Blocked by browser' : isSubscribed ? 'Subscribed' : 'Receive real-time alerts'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {permission !== 'denied' && !isSubscribed ? (
+                                        <Button 
+                                            size="sm" 
+                                            onClick={subscribe} 
+                                            disabled={notificationLoading}
+                                            className="bg-cyan-600 hover:bg-cyan-500 text-white h-8 text-xs"
+                                        >
+                                            {notificationLoading ? 'Enabling...' : 'Enable'}
+                                        </Button>
+                                    ) : (
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${isSubscribed ? 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
+                                            {isSubscribed ? 'ACTIVE' : 'BLOCKED'}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Sound Alerts */}
+                                <div className="p-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`p-2 rounded-lg ${soundEnabled ? 'bg-cyan-500/10 text-cyan-500' : 'bg-slate-500/10 text-slate-400'}`}>
+                                            {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+                                        </div>
+                                        <div>
+                                            <p className="text-foreground font-medium">Sound Alerts</p>
+                                            <p className="text-xs text-muted-foreground text-slate-400">Play audio when alerts arrive</p>
                                         </div>
                                     </div>
                                     <Switch
-                                        checked={settings.notifications_enabled}
-                                        onCheckedChange={() => toggleSetting('notifications_enabled')}
+                                        checked={soundEnabled}
+                                        onCheckedChange={toggleSound}
                                     />
                                 </div>
+
+                                {/* Email Alerts */}
                                 <div className="p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-4">
                                         <div className="p-2 rounded-lg bg-green-500/10 text-green-500"><Mail className="w-5 h-5" /></div>
                                         <div>
-                                            <p className="text-foreground font-medium">Email Alerts</p>
-                                            <p className="text-xs text-muted-foreground">Weekly digest and critical errors</p>
+                                            <p className="text-foreground font-medium">Email Weekly Digest</p>
+                                            <p className="text-xs text-muted-foreground text-slate-400">Summary reports each Monday</p>
                                         </div>
                                     </div>
                                     <Switch
@@ -232,8 +312,11 @@ export default function Settings() {
                             </div>
 
                             <div className="bg-secondary/50 rounded-xl overflow-hidden border border-accent divide-y divide-accent">
-                                <div className="p-4 flex items-center justify-between hover:bg-accent/50 cursor-pointer transition-colors">
-                                    <div className="flex items-center gap-4">
+                                <div 
+                                    onClick={() => toast.info('Profile editing available in next update')}
+                                    className="p-4 flex items-center justify-between hover:bg-accent/50 cursor-pointer transition-colors"
+                                >
+                                    <div className="flex items-center gap-4 text-left">
                                         <div className="p-2 rounded-lg bg-slate-500/10 text-slate-400"><User className="w-5 h-5" /></div>
                                         <div>
                                             <p className="text-foreground font-medium">Edit Profile</p>
@@ -242,8 +325,11 @@ export default function Settings() {
                                     </div>
                                     <ChevronRight className="w-5 h-5 text-muted-foreground" />
                                 </div>
-                                <div className="p-4 flex items-center justify-between hover:bg-accent/50 cursor-pointer transition-colors">
-                                    <div className="flex items-center gap-4">
+                                <div 
+                                    onClick={() => toast.info('Password management handled via Firebase Auth')}
+                                    className="p-4 flex items-center justify-between hover:bg-accent/50 cursor-pointer transition-colors"
+                                >
+                                    <div className="flex items-center gap-4 text-left">
                                         <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500"><Lock className="w-5 h-5" /></div>
                                         <div>
                                             <p className="text-foreground font-medium">Change Password</p>
@@ -253,7 +339,7 @@ export default function Settings() {
                                     <ChevronRight className="w-5 h-5 text-muted-foreground" />
                                 </div>
                                 <div className="p-4 flex items-center justify-between hover:bg-accent/50 cursor-pointer transition-colors">
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-4 text-left">
                                         <div className="p-2 rounded-lg bg-green-500/10 text-green-500"><Shield className="w-5 h-5" /></div>
                                         <div>
                                             <p className="text-foreground font-medium">2FA Authentication</p>
@@ -270,7 +356,7 @@ export default function Settings() {
                         <Button
                             onClick={saveSettings}
                             disabled={saving}
-                            className="bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-lg shadow-blue-500/25 min-w-[140px]"
+                            className="font-medium min-w-[140px]"
                         >
                             {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : saved ? <CheckCircle className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                             {saved ? 'Saved' : 'Save Changes'}

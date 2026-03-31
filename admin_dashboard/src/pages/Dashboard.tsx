@@ -1,15 +1,19 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import {
     ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-    ResponsiveContainer, Legend
+    ResponsiveContainer
 } from 'recharts'
 import {
-    Activity, Droplets, Thermometer, LayoutGrid, TrendingUp, TrendingDown,
-    Zap, Wifi, WifiOff, Info
+    Droplets, Thermometer, LayoutGrid, TrendingUp, TrendingDown,
+    Zap, Wifi, WifiOff, Info, type LucideIcon
 } from 'lucide-react'
-import { type EnrichedDevice, type SensorData } from '../types'
+import { type EnrichedDevice } from '../types'
 import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
-import { useAllDevicesThingSpeakData, useDeviceLatestReading, useDeviceThingSpeakChartData } from '../hooks/useThingSpeakQueries'
+import { 
+    useAllDevicesThingSpeakData, 
+    useDeviceLatestReading, 
+    useDeviceThingSpeakChartData 
+} from '../hooks/useThingSpeakQueries'
 import { getTDSStatus, getTDSCategory, getConnectivityStatus, getDeviceDisplayName } from '../lib/constants'
 import { useAlerts } from '../context/AlertContext'
 
@@ -17,7 +21,6 @@ import { GlassCard } from '@/components/GlassCard'
 import { EChartsNestedPieChart } from '@/components/EChartsPieChart'
 import { ActivityPanel } from '@/components/ActivityPanel'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AreaChart as AreaChartIcon } from 'lucide-react'
 import { cn } from '../lib/utils'
@@ -26,7 +29,7 @@ import { cn } from '../lib/utils'
 interface StatCardProps {
     title: string
     count: number
-    icon: React.ElementType
+    icon: LucideIcon
     color: string
     devices: EnrichedDevice[]
 }
@@ -35,7 +38,7 @@ function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
     const [showInfo, setShowInfo] = useState(false)
     return (
         <div className="relative flex-1 min-w-0 h-full">
-            <GlassCard className="transition-all duration-300 hover:scale-[1.02] hover:shadow-xl group relative overflow-hidden h-full">
+            <GlassCard className="premium-glass transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl group relative overflow-hidden h-full">
                 <div className="flex items-center gap-4 px-5 py-4 h-full w-full">
                     {/* Category Icon - Left side */}
                     <div className="p-2.5 rounded-xl transition-all duration-500 group-hover:rotate-6 flex-shrink-0" style={{ backgroundColor: `${color}15`, color }}>
@@ -45,26 +48,26 @@ function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
                     {/* Data - Primary Focus center-left */}
                     <div className="flex-1 min-w-0">
                         <div className="text-2xl font-black font-mono tracking-tighter leading-none mb-1" style={{ color, textShadow: `0 0 15px ${color}40` }}>{count}</div>
-                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.1em] opacity-70 group-hover:opacity-100 transition-opacity">{title}</div>
+                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.1em] group-hover:opacity-100 transition-opacity">{title}</div>
                     </div>
 
                     {/* Info button - Positioned Absolute Top Right of the card */}
                     <button
-                        className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-30"
+                        className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center hover:bg-accent/30 transition-colors z-30"
                         onClick={(e) => {
                             e.stopPropagation();
                             setShowInfo(s => !s);
                         }}
                         title={`${title} device list`}
                     >
-                        <Info className="w-4 h-4 text-muted-foreground opacity-60 hover:opacity-100 transition-opacity" />
+                        <Info className="w-4 h-4 text-muted-foreground hover:opacity-100 transition-opacity" />
                     </button>
                 </div>
             </GlassCard>
 
             {/* Info popover */}
             {showInfo && (
-                <div className="absolute top-full mt-2 left-0 right-0 z-50 glass-card p-3 min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="absolute top-full mt-2 left-0 right-0 z-50 premium-glass p-3 min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="flex items-center gap-2 mb-2 pb-2 border-b border-border/50">
                         <Icon className="w-3.5 h-3.5" style={{ color }} />
                         <span className="text-xs font-semibold text-foreground">{title} ({count})</span>
@@ -74,8 +77,8 @@ function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
                         <p className="text-xs text-muted-foreground text-center py-2">No devices</p>
                     ) : (
                         <div className="space-y-1 max-h-40 overflow-y-auto">
-                            {devices.map(d => (
-                                <div key={d.id} className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-secondary/40 text-xs">
+                            {devices.map((d: EnrichedDevice) => (
+                                <div key={d.id} className="flex items-center justify-between px-2 py-1.5 rounded-lg nested-glass text-xs">
                                     <span className="text-foreground truncate flex-1">{getDeviceDisplayName(d)}</span>
                                     {d.latest_tds && <span className="text-muted-foreground ml-2">{d.latest_tds.toFixed(0)} ppm</span>}
                                 </div>
@@ -92,7 +95,7 @@ function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
 const ChartTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         return (
-            <div className="p-3 glass-card bg-background/40 dark:bg-black/40 backdrop-blur-2xl transition-all duration-300">
+            <div className="p-3 premium-glass backdrop-blur-2xl transition-all duration-300">
                 <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-2 border-b border-border/50 pb-1.5">{label}</p>
                 <div className="space-y-1.5">
                     {payload.map((p: any, i: number) => (
@@ -132,7 +135,7 @@ export default function Dashboard() {
 
     const { data: realTimeStatus } = useDeviceLatestReading(selectedDevice)
     const { data: chartData = [] } = useDeviceThingSpeakChartData(selectedDevice, dataPointLimit)
-    const { devices: devicesWithData, deviceData, isLoading: dataLoading } = useAllDevicesThingSpeakData(devicesList)
+    const { devices: devicesWithData, isLoading: dataLoading } = useAllDevicesThingSpeakData(devicesList)
 
     const loading = devicesLoading || dataLoading
 
@@ -165,18 +168,6 @@ export default function Dashboard() {
         setCriticalDevices(criticalTDSDeviceList)
     }, [criticalIds, setCriticalDevices]) // Use joined IDs string as dependency to ensure stability
 
-    const sensorData = useMemo(() => {
-        const result: { [key: string]: SensorData[] } = {}
-        deviceData.forEach((data, deviceId) => {
-            result[deviceId] = data.map((reading, index) => ({
-                id: String(index),
-                device_id: deviceId,
-                payload: { tds: reading.tds, temperature: reading.temperature, voltage: reading.voltage },
-                recorded_at: reading.timestamp
-            }))
-        })
-        return result
-    }, [deviceData])
 
     const currentDevice = useMemo(() => {
         const baseDevice = devices.find(d => d.id === selectedLocation)
@@ -249,11 +240,11 @@ export default function Dashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">Real-time water quality monitoring</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full glass-card border-black/10 shadow-sm">
+                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full glass-card border-border/50 shadow-sm">
                         <Zap className="w-3.5 h-3.5 text-green-500" />
                         <span className="text-xs font-medium text-green-500">{systemHealth}% Healthy</span>
                     </div>
-                    <TabsList className="glass-card border-black/5 h-9 p-1">
+                    <TabsList className="glass-card border-border/50 h-9 p-1">
                         <TabsTrigger value="default" className="text-xs gap-1.5 h-7 px-3 data-[state=active]:glass-active-glow data-[state=active]:text-foreground data-[state=active]:shadow-md transition-all duration-500">
                             <LayoutGrid className="w-3.5 h-3.5" /> Default
                         </TabsTrigger>
@@ -271,7 +262,7 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                     <StatCard title="Safe TDS" count={categorizedStats.safeTDS.count} icon={Droplets} color="#00df81" devices={categorizedStats.safeTDS.devices} />
                     <StatCard title="Critical TDS" count={categorizedStats.criticalTDS.count} icon={Droplets} color="#ff0055" devices={categorizedStats.criticalTDS.devices} />
-                    <StatCard title="Online" count={categorizedStats.online.count} icon={Wifi} color="#00f2ff" devices={categorizedStats.online.devices} />
+                    <StatCard title="Online" count={categorizedStats.online.count} icon={Wifi} color="#818cf8" devices={categorizedStats.online.devices} />
                     <StatCard title="Offline" count={categorizedStats.offline.count} icon={WifiOff} color="#64748b" devices={categorizedStats.offline.devices} />
                 </div>
 
@@ -284,7 +275,7 @@ export default function Dashboard() {
                             <div className="h-[320px] relative">
                                 <EChartsNestedPieChart
                                     connectivityData={[
-                                        { name: 'Online', value: categorizedStats.online.count, color: '#00f2ff' },
+                                        { name: 'Online', value: categorizedStats.online.count, color: '#818cf8' },
                                         { name: 'Offline', value: categorizedStats.offline.count, color: '#1e293b' }
                                     ]}
                                     tdsData={[
@@ -298,7 +289,7 @@ export default function Dashboard() {
 
                     {/* Combined TDS + Temperature Chart */}
                     <div className="col-span-12 lg:col-span-8 h-full">
-                        <GlassCard className="p-4 h-full flex flex-col transition-all duration-500 hover:shadow-xl relative overflow-hidden">
+                        <GlassCard variant="liquid" className="p-4 h-full flex flex-col transition-all duration-500 hover:shadow-xl relative overflow-hidden">
                             {/* Inner Header with Controls */}
                             <div className="flex flex-col gap-4 mb-4">
                                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -357,12 +348,11 @@ export default function Dashboard() {
                                 {/* Custom Toggle Controls & Real-time Info Row */}
                                 <div className="flex items-center justify-between pt-1">
                                     <div className="flex items-center gap-8">
-                                        {/* TDS Toggle */}
-                                        <button 
+                                                                                 <button 
                                             onClick={() => setShowTDS(!showTDS)}
                                             className={cn(
                                                 "flex items-center gap-3 transition-all duration-300 group",
-                                                showTDS ? "opacity-100" : "opacity-40 grayscale"
+                                                showTDS ? "opacity-100" : "opacity-50 grayscale"
                                             )}
                                         >
                                             <div className={cn(
@@ -374,7 +364,7 @@ export default function Dashboard() {
                                                 {showTDS && <Zap className="w-2.5 h-2.5 text-white fill-current" />}
                                             </div>
                                             <div className="flex flex-col items-start translate-y-[1px]">
-                                                <span className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] leading-none mb-1.5">TDS</span>
+                                                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.15em] leading-none mb-1.5">TDS</span>
                                                 <div className="flex items-end gap-1">
                                                     <span className={cn(
                                                         "text-base font-black font-mono leading-none transition-all duration-500",
@@ -384,7 +374,7 @@ export default function Dashboard() {
                                                     )}>
                                                         {latestTDS}
                                                     </span>
-                                                    <span className="text-[9px] text-muted-foreground/50 font-bold uppercase pb-[1px]">ppm</span>
+                                                    <span className="text-[9px] text-muted-foreground font-bold uppercase pb-[1px]">ppm</span>
                                                 </div>
                                             </div>
                                         </button>
@@ -394,7 +384,7 @@ export default function Dashboard() {
                                             onClick={() => setShowTemp(!showTemp)}
                                             className={cn(
                                                 "flex items-center gap-3 transition-all duration-300 group",
-                                                showTemp ? "opacity-100" : "opacity-40 grayscale"
+                                                showTemp ? "opacity-100" : "opacity-50 grayscale"
                                             )}
                                         >
                                             <div className={cn(
@@ -404,12 +394,12 @@ export default function Dashboard() {
                                                 {showTemp && <Thermometer className="w-2.5 h-2.5 text-white fill-current" />}
                                             </div>
                                             <div className="flex flex-col items-start translate-y-[1px]">
-                                                <span className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] leading-none mb-1.5">Temp</span>
+                                                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.15em] leading-none mb-1.5">Temp</span>
                                                 <div className="flex items-end gap-1">
                                                     <span className="text-base font-black font-mono text-orange-400 leading-none [text-shadow:0_0_8px_rgba(251,146,60,0.4)]">
                                                         {typeof latestTemp === 'number' ? latestTemp.toFixed(1) : latestTemp}
                                                     </span>
-                                                    <span className="text-[9px] text-muted-foreground/50 font-bold uppercase pb-[1px]">°C</span>
+                                                    <span className="text-[9px] text-muted-foreground font-bold uppercase pb-[1px]">°C</span>
                                                 </div>
                                             </div>
                                         </button>
@@ -417,10 +407,10 @@ export default function Dashboard() {
 
                                     {showTDS && (
                                         <div className="flex flex-col items-end">
-                                            <span className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-widest mb-1">Last Sync</span>
+                                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Last Sync</span>
                                             <div className="flex items-center gap-1.5">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_5px_rgba(16,185,129,0.5)]" />
-                                                <span className="text-[11px] font-bold font-mono text-foreground/70">
+                                                <span className="text-[11px] font-bold font-mono text-foreground">
                                                     {currentDevice?.last_reading_at ? new Date(currentDevice.last_reading_at).toLocaleTimeString() : 'Never'}
                                                 </span>
                                             </div>
@@ -499,13 +489,11 @@ export default function Dashboard() {
             <TabsContent value="all" className="mt-0">
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                     {devices.map((device, idx) => {
-                        const data = sensorData[device.id] || []
-                        const latest = data[data.length - 1]
                         const displayName = getDeviceDisplayName(device)
                         return (
                             <GlassCard
                                 key={device.id}
-                                className="p-4 relative overflow-hidden group hover:scale-[1.02] transition-all duration-500 hover:shadow-2xl cursor-pointer"
+                                className="premium-glass p-4 relative overflow-hidden group hover:scale-[1.02] transition-all duration-500 hover:shadow-2xl cursor-pointer"
                                 style={{ animationDelay: `${idx * 50}ms` }}
                             >
                                 <div className="flex justify-between items-start">
@@ -517,9 +505,9 @@ export default function Dashboard() {
                                 </div>
                                 <div className="mt-3">
                                     <div className="text-xl font-bold font-mono text-foreground">
-                                        {latest?.payload.tds || '--'} <span className="text-[10px] text-muted-foreground font-normal">ppm</span>
+                                        {device.latest_tds || '--'} <span className="text-[10px] text-muted-foreground font-normal">ppm</span>
                                     </div>
-                                    <div className="text-[11px] text-muted-foreground">{latest?.payload.temperature || '--'}°C</div>
+                                    <div className="text-[11px] text-muted-foreground">{device.latest_temperature || '--'}°C</div>
                                 </div>
                             </GlassCard>
                         )

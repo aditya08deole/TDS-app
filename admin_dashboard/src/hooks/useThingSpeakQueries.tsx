@@ -128,25 +128,36 @@ export function useDeviceLatestReading(device: Device | undefined) {
 
 /**
  * Hook to fetch ThingSpeak data for multiple devices (batched)
+ * Optimized: Only fetches the LATEST reading to enrich the device list.
+ * This reduces data transfer by ~99% for large device lists.
  */
 export function useAllDevicesThingSpeakData(devices: Device[]) {
-    // Create queries for all devices
+    // Create queries for all devices - Optimized to only fetch LAST entry
     const queries = useQueries({
         queries: devices.map(device => ({
-            queryKey: queryKeys.sensorData(device.id),
-            queryFn: () => fetchDeviceThingSpeakData(device),
+            queryKey: ['thingspeak', 'latest', device.id],
+            queryFn: async () => {
+                if (!device.thingspeak_channel_id || !device.thingspeak_read_key) {
+                    return null
+                }
+                const mapping = getFieldMapping(device)
+                return await fetchLastEntry(
+                    device.thingspeak_channel_id,
+                    device.thingspeak_read_key,
+                    mapping
+                )
+            },
             enabled: !!device.thingspeak_channel_id && !!device.thingspeak_read_key,
-            staleTime: 30 * 1000, // 30 seconds stale for historical data
-            refetchInterval: 30 * 1000, // 30s poll for background historical updates
-            gcTime: 30 * 60 * 1000,
+            staleTime: 10 * 1000, 
+            refetchInterval: 15 * 1000, 
+            gcTime: 5 * 60 * 1000,
         }))
     })
 
     const enrichedDevices: EnrichedDevice[] = useMemo(() => {
         return devices.map((device, index) => {
             const query = queries[index]
-            const data = query.data || []
-            const latest = data.length > 0 ? data[data.length - 1] : null
+            const latest = query.data
             
             return {
                 ...device,
@@ -159,23 +170,14 @@ export function useAllDevicesThingSpeakData(devices: Device[]) {
         })
     }, [devices, queries])
 
-    const deviceDataMap = useMemo(() => {
-        const map = new Map<string, ParsedSensorData[]>()
-        devices.forEach((device, index) => {
-            map.set(device.id, queries[index].data || [])
-        })
-        return map
-    }, [devices, queries])
-
     const isLoading = useMemo(() => queries.some(q => q.isLoading), [queries])
     const isError = useMemo(() => queries.some(q => q.isError), [queries])
 
     return useMemo(() => ({
         devices: enrichedDevices,
-        deviceData: deviceDataMap,
         isLoading,
         isError
-    }), [enrichedDevices, deviceDataMap, isLoading, isError])
+    }), [enrichedDevices, isLoading, isError])
 }
 
 /**

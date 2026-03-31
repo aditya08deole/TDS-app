@@ -1,40 +1,36 @@
-import { Outlet } from 'react-router-dom'
-import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
-import { AppSidebar } from './AppSidebar'
+import { Outlet, useLocation } from 'react-router-dom'
+
 import { TopBar } from './TopBar'
-import ParticleBackground from './ParticleBackground'
-import CursorGlow from './CursorGlow'
+import PremiumBackground from './PremiumBackground'
 import CommandPalette from './CommandPalette'
 import DeviceInspector from './DeviceInspector'
 import { Toaster } from '@/components/ui/sonner'
+import { cn } from '@/lib/utils'
 
 export default function Layout() {
+    const location = useLocation()
+    const isMapPage = location.pathname === '/map'
+
     return (
-        <SidebarProvider>
-            {/* 3D Background - Fixed at z-0, behind everything */}
-            <div className="fixed inset-0 z-0 pointer-events-none">
-                <ParticleBackground />
-            </div>
+        <div className="min-h-screen bg-transparent flex flex-col">
+            {/* Premium Three.js + Anime atmosphere */}
+            <PremiumBackground />
 
-            {/* Interactive Cursor Glow - z-[1] */}
-            <CursorGlow />
+            {/* Unified Top Navigation Header */}
+            <TopBar />
 
-            {/* Global Frost Layer - Centralized Glass Material - z-[3] */}
-            <div className="fixed inset-0 z-[3] pointer-events-none glass-surface-unified" />
-
-            <AppSidebar />
-
-            <SidebarInset className="relative z-10 bg-transparent flex flex-col transition-all duration-300">
-                <TopBar />
-                <main className="flex-1 overflow-auto p-4 lg:p-6 animate-fade-in relative">
-                    <Outlet />
-                </main>
-            </SidebarInset>
+            {/* Main Content Area */}
+            <main className={cn(
+                "flex-1 overflow-auto animate-fade-in relative z-10",
+                isMapPage ? "pt-0" : "p-4 lg:p-6 lg:pt-32 pt-32"
+            )}>
+                <Outlet />
+            </main>
 
             {/* Global Overlays */}
             <CommandPalette />
             <DeviceInspector />
             <Toaster />
-        </SidebarProvider>
+        </div>
     )
 }

@@ -66,7 +66,7 @@ export function ActivityPanel({
         color: string
         children: React.ReactNode
     }) => (
-        <div className="glass-card bg-white/5 rounded-xl border border-black/5 overflow-hidden">
+        <div className="glass-card rounded-xl overflow-hidden">
             <div className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
                     <div className={cn("p-2 rounded-lg", color)}>

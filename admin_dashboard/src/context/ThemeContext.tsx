@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 
-type Theme = 'dark' | 'light' | 'system'
+type Theme = 'dark' | 'light'
 
 interface ThemeContextType {
     theme: Theme
@@ -14,33 +14,21 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const [theme, setThemeState] = useState<Theme>(() => {
         const saved = localStorage.getItem('theme') as Theme
-        return saved || 'system'
+        return saved || 'light'
     })
 
-    const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>('dark')
+    const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>('light')
 
-    // Resolve system theme
+    // Always resolve to the selected theme
     useEffect(() => {
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-
-        const updateResolvedTheme = () => {
-            if (theme === 'system') {
-                setResolvedTheme(mediaQuery.matches ? 'dark' : 'light')
-            } else {
-                setResolvedTheme(theme as 'dark' | 'light')
-            }
-        }
-
-        updateResolvedTheme()
-
-        mediaQuery.addEventListener('change', updateResolvedTheme)
-        return () => mediaQuery.removeEventListener('change', updateResolvedTheme)
+        setResolvedTheme(theme)
     }, [theme])
 
     // Apply theme to document
     useEffect(() => {
         const root = document.documentElement
-
+        
+        // 2. Apply theme
         if (resolvedTheme === 'dark') {
             root.classList.add('dark')
             root.classList.remove('light')
@@ -49,10 +37,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             root.classList.remove('dark')
         }
 
-        // Update meta theme-color
+        // 3. Update meta theme-color
+
+        // 4. Update meta theme-color
         const metaThemeColor = document.querySelector('meta[name="theme-color"]')
         if (metaThemeColor) {
-            metaThemeColor.setAttribute('content', resolvedTheme === 'dark' ? '#0f172a' : '#ffffff')
+            metaThemeColor.setAttribute('content', resolvedTheme === 'dark' ? '#000000' : '#ffffff')
         }
     }, [resolvedTheme])
 

@@ -27,7 +27,7 @@ export function EChartsNestedPieChart({ connectivityData, tdsData }: EChartsNest
 
     // High-Saturation Neon Color Palette
     const colorPalette = {
-        online: '#00f2ff',
+        online: '#818cf8',
         offline: isDark ? '#475569' : '#94a3b8',
         safeTDS: '#00df81',
         criticalTDS: '#ff0055',

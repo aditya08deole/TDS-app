@@ -11,7 +11,7 @@ interface StatusIndicatorProps {
 export function StatusIndicator({ status, size = 'md', showLabel, className }: StatusIndicatorProps) {
     const getColor = (s: string) => {
         switch (s) {
-            case 'online': return 'bg-[#00f2ff]';
+            case 'online': return 'bg-[#818cf8]';
             case 'critical': return 'bg-[#ff0055]';
             case 'warning': return 'bg-[#ff9f0a]';
             case 'maintenance': return 'bg-blue-500';
@@ -48,7 +48,7 @@ export function StatusIndicator({ status, size = 'md', showLabel, className }: S
                     size === 'sm' ? 'text-xs' : 'text-sm',
                     status === 'critical' ? 'text-[#ff0055]' :
                         status === 'warning' ? 'text-[#ff9f0a]' :
-                            status === 'online' ? 'text-[#00f2ff]' :
+                            status === 'online' ? 'text-[#818cf8]' :
                                 'text-[#64748b]'
                 )}>
                     {status}
