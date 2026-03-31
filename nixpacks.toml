@@ -1,0 +1,14 @@
+# Force the node provider
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["nodejs"]
+
+[phases.install]
+cmds = ["cd admin_dashboard && npm install"]
+
+[phases.build]
+cmds = ["cd admin_dashboard && npm run build"]
+
+[start]
+cmd = "cd admin_dashboard && npx serve -s dist"
