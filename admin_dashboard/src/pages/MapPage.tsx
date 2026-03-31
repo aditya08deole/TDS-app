@@ -23,9 +23,7 @@ const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconAnchor: [
 L.Marker.prototype.options.icon = DefaultIcon
 
 
-// ============================================
-// ZOOM-AWARE DEVICE MARKERS COMPONENT
-// ============================================
+
 const DeviceMarkers = ({ 
     devices, 
     theme, 
@@ -66,9 +64,7 @@ const DeviceMarkers = ({
     )
 }
 
-// ============================================
-// MAP CONTROLLER
-// ============================================
+
 function MapController({ center, zoom }: { center: [number, number] | null; zoom?: number }) {
     const map = useMap()
     useEffect(() => {
@@ -82,9 +78,7 @@ function MapController({ center, zoom }: { center: [number, number] | null; zoom
     return null
 }
 
-// ============================================
-// CUSTOM CHART TOOLTIP
-// ============================================
+
 const CustomChartTooltip = ({ active, payload, label, type, theme }: any) => {
     if (active && payload && payload.length) {
         const colors = type === 'tds' ? theme.chart.tds : theme.chart.temp
@@ -104,9 +98,7 @@ const CustomChartTooltip = ({ active, payload, label, type, theme }: any) => {
 type MapStyle = 'street' | 'satellite'
 type FilterType = 'all' | 'online' | 'warning' | 'critical' | 'offline'
 
-// ============================================
-// THEME COLORS - ADAPTIVE
-// ============================================
+
 const getMapTheme = (isDark: boolean) => ({
     bg: {
         primary: isDark ? '#000000' : '#f8fafc',
@@ -140,9 +132,7 @@ const getMapTheme = (isDark: boolean) => ({
     }
 })
 
-// ============================================
-// FLOATING DEVICE PANEL - FIXED POSITIONING
-// ============================================
+
 function DevicePanel({
     device,
     onClose
@@ -153,7 +143,6 @@ function DevicePanel({
     const { resolvedTheme } = useTheme()
     const theme = useMemo(() => getMapTheme(resolvedTheme === 'dark'), [resolvedTheme])
     
-    // NEW: Autonomous Data Fetching for the panel
     const { data: sensorData = [] } = useDeviceThingSpeakChartData(device, 30)
     const panelRef = useRef<HTMLDivElement>(null)
     // Calculate safe initial position: shifted down and right as requested
@@ -484,9 +473,7 @@ function DevicePanel({
     )
 }
 
-// ============================================
-// MAIN MAP PAGE COMPONENT
-// ============================================
+
 export default function MapPage() {
     // Fetch devices using React Query (with caching)
     const { data: devicesList = [] } = useDevices()
@@ -588,7 +575,7 @@ export default function MapPage() {
     return (
         <div className="relative h-screen overflow-hidden" style={{ minHeight: '600px', background: 'transparent' }}>
 
-            {/* ========== UNIFIED FLOATING MAP DASHBOARD ========== */}
+
             <div className="absolute top-28 left-6 z-[500] w-[320px] max-h-[calc(100%-140px)] flex flex-col pointer-events-none">
                 <motion.div 
                     initial={{ opacity: 0, x: -20 }}
@@ -699,9 +686,8 @@ export default function MapPage() {
                 </motion.div>
             </div>
 
-            {/* ========== MAP CONTAINER ========== */}
+
             <div className="absolute inset-0">
-                {/* Expand Panel Button - REMOVED redundant button as it's now handled by the Unifed Panel toggle */}
 
                 {/* Map */}
                 <MapContainer
@@ -780,7 +766,7 @@ export default function MapPage() {
                 </div>
             </div>
 
-            {/* ========== FLOATING DEVICE PANEL ========== */}
+
             <AnimatePresence>
                 {selectedDevice && (
                     <DevicePanel
