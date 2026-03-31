@@ -1,0 +1,12 @@
+{
+  "name": "evaratds-root",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "cd admin_dashboard && npm install && npm run build",
+    "start": "cd admin_dashboard && npx serve -s dist"
+  }
+}
