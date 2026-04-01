@@ -1,15 +1,25 @@
+import fluid, { extract, screens, fontSize } from 'fluid-tailwind'
+import tailwindcssAnimate from 'tailwindcss-animate'
+import containerQueries from '@tailwindcss/container-queries'
+
 /** @type {import('tailwindcss').Config} */
 export default {
     darkMode: ['class'],
-    content: [
-        "./index.html",
-        "./src/**/*.{ts,tsx}",
-    ],
+    content: {
+        files: [
+            "./index.html",
+            "./src/**/*.{ts,tsx}",
+        ],
+        extract
+    },
     theme: {
+        screens,
+        fontSize,
         container: {
             center: true,
             padding: '2rem',
             screens: {
+                ...screens,
                 '2xl': '1400px',
             },
         },
@@ -80,5 +90,9 @@ export default {
             },
         },
     },
-    plugins: [require('tailwindcss-animate')],
+    plugins: [
+        tailwindcssAnimate,
+        fluid,
+        containerQueries
+    ],
 }

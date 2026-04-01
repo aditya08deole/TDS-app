@@ -1,11 +1,13 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { motion } from 'framer-motion'
+import type { Variants } from 'framer-motion'
 import {
     ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer
 } from 'recharts'
 import {
     Droplets, Thermometer, LayoutGrid, TrendingUp, TrendingDown,
-    Zap, Wifi, WifiOff, Info, type LucideIcon
+    Zap, Wifi, WifiOff, type LucideIcon
 } from 'lucide-react'
 import { type EnrichedDevice } from '../types'
 import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
@@ -25,6 +27,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AreaChart as AreaChartIcon } from 'lucide-react'
 import { cn } from '../lib/utils'
 
+const containerVariants: Variants = {
+    hidden: { opacity: 0 },
+    show: {
+        opacity: 1,
+        transition: { staggerChildren: 0.1 }
+    }
+}
+
+const itemVariants: Variants = {
+    hidden: { opacity: 0, y: 30, filter: 'blur(10px)' },
+    show: { 
+        opacity: 1, y: 0, filter: 'blur(0px)', 
+        transition: { type: 'spring', stiffness: 300, damping: 24 } 
+    }
+}
+
 // ------ Compact Stat Card ------
 interface StatCardProps {
     title: string
@@ -36,38 +54,46 @@ interface StatCardProps {
 
 function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
     const [showInfo, setShowInfo] = useState(false)
+
+    // Auto-close info popover after 3 seconds of inactivity
+    useEffect(() => {
+        if (!showInfo) return;
+        const timer = setTimeout(() => setShowInfo(false), 3000);
+        return () => clearTimeout(timer);
+    }, [showInfo]);
+
     return (
-        <div className="relative flex-1 min-w-0 h-full">
-            <GlassCard className="glass-system-parent transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl group relative overflow-hidden h-full">
-                <div className="flex items-center gap-4 px-5 py-4 h-full w-full">
+        <motion.div variants={itemVariants} className="relative flex-1 min-w-0 h-full @container">
+            <GlassCard className="glass-system-parent transition-all duration-300 hover:shadow-xl group relative h-full">
+                <motion.div whileHover={{ scale: 1.01 }} className="flex items-center gap-2.5 p-2.5 sm:px-3 sm:py-2 h-full w-full">
                     {/* Category Icon - Left side */}
-                    <div className="p-2.5 rounded-xl transition-all duration-500 group-hover:rotate-6 flex-shrink-0" style={{ backgroundColor: `${color}15`, color }}>
-                        <Icon className="w-4.5 h-4.5 drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]" />
+                    <div className="p-1.5 sm:p-2 rounded-lg transition-all duration-500 group-hover:rotate-6 flex-shrink-0" style={{ backgroundColor: `${color}15`, color }}>
+                        <Icon className="w-4 h-4 sm:w-4 sm:h-4 drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]" />
                     </div>
 
                     {/* Data - Primary Focus center-left */}
                     <div className="flex-1 min-w-0">
-                        <div className="text-2xl font-black font-mono tracking-tighter leading-none mb-1" style={{ color, textShadow: `0 0 15px ${color}40` }}>{count}</div>
-                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.1em] group-hover:opacity-100 transition-opacity">{title}</div>
+                        <div className="~text-xl/3xl font-black font-mono tracking-tighter leading-none mb-1" style={{ color, textShadow: `0 0 15px ${color}40` }}>{count}</div>
+                        <div className="text-[10px] sm:text-xs text-muted-foreground font-bold uppercase tracking-[0.1em] group-hover:opacity-100 transition-opacity">{title}</div>
                     </div>
 
-                    {/* Info button - Positioned Absolute Top Right of the card */}
+                    {/* Info button - Positioned Absolute Top Right of the card, completely native text 'i' directly on the card */}
                     <button
-                        className="absolute top-2 right-2 w-7 h-7 glass-system-micro flex items-center justify-center z-30"
+                        className="absolute top-2 right-3 w-5 h-5 flex items-center justify-center z-30 bg-transparent hover:bg-white/5 rounded-full transition-colors"
                         onClick={(e) => {
                             e.stopPropagation();
                             setShowInfo(s => !s);
                         }}
                         title={`${title} device list`}
                     >
-                        <Info className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
+                        <span className="font-serif italic font-black text-[13px] text-muted-foreground group-hover:text-foreground">i</span>
                     </button>
-                </div>
+                </motion.div>
             </GlassCard>
 
             {/* Info popover */}
             {showInfo && (
-                <div className="absolute top-full mt-2 left-0 right-0 z-50 glass-system-child p-3 min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-300 shadow-2xl border-white/20">
+                <div className="absolute top-full mt-2 left-0 right-0 z-[100] bg-[#0a0f16]/95 backdrop-blur-3xl rounded-2xl border border-white/10 p-3 min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-300 shadow-2xl">
                     <div className="flex items-center gap-2 mb-2 pb-2 border-b border-border/50">
                         <Icon className="w-3.5 h-3.5" style={{ color }} />
                         <span className="text-xs font-semibold text-foreground">{title} ({count})</span>
@@ -87,7 +113,7 @@ function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
                     )}
                 </div>
             )}
-        </div>
+        </motion.div>
     )
 }
 
@@ -234,10 +260,10 @@ export default function Dashboard() {
     return (
         <Tabs defaultValue="default" className="w-full max-w-[1600px] mx-auto space-y-4">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between ~mb-2/6">
                 <div>
-                    <h1 className="text-xl font-semibold tracking-tight">Overview</h1>
-                    <p className="text-xs text-muted-foreground mt-0.5">Real-time water quality monitoring</p>
+                    <h1 className="~text-xl/3xl font-semibold tracking-tight">Overview</h1>
+                    <p className="~text-xs/sm text-muted-foreground mt-0.5">Real-time water quality monitoring</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <div className="hidden md:flex items-center gap-2 px-4 py-1.5 rounded-full glass-system-child border-white/20 shadow-sm">
@@ -257,22 +283,22 @@ export default function Dashboard() {
 
             {/* Default View */}
             <TabsContent value="default" className="space-y-4 mt-0">
-
-                {/* ── Row 1: 4 compact stat cards in a single line ── */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-4">
+                    {/* ── Row 1: 4 compact stat cards in a single line ── */}
+                    <motion.div variants={containerVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 ~gap-2/4">
                     <StatCard title="Safe TDS" count={categorizedStats.safeTDS.count} icon={Droplets} color="#00df81" devices={categorizedStats.safeTDS.devices} />
                     <StatCard title="Critical TDS" count={categorizedStats.criticalTDS.count} icon={Droplets} color="#ff0055" devices={categorizedStats.criticalTDS.devices} />
                     <StatCard title="Online" count={categorizedStats.online.count} icon={Wifi} color="#818cf8" devices={categorizedStats.online.devices} />
                     <StatCard title="Offline" count={categorizedStats.offline.count} icon={WifiOff} color="#64748b" devices={categorizedStats.offline.devices} />
-                </div>
+                    </motion.div>
 
-                {/* ── Row 2: Pie Chart (left) + Combined TDS+Temp Chart (right) ── */}
-                <div className="grid grid-cols-12 gap-4">
-                    {/* Pie Chart */}
-                    <div className="col-span-12 lg:col-span-4">
-                        <GlassCard className="glass-system-parent p-4 pb-2 h-full transition-all duration-500 hover:shadow-xl border-white/20">
-                            <h3 className="text-sm font-medium mb-2">Device Overview</h3>
-                            <div className="h-[320px] relative">
+                    {/* ── Row 2: Pie Chart (left) + Combined TDS+Temp Chart (right) ── */}
+                    <motion.div variants={containerVariants} className="grid grid-cols-12 gap-4">
+                        {/* Pie Chart */}
+                        <motion.div variants={itemVariants} className="col-span-12 lg:col-span-4 @container">
+                        <GlassCard className="glass-system-parent ~p-3/6 pb-2 h-full transition-all duration-500 hover:shadow-xl border-white/20">
+                            <h3 className="~text-sm/lg font-medium mb-2">Device Overview</h3>
+                            <div className="~h-[250px]/[350px] relative">
                                 <EChartsNestedPieChart
                                     connectivityData={[
                                         { name: 'Online', value: categorizedStats.online.count, color: '#818cf8' },
@@ -285,17 +311,17 @@ export default function Dashboard() {
                                 />
                             </div>
                         </GlassCard>
-                    </div>
+                        </motion.div>
 
-                    {/* Combined TDS + Temperature Chart */}
-                    <div className="col-span-12 lg:col-span-8 h-full">
-                        <GlassCard variant="liquid" className="glass-system-parent p-4 h-full flex flex-col transition-all duration-500 hover:shadow-xl border-white/20">
+                        {/* Combined TDS + Temperature Chart */}
+                        <motion.div variants={itemVariants} className="col-span-12 lg:col-span-8 h-full @container">
+                        <GlassCard variant="liquid" className="glass-system-parent ~p-3/6 h-full flex flex-col transition-all duration-500 hover:shadow-xl border-white/20">
                             {/* Inner Header with Controls */}
                             <div className="flex flex-col gap-4 mb-4">
                                 <div className="flex items-center justify-between gap-3 flex-wrap">
                                     <div className="flex items-center gap-3">
                                         <div className="flex flex-col">
-                                            <h2 className="text-base font-bold tracking-tight text-foreground">{locationLabel}</h2>
+                                            <h2 className="~text-base/2xl font-bold tracking-tight text-foreground">{locationLabel}</h2>
                                             {currentDevice?.tds_category === 'critical' && showTDS && (
                                                 <div className="flex items-center gap-1.5 mt-0.5">
                                                     <span className="relative flex h-2 w-2">
@@ -419,7 +445,7 @@ export default function Dashboard() {
                                 </div>
                             </div>
 
-                            <div className="flex-1 mt-auto">
+                            <div className="flex-1 mt-auto min-w-0 overflow-hidden">
                                 <ResponsiveContainer width="100%" height={290}>
                                     <ComposedChart data={formattedChartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
                                         <defs>
@@ -436,7 +462,7 @@ export default function Dashboard() {
                                             tickLine={false} 
                                             axisLine={false}
                                             interval="preserveStartEnd"
-                                            tickFormatter={(value) => value.split(', ')[1]} // Only show time on labels
+                                            tickFormatter={(value) => value.split(', ')[1]}
                                         />
                                         <YAxis yAxisId="tds" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
                                         <YAxis yAxisId="temp" orientation="right" stroke="#555" fontSize={9} tickLine={false} axisLine={false} />
@@ -470,11 +496,11 @@ export default function Dashboard() {
                                 </ResponsiveContainer>
                             </div>
                         </GlassCard>
-                    </div>
-                </div>
+                        </motion.div>
+                    </motion.div>
 
-                {/* ── Row 3: Activity Panel (full width below) ── */}
-                <div ref={criticalSectionRef}>
+                    {/* ── Row 3: Activity Panel (full width below) ── */}
+                    <motion.div variants={itemVariants} ref={criticalSectionRef}>
                     <GlassCard className="p-4 transition-all duration-500 hover:shadow-xl">
                         <ActivityPanel
                             safeTDSDevices={categorizedStats.safeTDS.devices}
@@ -482,7 +508,8 @@ export default function Dashboard() {
                             onDeviceClick={(deviceId) => setSelectedLocation(deviceId)}
                         />
                     </GlassCard>
-                </div>
+                    </motion.div>
+                </motion.div>
             </TabsContent>
 
             {/* All Devices View */}

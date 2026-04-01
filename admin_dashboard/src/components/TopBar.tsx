@@ -27,7 +27,7 @@ export function TopBar() {
     const location = useLocation()
     const navigate = useNavigate()
     const { user, profile, signOut } = useAuth()
-    const { hasPermission, role } = useRole()
+    const { hasPermission } = useRole()
     const { alertCount, criticalDevices } = useAlerts()
     const [blinking, setBlinking] = useState(false)
     const [alertOpen, setAlertOpen] = useState(false)
@@ -56,13 +56,13 @@ export function TopBar() {
     }, [alertCount])
 
     return (
-        <header className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex h-16 w-auto min-w-[72%] max-w-[95%] items-center gap-8 px-6 glass-nav-unified shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-[2.25rem]">
+        <header className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex h-[80px] w-max max-w-[95%] items-center gap-6 lg:gap-8 px-6 lg:px-8 glass-nav-unified shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-[2.5rem]">
             {/* Logo Section */}
-            <Link to="/" className="flex items-center gap-3.5 hover:opacity-80 transition-opacity shrink-0">
-                <img src="/pwa-512x512.png" alt="EvaraTDS" className="size-10 rounded-2xl shadow-inner" />
+            <Link to="/" className="flex items-center gap-4 hover:opacity-80 transition-opacity shrink-0">
+                <img src="/pwa-512x512.png" alt="EvaraTDS" className="size-12 rounded-2xl shadow-inner" />
                 <div className="flex flex-col">
-                    <span className="text-[15px] font-bold tracking-tight text-foreground leading-none">EvaraTDS</span>
-                    <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold leading-none mt-1">Water Systems</span>
+                    <span className="text-[17px] font-black tracking-tight text-foreground leading-none whitespace-nowrap">EvaraTDS</span>
+                    <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold leading-none mt-1.5 whitespace-nowrap">Water Systems</span>
                 </div>
             </Link>
 
@@ -72,13 +72,13 @@ export function TopBar() {
                         <Link
                             to={link.url}
                             className={cn(
-                                "flex items-center gap-2.5 px-5 py-2.5 rounded-2xl text-[15px] font-bold transition-all duration-300 border-transparent border",
+                                "flex items-center gap-2.5 px-4 lg:px-5 py-3 rounded-[1rem] text-[15px] font-bold transition-all duration-300 border-transparent border whitespace-nowrap",
                                 location.pathname === link.url 
                                     ? "glass-system-active" 
                                     : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                             )}
                         >
-                            <link.icon className="size-[18px]" strokeWidth={2.5} />
+                            <link.icon className="size-5" strokeWidth={2.75} />
                             <span>{link.title}</span>
                         </Link>
                     </div>
@@ -88,9 +88,9 @@ export function TopBar() {
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <button
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-[15px] font-bold text-muted-foreground hover:text-foreground hover:glass-system-child hover:border-white/10 h-auto transition-all outline-none border border-transparent"
+                            className="flex items-center gap-2.5 px-4 lg:px-5 py-3 rounded-[1rem] text-[15px] font-bold text-muted-foreground hover:text-foreground hover:glass-system-child hover:border-white/10 h-auto transition-all outline-none border border-transparent whitespace-nowrap"
                         >
-                            <MoreVertical className="size-[18px]" strokeWidth={2.5} />
+                            <MoreVertical className="size-5" strokeWidth={2.75} />
                             <span>More</span>
                         </button>
                     </DropdownMenuTrigger>
@@ -126,12 +126,12 @@ export function TopBar() {
                             <TooltipTrigger asChild>
                                 <DropdownMenuTrigger asChild>
                                     <button
-                                        className="relative size-10 flex items-center justify-center rounded-full hover:bg-white/10 transition-all outline-none"
+                                        className="relative size-[40px] flex items-center justify-center rounded-full hover:bg-white/10 transition-all outline-none"
                                     >
-                                        <Bell className={cn("size-[19px] transition-colors", alertCount > 0 ? "text-primary fill-primary/20" : "text-muted-foreground")} strokeWidth={2.25} />
+                                        <Bell className={cn("size-[26px] transition-colors", alertCount > 0 ? "text-primary fill-primary/20" : "text-muted-foreground")} strokeWidth={2.25} />
                                         {alertCount > 0 && (
                                             <span className={cn(
-                                                "absolute top-0 right-0 size-5 bg-white text-[#ff3b30] text-[11px] font-black flex items-center justify-center rounded-full shadow-lg animate-in zoom-in duration-300",
+                                                "absolute top-0 right-0 size-4 bg-white text-[#ff3b30] text-[9px] font-black flex items-center justify-center rounded-full shadow-lg animate-in zoom-in duration-300 border border-transparent hover:border-[#ff3b30]/20",
                                                 blinking ? "opacity-100 scale-110" : "opacity-90 scale-100"
                                             )}>
                                                 {alertCount > 9 ? '9+' : alertCount}
@@ -190,14 +190,10 @@ export function TopBar() {
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <button
-                            className="flex items-center gap-3 pl-2 pr-2 py-1.5 rounded-2xl hover:bg-white/5 transition-all group shrink-0 outline-none"
+                            className="flex items-center p-1 rounded-full hover:bg-white/5 transition-all group shrink-0 outline-none"
                         >
-                            <div className="size-[36px] rounded-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center border border-white/10 text-sm font-bold text-primary shadow-inner">
+                            <div className="size-11 rounded-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center border border-white/10 text-[14px] font-black text-primary shadow-inner">
                                 {user?.email?.substring(0, 2).toUpperCase() || 'EV'}
-                            </div>
-                            <div className="flex flex-col items-start text-left">
-                                <span className="text-[13px] font-semibold text-foreground leading-none">{user?.email?.split('@')[0] || 'User'}</span>
-                                <span className="text-[10px] font-semibold text-muted-foreground leading-none mt-1 uppercase tracking-tighter">{(role as string)?.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || 'Operator'}</span>
                             </div>
                         </button>
                     </DropdownMenuTrigger>
