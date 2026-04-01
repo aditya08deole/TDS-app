@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useTheme } from '../context/ThemeContext'
@@ -88,7 +88,7 @@ function DustParticles() {
     const pointsRef = useRef<THREE.Points>(null!)
     const count = 150
     
-    const [positions, speeds] = useMemo(() => {
+    const [[positions, speeds]] = useState(() => {
         const pos = new Float32Array(count * 3)
         const spd = new Float32Array(count)
         for (let i = 0; i < count; i++) {
@@ -98,7 +98,7 @@ function DustParticles() {
             spd[i] = 0.001 + Math.random() * 0.003
         }
         return [pos, spd]
-    }, [])
+    })
 
     useFrame((state) => {
         if (pointsRef.current) {

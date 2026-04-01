@@ -15,32 +15,33 @@ interface DualPieChartProps {
  * - Percentage labels
  * - Responsive sizing
  */
-export function DualPieChart({ connectivityData, tdsData }: DualPieChartProps) {
-    // Custom tooltip
-    const CustomTooltip = ({ active, payload }: any) => {
-        if (active && payload && payload.length) {
-            const data = payload[0]
-            const total = connectivityData.reduce((sum, item) => sum + item.value, 0) +
-                tdsData.reduce((sum, item) => sum + item.value, 0)
-            const percentage = ((data.value / total) * 100).toFixed(1)
+// Custom tooltip (moved outside to prevent unmounts on re-render)
+const CustomTooltip = ({ active, payload, connectivityData, tdsData }: any) => {
+    if (active && payload && payload.length) {
+        const data = payload[0]
+        const total = connectivityData.reduce((sum: any, item: any) => sum + item.value, 0) +
+            tdsData.reduce((sum: any, item: any) => sum + item.value, 0)
+        const percentage = ((data.value / total) * 100).toFixed(1)
 
-            return (
-                <div className="px-3 py-2 rounded-lg border border-white/10 shadow-xl backdrop-blur-xl bg-black/90">
-                    <div className="flex items-center gap-2">
-                        <div
-                            className="w-2.5 h-2.5 rounded-full"
-                            style={{ backgroundColor: data.payload.fill }}
-                        />
-                        <span className="text-white text-sm font-medium">{data.name}</span>
-                    </div>
-                    <p className="text-white/80 text-xs mt-1">
-                        {data.value} devices ({percentage}%)
-                    </p>
+        return (
+            <div className="px-3 py-2 rounded-lg border border-white/10 shadow-xl backdrop-blur-xl bg-black/90">
+                <div className="flex items-center gap-2">
+                    <div
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: data.payload.fill }}
+                    />
+                    <span className="text-white text-sm font-medium">{data.name}</span>
                 </div>
-            )
-        }
-        return null
+                <p className="text-white/80 text-xs mt-1">
+                    {data.value} devices ({percentage}%)
+                </p>
+            </div>
+        )
     }
+    return null
+}
+
+export function DualPieChart({ connectivityData, tdsData }: DualPieChartProps) {
 
     // Custom label for percentages
     const renderLabel = (entry: any) => {
@@ -95,7 +96,7 @@ export function DualPieChart({ connectivityData, tdsData }: DualPieChartProps) {
                         ))}
                     </Pie>
 
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip content={<CustomTooltip connectivityData={connectivityData} tdsData={tdsData} />} />
                 </PieChart>
             </ResponsiveContainer>
 

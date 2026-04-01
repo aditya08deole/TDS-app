@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { db } from '../lib/firebase'
 import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore'
 import { Activity, AlertTriangle, CheckCircle, WifiOff } from 'lucide-react'
@@ -17,11 +17,7 @@ export default function HealthTimeline({ deviceId }: { deviceId: string }) {
     const [events, setEvents] = useState<DeviceEvent[]>([])
     const [loading, setLoading] = useState(true)
 
-    useEffect(() => {
-        fetchEvents()
-    }, [deviceId])
-
-    const fetchEvents = async () => {
+    const fetchEvents = useCallback(async () => {
         setLoading(true)
         try {
             const q = query(
@@ -41,7 +37,11 @@ export default function HealthTimeline({ deviceId }: { deviceId: string }) {
         } finally {
             setLoading(false)
         }
-    }
+    }, [deviceId])
+
+    useEffect(() => {
+        fetchEvents()
+    }, [deviceId, fetchEvents])
 
     const getColor = (state: string) => {
         switch (state) {

@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { type Device } from '../types'
 import { useAuth } from '../context/AuthContext'
 import { useUI } from '../context/UIContext'
@@ -18,24 +19,30 @@ import {
     Plus,
     Trash2,
     Smartphone,
-    Key,
     Search,
     Filter,
     CheckSquare,
     Square,
     Download,
+    Thermometer,
+    Zap,
+    Droplets,
+    Clock,
+    Activity,
+    MapPin,
     RefreshCw,
     X,
     QrCode,
     ScanLine
 } from 'lucide-react'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { getConnectivityStatus } from '../lib/constants'
 
 type StatusFilter = 'all' | 'online' | 'offline' | 'maintenance'
 
 export default function Devices() {
     const { isAdmin } = useAuth()
-    const { isMobile, openInspector } = useUI()
+    const { isMobile } = useUI()
     
     // Use Firestore hooks
     const { data: devices = [], isLoading, refetch } = useDevices()
@@ -77,6 +84,15 @@ export default function Devices() {
     // Selection State (for bulk operations)
     const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set())
     const [selectionMode, setSelectionMode] = useState(false)
+    
+    // Toggle for Add/Edit Form
+    const [isFormOpen, setIsFormOpen] = useState(false)
+
+    // Device Quick View State
+    const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
+    const [sensorHistory, setSensorHistory] = useState<any[]>([])
+    const [historyLoading, setHistoryLoading] = useState(false)
+    const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview')
 
     // Pull to Refresh hook
     const { handlers, PullIndicator } = usePullToRefresh({
@@ -103,6 +119,50 @@ export default function Devices() {
             return matchesSearch && matchesStatus
         })
     }, [enrichedDevices, searchQuery, statusFilter])
+
+    // Cache channel configs to prevent infinite fetch loops
+    const activeChannelConfig = useMemo(() => {
+        const d = enrichedDevices.find(d => d.id === selectedDeviceId)
+        return d ? { 
+            channelId: d.thingspeak_channel_id, 
+            readKey: d.thingspeak_read_key, 
+            tdsField: d.tds_field_number || 1 
+        } : null
+    }, [selectedDeviceId, enrichedDevices])
+
+    // Fetch history for Quick View
+    useEffect(() => {
+        let isMounted = true
+
+        const fetchHistory = async () => {
+            if (!selectedDeviceId || !activeChannelConfig?.channelId || !activeChannelConfig?.readKey) {
+                if (isMounted) setSensorHistory([])
+                return
+            }
+
+            setHistoryLoading(true)
+            try {
+                const { channelId, readKey, tdsField } = activeChannelConfig
+                const response = await fetch(`https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${readKey}&results=30`)
+                const json = await response.json()
+                
+                if (json.feeds && isMounted) {
+                    const readings = json.feeds.map((f: any) => ({
+                        time: new Date(f.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        tds: parseFloat(f[`field${tdsField}`]) || 0
+                    })).filter((r: any) => r.tds > 10)
+                    setSensorHistory(readings)
+                }
+            } catch (err) {
+                console.error('Failed to fetch history', err)
+            } finally {
+                if (isMounted) setHistoryLoading(false)
+            }
+        }
+
+        fetchHistory()
+        return () => { isMounted = false }
+    }, [selectedDeviceId, activeChannelConfig])
 
     const handleAddDevice = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -174,7 +234,7 @@ export default function Devices() {
         if (selectionMode) {
             toggleDeviceSelection(device.id)
         } else {
-            openInspector(device.id)
+            setSelectedDeviceId(device.id === selectedDeviceId ? null : device.id)
         }
     }
 
@@ -280,18 +340,30 @@ export default function Devices() {
                         <Download className="h-5 w-5" />
                     </button>
                     {isAdmin && (
-                        <button
-                            onClick={() => {
-                                setSelectionMode(!selectionMode)
-                                setSelectedDevices(new Set())
-                            }}
-                            className={`p-2 rounded-lg transition-colors ${selectionMode
-                                ? 'bg-cyan-500/20 text-cyan-400'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                        <>
+                            <button
+                                onClick={() => setIsFormOpen(!isFormOpen)}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm font-bold border-white/20 shadow-[0_0_20px_rgba(234,179,8,0.3)] ${isFormOpen 
+                                    ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 ring-1 ring-yellow-400/50' 
+                                    : 'bg-yellow-500/10 text-yellow-400 glass-system-child hover:scale-[1.05] active:scale-95 border-yellow-500/30'
                                 }`}
-                        >
-                            <CheckSquare className="h-5 w-5" />
-                        </button>
+                            >
+                                {isFormOpen ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                                {isFormOpen ? 'Close Form' : 'Add Device'}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setSelectionMode(!selectionMode)
+                                    setSelectedDevices(new Set())
+                                }}
+                                className={`p-2 rounded-lg transition-colors ${selectionMode
+                                    ? 'bg-cyan-500/20 text-cyan-400'
+                                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                                    }`}
+                            >
+                                <CheckSquare className="h-5 w-5" />
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
@@ -367,7 +439,7 @@ export default function Devices() {
             )}
 
             {/* Add Device Form (Admin Only) */}
-            {isAdmin && !selectionMode && (
+            {isAdmin && !selectionMode && (isFormOpen || editingDeviceId) && (
                 <GlassCard size="lg" className="p-4 lg:p-6 mb-6">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -603,6 +675,197 @@ export default function Devices() {
                 </GlassCard>
             )}
 
+            {/* Device Quick View Floating Panel */}
+            <AnimatePresence>
+                {selectedDeviceId && (
+                    <motion.div
+                        initial={{ opacity: 0, x: 20, scale: 0.95 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        exit={{ opacity: 0, x: 20, scale: 0.95 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                        className="fixed top-[37vh] right-6 z-[9999] w-[340px] shadow-2xl"
+                    >
+                        {(() => {
+                            const device = enrichedDevices.find(d => d.id === selectedDeviceId);
+                            if (!device) return null;
+                            
+                            const tds = device.latest_tds || 0;
+                            const temp = device.latest_temperature || 0;
+                            const min = device.safe_tds_min || 35;
+                            const max = device.safe_tds_max || 175;
+                            const isSafe = tds >= min && tds <= max;
+                            
+                            // Map View inspired status logic
+                            const statusColor = isSafe ? '#00df81' : '#ff0055';
+                            const statusBg = isSafe ? 'rgba(0, 223, 129, 0.1)' : 'rgba(255, 0, 85, 0.1)';
+
+                            return (
+                                <div 
+                                    className="glass-system-solid rounded-[24px] overflow-hidden flex flex-col h-[580px]"
+                                >
+                                    {/* Header */}
+                                    <div className="relative p-4 border-b border-white/10">
+                                        <div className="absolute top-0 left-0 right-0 h-[2px]"
+                                            style={{ background: `linear-gradient(90deg, transparent, ${statusColor}, transparent)` }} />
+                                        
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 glass-system-micro border-white/10"
+                                                    style={{ background: statusBg }}>
+                                                    <Droplets className="w-5 h-5" style={{ color: statusColor }} />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-sm font-bold text-foreground leading-tight">{device.name}</h3>
+                                                    <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-1 font-medium">
+                                                        <MapPin className="w-3 h-3" /> {device.location_name || 'GIS Node'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <button 
+                                                onClick={() => setSelectedDeviceId(null)}
+                                                className="p-2 hover:bg-secondary rounded-lg transition-all active:scale-95"
+                                            >
+                                                <X className="h-4 w-4 text-muted-foreground" />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Tabs */}
+                                    <div className="flex p-2 gap-1 mx-4 mt-3 rounded-lg bg-secondary/50 border border-white/5">
+                                        {['overview', 'history'].map((tab) => (
+                                            <button
+                                                key={tab}
+                                                onClick={() => setActiveTab(tab as any)}
+                                                className={`flex-1 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
+                                                    activeTab === tab 
+                                                        ? 'bg-secondary text-foreground shadow-sm' 
+                                                        : 'text-muted-foreground hover:text-foreground'
+                                                }`}
+                                            >
+                                                {tab}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Content Area */}
+                                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+                                        {activeTab === 'overview' ? (
+                                            <>
+                                                {/* Stats Grid */}
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="p-3 rounded-xl glass-system-inset border-white/5">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <Activity className="w-3 h-3 text-primary" />
+                                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">TDS PPM</span>
+                                                        </div>
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className="text-xl font-black font-mono tracking-tighter" style={{ color: statusColor }}>{tds}</span>
+                                                            <span className="text-[9px] font-bold text-muted-foreground/50">ppm</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-3 rounded-xl glass-system-inset border-white/5">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <Thermometer className="w-3 h-3 text-emerald-400" />
+                                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Temp</span>
+                                                        </div>
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className="text-xl font-black font-mono tracking-tighter text-emerald-400">{temp.toFixed(1)}</span>
+                                                            <span className="text-[9px] font-bold text-muted-foreground/50">°C</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Safety Banner */}
+                                                <div className={`p-3 rounded-xl flex items-center gap-3 border transition-all ${
+                                                    isSafe 
+                                                        ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.05)]' 
+                                                        : 'bg-red-500/5 border-red-500/20 text-red-100 shadow-[0_0_15px_rgba(239,68,68,0.05)]'
+                                                }`}>
+                                                    <Zap className={`h-4 w-4 shrink-0 ${isSafe ? 'text-emerald-400' : 'text-red-400 animate-pulse'}`} />
+                                                    <div className="flex flex-col">
+                                                        <span className="text-[10px] font-black uppercase tracking-tighter">
+                                                            {isSafe ? 'Water Quality Safe' : 'Unsafe Levels Detected'}
+                                                        </span>
+                                                        <span className="text-[8px] opacity-60 font-medium">Auto-analysis via AI Safety Guard</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Sparkline History */}
+                                                <div className="p-4 rounded-xl glass-system-inset border-white/5 space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">24H TDS Trend</span>
+                                                        {historyLoading && <RefreshCw className="w-2.5 h-2.5 animate-spin opacity-50" />}
+                                                    </div>
+                                                    <div className="h-[120px] w-full">
+                                                        <ResponsiveContainer width="100%" height="100%">
+                                                            <AreaChart data={sensorHistory} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
+                                                                <defs>
+                                                                    <linearGradient id="tdsChartFill" x1="0" y1="0" x2="0" y2="1">
+                                                                        <stop offset="5%" stopColor={statusColor} stopOpacity={0.3} />
+                                                                        <stop offset="95%" stopColor={statusColor} stopOpacity={0} />
+                                                                    </linearGradient>
+                                                                </defs>
+                                                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                                                <XAxis dataKey="time" hide />
+                                                                <YAxis tick={{ fontSize: 8, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} />
+                                                                <Tooltip 
+                                                                    contentStyle={{ 
+                                                                        backgroundColor: 'rgba(15, 23, 42, 0.95)', 
+                                                                        border: '1px solid rgba(255,255,255,0.1)',
+                                                                        borderRadius: '8px',
+                                                                        fontSize: '10px'
+                                                                    }} 
+                                                                />
+                                                                <Area 
+                                                                    type="monotone" 
+                                                                    dataKey="tds" 
+                                                                    stroke={statusColor} 
+                                                                    strokeWidth={2}
+                                                                    fill="url(#tdsChartFill)"
+                                                                    animationDuration={1000}
+                                                                />
+                                                            </AreaChart>
+                                                        </ResponsiveContainer>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {sensorHistory.length > 0 ? (
+                                                    sensorHistory.slice().reverse().map((read, idx) => (
+                                                        <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg glass-system-micro border-white/5 transition-all hover:bg-white/5">
+                                                            <span className="text-[10px] text-muted-foreground font-medium">{read.time}</span>
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-xs font-black font-mono tracking-tighter text-foreground">{read.tds} <small className="text-[8px] opacity-40 font-bold">PPM</small></span>
+                                                                <div className="w-1 h-3 rounded-full" style={{ background: statusColor }} />
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="py-20 text-center opacity-30 italic text-xs">No history available</div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Footer */}
+                                    <div className="p-4 border-t border-white/10 flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5 opacity-50">
+                                            <Clock className="w-3 h-3" />
+                                            <span className="text-[9px] font-bold">LIVE SYNC ACTIVE</span>
+                                        </div>
+                                        <div className="px-2.5 py-1 rounded-md text-[8px] font-black uppercase tracking-tighter"
+                                            style={{ backgroundColor: statusBg, color: statusColor, border: `1px solid ${statusColor}40`, boxShadow: `0 0 10px ${statusColor}10` }}>
+                                            {isSafe ? 'Analysis: Safe' : 'Analysis: Warn'}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Device Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
                 {filteredDevices.map(device => (
@@ -669,13 +932,7 @@ export default function Devices() {
                             )}
                         </div>
                         <h3 className="text-lg lg:text-xl font-bold text-foreground mb-1 truncate">{device.location_name || device.name}</h3>
-                        <p className="text-muted-foreground text-xs mb-3 truncate">CH: {device.thingspeak_channel_id || 'N/A'}</p>
-
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground glass-system-inset p-2 border-0">
-                                <Key className="h-4 w-4 text-emerald-500 flex-shrink-0" />
-                                <code className="font-mono text-xs truncate max-w-[150px]">{device.thingspeak_read_key || 'No Key'}</code>
-                            </div>
+                        <div className="space-y-3 mt-auto">
                             <div className="flex justify-between items-center text-xs text-muted-foreground">
                                 <div className="flex gap-2 lg:gap-4 truncate">
                                     <span>Lat: {device.latitude?.toFixed(2)}</span>

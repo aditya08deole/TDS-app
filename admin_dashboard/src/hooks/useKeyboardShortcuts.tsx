@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 interface KeyboardShortcut {
@@ -19,7 +19,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
     const navigate = useNavigate()
 
     // Default shortcuts
-    const shortcuts: KeyboardShortcut[] = [
+    const shortcuts: KeyboardShortcut[] = useMemo(() => [
         {
             key: 'd',
             action: () => navigate('/'),
@@ -81,7 +81,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
             },
             description: 'Refresh Data'
         }
-    ]
+    ], [navigate])
 
     const handleKeyDown = useCallback((event: KeyboardEvent) => {
         if (!enabled) return

@@ -50,7 +50,7 @@ export function TopBar() {
 
     // Blink badge every 3 seconds when there are alerts
     useEffect(() => {
-        if (alertCount === 0) { setBlinking(false); return }
+        if (alertCount === 0) return
         const interval = setInterval(() => setBlinking(b => !b), 3000)
         return () => clearInterval(interval)
     }, [alertCount])

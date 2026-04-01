@@ -58,24 +58,37 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
         }
     }, [])
 
-    const toggleSidebar = () => setSidebarOpen(prev => !prev)
+    const toggleSidebar = React.useCallback(() => setSidebarOpen(prev => !prev), [])
 
-    const openInspector = (deviceId: string) => setInspectorDeviceId(deviceId)
-    const closeInspector = () => setInspectorDeviceId(null)
+    const openInspector = React.useCallback((deviceId: string) => setInspectorDeviceId(deviceId), [])
+    const closeInspector = React.useCallback(() => setInspectorDeviceId(null), [])
+
+    const uiContextValue = React.useMemo(() => ({
+        isMobile,
+        isTablet,
+        isDesktop,
+        isPWA,
+        isOffline,
+        toggleSidebar,
+        sidebarOpen,
+        inspectorDeviceId,
+        openInspector,
+        closeInspector
+    }), [
+        isMobile,
+        isTablet,
+        isDesktop,
+        isPWA,
+        isOffline,
+        toggleSidebar,
+        sidebarOpen,
+        inspectorDeviceId,
+        openInspector,
+        closeInspector
+    ])
 
     return (
-        <UIContext.Provider value={{
-            isMobile,
-            isTablet,
-            isDesktop,
-            isPWA,
-            isOffline,
-            toggleSidebar,
-            sidebarOpen,
-            inspectorDeviceId,
-            openInspector,
-            closeInspector
-        }}>
+        <UIContext.Provider value={uiContextValue}>
             {children}
         </UIContext.Provider>
     )

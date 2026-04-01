@@ -109,9 +109,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     }
 
-    const signOut = async () => {
+    const signOut = React.useCallback(async () => {
         await firebaseSignOut(auth)
-    }
+    }, [])
 
     const isHardcodedAdmin = React.useMemo(() => 
         user?.email && adminEmails.includes(user.email.toLowerCase())
@@ -133,15 +133,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null
     }, [profile, isHardcodedAdmin, user])
 
-    const value = {
+    const authContextValue = React.useMemo(() => ({
         user,
         profile: effectiveProfile,
         loading: loading && !isHardcodedAdmin,
         isAdmin: isHardcodedAdmin || effectiveProfile?.role === 'admin' || effectiveProfile?.role === 'super_admin',
         signOut
-    }
+    }), [user, effectiveProfile, loading, isHardcodedAdmin, signOut])
 
-    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+    return <AuthContext.Provider value={authContextValue}>{children}</AuthContext.Provider>
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

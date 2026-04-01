@@ -16,6 +16,7 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [sortKey, setSortKey] = useState<SortKey>('name')
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+    const [renderNow] = useState(() => Date.now())
 
     // Handle Selection
     const toggleSelection = (id: string, e: React.MouseEvent) => {
@@ -169,7 +170,7 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
                                         </span>
                                     </td>
                                     <td className="p-4 text-right pr-6 text-[#6e6e73] text-xs font-mono">
-                                        {new Date(device.last_seen_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        {new Date(device.last_seen_at || renderNow).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </td>
                                 </tr>
                             )

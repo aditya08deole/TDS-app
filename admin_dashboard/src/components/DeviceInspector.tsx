@@ -55,6 +55,7 @@ export default function DeviceInspector() {
     const [device, setDevice] = useState<InspectorDevice | null>(null)
     const [activeTab, setActiveTab] = useState<TabType>('overview')
     const [sensorHistory, setSensorHistory] = useState<SensorReading[]>([])
+    const [renderNow] = useState(() => Date.now())
 
     const [loading, setLoading] = useState(false)
     const [updating, setUpdating] = useState(false)
@@ -281,7 +282,7 @@ export default function DeviceInspector() {
                                         <div>
                                             <p className="text-xs text-muted-foreground font-bold">Last Reading</p>
                                             {device.last_reading_at ? (
-                                                <p className={`text-sm font-mono ${new Date(device.last_reading_at).getTime() < Date.now() - 15 * 60 * 1000 ? 'text-orange-400' : 'text-emerald-400'}`}>
+                                                <p className={`text-sm font-mono ${new Date(device.last_reading_at).getTime() < renderNow - 15 * 60 * 1000 ? 'text-orange-400' : 'text-emerald-400'}`}>
                                                     {new Date(device.last_reading_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </p>
                                             ) : (
@@ -430,7 +431,7 @@ export default function DeviceInspector() {
                                         <div className="grid grid-cols-2 gap-4 pt-2">
                                             <div>
                                                 <span className="text-muted-foreground text-xs block mb-1 font-bold uppercase">Installed</span>
-                                                <div className="text-foreground font-medium">{new Date(device.deployment_date || device.created_at || Date.now()).toLocaleDateString()}</div>
+                                                <div className="text-foreground font-medium">{new Date(device.deployment_date || device.created_at || renderNow).toLocaleDateString()}</div>
                                             </div>
                                             <div>
                                                 <span className="text-muted-foreground text-xs block mb-1 font-bold uppercase">Maintenance</span>

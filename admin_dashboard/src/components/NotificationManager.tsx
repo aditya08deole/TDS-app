@@ -34,7 +34,7 @@ export default function NotificationManager() {
         setTimeout(() => {
             setToasts(prev => prev.filter(t => t.id !== id))
         }, 5000)
-    }, [soundEnabled])
+    }, [soundEnabled, playSound])
 
     const removeToast = useCallback((id: string) => {
         setToasts(prev => prev.filter(t => t.id !== id))
