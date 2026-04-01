@@ -134,7 +134,7 @@ export default function Login() {
                             <h1 className="text-2xl font-bold text-foreground tracking-tight leading-none">
                                 {isSignUp ? 'Create Account' : 'Welcome'}
                             </h1>
-                            <p className="text-muted-foreground/60 mt-1.5 text-[9px] font-bold uppercase tracking-[0.2em]">
+                            <p className="text-muted-foreground/80 mt-1.5 text-[9px] font-bold uppercase tracking-[0.2em]">
                                 TDS Monitoring System
                             </p>
                         </div>
@@ -153,32 +153,32 @@ export default function Login() {
                         <div className="grid grid-cols-1 gap-3.5">
                             {/* Email Input */}
                             <div className="relative group">
-                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 group-focus-within:text-cyan-400 transition-colors" />
+                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60 group-focus-within:text-cyan-400 transition-colors" />
                                 <input
                                     type="email"
                                     required
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full bg-background/20 border border-accent rounded-xl py-3 pl-11 pr-4 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/30 transition-all text-xs"
+                                    className="w-full bg-background/40 border border-accent/40 rounded-xl py-3 pl-11 pr-4 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/60 transition-all text-xs"
                                     placeholder="Enter your email"
                                 />
                             </div>
 
                             {/* Password Input */}
                             <div className="relative group">
-                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 group-focus-within:text-cyan-400 transition-colors" />
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60 group-focus-within:text-cyan-400 transition-colors" />
                                 <input
                                     type={showPassword ? 'text' : 'password'}
                                     required
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full bg-background/20 border border-accent rounded-xl py-3 pl-11 pr-11 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/30 transition-all text-xs"
+                                    className="w-full bg-background/40 border border-accent/40 rounded-xl py-3 pl-11 pr-11 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/60 transition-all text-xs"
                                     placeholder="Password"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-foreground transition-colors"
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground transition-colors"
                                 >
                                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
@@ -187,13 +187,13 @@ export default function Login() {
                             {/* Confirm Password (only for Sign Up) */}
                             {isSignUp && (
                                 <div className="relative group animate-in slide-in-from-top-1">
-                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40 group-focus-within:text-cyan-400 transition-colors" />
+                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60 group-focus-within:text-cyan-400 transition-colors" />
                                     <input
                                         type={showPassword ? 'text' : 'password'}
                                         required
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
-                                        className="w-full bg-background/20 border border-accent rounded-xl py-3 pl-11 pr-11 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/30 transition-all text-xs"
+                                        className="w-full bg-background/40 border border-accent/40 rounded-xl py-3 pl-11 pr-11 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/60 transition-all text-xs"
                                         placeholder="Confirm password"
                                     />
                                 </div>
@@ -229,18 +229,18 @@ export default function Login() {
 
                         {/* Action Links */}
                         <div className="flex items-center justify-between pt-5 border-t border-accent">
-                            <p className="text-muted-foreground/40 text-xs">
+                            <p className="text-muted-foreground/70 text-xs">
                                 {isSignUp ? "Joined?" : "New here?"}
                                 <button 
                                     type="button"
                                     onClick={() => setIsSignUp(!isSignUp)}
-                                    className="ml-1.5 text-cyan-400 hover:text-cyan-300 font-bold transition-colors"
+                                    className="ml-1.5 text-cyan-400 hover:text-cyan-600 font-bold transition-colors"
                                 >
                                     {isSignUp ? 'Sign In' : 'Create One'}
                                 </button>
                             </p>
                             {!isSignUp && (
-                                <button type="button" className="text-[10px] text-muted-foreground/20 hover:text-muted-foreground transition-colors">
+                                <button type="button" className="text-[10px] text-muted-foreground/50 hover:text-foreground transition-colors font-medium">
                                     Forgot Password?
                                 </button>
                             )}

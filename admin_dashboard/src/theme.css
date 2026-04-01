@@ -349,6 +349,42 @@
 }
 
 /* Global Neon/Glass Active States */
+.premium-button {
+    background: linear-gradient(135deg, hsla(190, 90%, 50%, 0.9), hsla(210, 90%, 50%, 0.9));
+    color: white !important;
+    border: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 15px rgba(6, 182, 212, 0.2);
+    position: relative;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.premium-button:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(6, 182, 212, 0.3);
+}
+
+.premium-button:active {
+    transform: scale(0.98) !important;
+    filter: brightness(0.9);
+}
+
+.premium-button.border-dashed {
+    background: transparent;
+    border: 1px dashed var(--accent-foreground);
+    color: var(--foreground) !important;
+    box-shadow: none;
+}
+
+.premium-button.border-dashed:hover {
+    background: var(--accent);
+    border-color: var(--primary);
+}
+
 button:active, .glass-pearl:active {
     box-shadow: 0 0 15px var(--primary), 0 0 30px rgba(129, 140, 248, 0.4) !important;
     transform: scale(0.97) !important;
