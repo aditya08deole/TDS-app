@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { db } from '../lib/firebase'
 import { collection, query, onSnapshot, orderBy, limit } from 'firebase/firestore'
 import { Bell, X, AlertTriangle, CheckCircle } from 'lucide-react'
@@ -14,72 +14,21 @@ interface Toast {
 }
 
 // Sound effects using Web Audio API
-const createAlertSound = () => {
-    try {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-
-        return {
-            playWarning: () => {
-                const oscillator = audioContext.createOscillator()
-                const gainNode = audioContext.createGain()
-                oscillator.connect(gainNode)
-                gainNode.connect(audioContext.destination)
-                oscillator.frequency.value = 800
-                oscillator.type = 'sine'
-                gainNode.gain.value = 0.3
-                oscillator.start()
-                oscillator.stop(audioContext.currentTime + 0.2)
-            },
-            playCritical: () => {
-                const oscillator = audioContext.createOscillator()
-                const gainNode = audioContext.createGain()
-                oscillator.connect(gainNode)
-                gainNode.connect(audioContext.destination)
-                oscillator.frequency.value = 1000
-                oscillator.type = 'square'
-                gainNode.gain.value = 0.4
-                const now = audioContext.currentTime
-                oscillator.start(now)
-                oscillator.frequency.setValueAtTime(1000, now)
-                oscillator.frequency.setValueAtTime(800, now + 0.1)
-                oscillator.frequency.setValueAtTime(1000, now + 0.2)
-                oscillator.stop(now + 0.3)
-            },
-            playSuccess: () => {
-                const oscillator = audioContext.createOscillator()
-                const gainNode = audioContext.createGain()
-                oscillator.connect(gainNode)
-                gainNode.connect(audioContext.destination)
-                oscillator.frequency.value = 600
-                oscillator.type = 'sine'
-                gainNode.gain.value = 0.2
-                const now = audioContext.currentTime
-                oscillator.frequency.setValueAtTime(600, now)
-                oscillator.frequency.linearRampToValueAtTime(800, now + 0.1)
-                oscillator.start(now)
-                oscillator.stop(now + 0.15)
-            }
-        }
-    } catch {
-        return null
-    }
-}
 
 export default function NotificationManager() {
     const { user } = useAuth()
-    const { soundEnabled, permission } = useNotification()
+    const { soundEnabled, permission, playSound } = useNotification()
     const [toasts, setToasts] = useState<Toast[]>([])
-    const soundRef = useRef(createAlertSound())
 
     const showToast = useCallback((toast: Omit<Toast, 'id' | 'timestamp'>) => {
         const id = Math.random().toString(36).substr(2, 9)
         const newToast: Toast = { ...toast, id, timestamp: new Date() }
         setToasts(prev => [...prev, newToast])
 
-        if (soundEnabled && soundRef.current) {
-            if (toast.type === 'error') soundRef.current.playCritical()
-            else if (toast.type === 'warning') soundRef.current.playWarning()
-            else if (toast.type === 'success') soundRef.current.playSuccess()
+        if (soundEnabled) {
+            if (toast.type === 'error') playSound('error')
+            else if (toast.type === 'warning') playSound('warning')
+            else if (toast.type === 'success') playSound('success')
         }
 
         setTimeout(() => {

@@ -44,6 +44,10 @@ export default function Settings() {
         toggleSound, 
         subscribe, 
         isSubscribed, 
+        testSound,
+        testNotification,
+        soundProfile,
+        setSoundProfile,
         permission, 
         loading: notificationLoading 
     } = useNotification()
@@ -151,9 +155,9 @@ export default function Settings() {
                         <button
                             key={item.id}
                             onClick={() => setActiveTab(item.id as SettingsTab)}
-                            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === item.id
-                                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === item.id
+                                ? 'glass-system-child text-foreground shadow-lg border-white/20'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
                                 }`}
                         >
                             <item.icon className={`w-4 h-4 ${activeTab === item.id ? 'text-primary-foreground' : 'text-muted-foreground'}`} />
@@ -164,7 +168,7 @@ export default function Settings() {
 
                 <GlassCard className="p-4">
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-primary-foreground font-bold">
+                        <div className="w-10 h-10 glass-system-micro flex items-center justify-center text-primary-foreground font-black border-white/20 shadow-lg">
                             {user?.email?.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
@@ -194,7 +198,7 @@ export default function Settings() {
                                 <p className="text-muted-foreground text-sm">Customize viewing experience</p>
                             </div>
 
-                            <div className="bg-secondary/50 rounded-xl overflow-hidden border border-accent divide-y divide-accent">
+                            <div className="glass-system-parent rounded-2xl overflow-hidden border-white/10 divide-y divide-white/5 shadow-xl">
                                 <div className="p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-4 text-left">
                                         <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500"><Moon className="w-5 h-5" /></div>
@@ -210,17 +214,17 @@ export default function Settings() {
                                 </div>
                                 <div className="p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-4 text-left">
-                                        <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500"><Globe className="w-5 h-5" /></div>
+                                        <div className="p-2.5 glass-system-micro border-white/10 text-purple-400"><Globe className="w-5 h-5" /></div>
                                         <div>
                                             <p className="text-foreground font-medium">Language</p>
                                             <p className="text-xs text-muted-foreground">Regional preference</p>
                                         </div>
                                     </div>
                                     <Select defaultValue="en">
-                                        <SelectTrigger className="w-[140px] h-9 bg-transparent border-accent">
+                                        <SelectTrigger className="w-[140px] h-9 glass-system-inset border-white/10 shadow-inner">
                                             <SelectValue placeholder="Language" />
                                         </SelectTrigger>
-                                        <SelectContent className="glass-card border-accent">
+                                        <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
                                             <SelectItem value="en">English (US)</SelectItem>
                                             <SelectItem value="hi">Hindi (IN)</SelectItem>
                                             <SelectItem value="es">Español</SelectItem>
@@ -239,7 +243,7 @@ export default function Settings() {
                                 <p className="text-muted-foreground text-sm">Manage alert delivery and audio</p>
                             </div>
 
-                            <div className="bg-secondary/50 rounded-xl overflow-hidden border border-accent divide-y divide-accent">
+                            <div className="glass-system-child overflow-hidden border-0 divide-y divide-white/5">
                                 {/* Desktop Notifications */}
                                 <div className="p-4 flex items-center justify-between">
                                     <div className="flex items-center gap-4">
@@ -284,6 +288,56 @@ export default function Settings() {
                                         checked={soundEnabled}
                                         onCheckedChange={toggleSound}
                                     />
+                                </div>
+
+                                {/* Alert Sound Tone Selection */}
+                                <div className={`p-4 flex items-center justify-between transition-all ${!soundEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
+                                            <Volume2 className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-foreground font-medium">Alert Tone</p>
+                                            <p className="text-xs text-muted-foreground text-slate-400">Select notification sound profile</p>
+                                        </div>
+                                    </div>
+                                    <Select 
+                                        value={soundProfile} 
+                                        onValueChange={setSoundProfile}
+                                        disabled={!soundEnabled}
+                                    >
+                                        <SelectTrigger className="w-[160px] h-9 bg-transparent border-accent">
+                                            <SelectValue placeholder="Select tone" />
+                                        </SelectTrigger>
+                                        <SelectContent className="glass-card border-accent">
+                                            <SelectItem value="classic">Evara Classic (Default)</SelectItem>
+                                            <SelectItem value="modern">Modern Chime</SelectItem>
+                                            <SelectItem value="digital">Digital Pulse</SelectItem>
+                                            <SelectItem value="sonar">Sonar Scan</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {/* Test Utilities */}
+                                <div className="p-4 flex flex-wrap gap-3">
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        onClick={testNotification}
+                                        className="h-8 text-xs border-cyan-500/30 hover:bg-cyan-500/10 text-cyan-500"
+                                    >
+                                        <BellRing className="w-3.5 h-3.5 mr-2" />
+                                        Test Notification
+                                    </Button>
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        onClick={testSound}
+                                        className="h-8 text-xs border-purple-500/30 hover:bg-purple-500/10 text-purple-500"
+                                    >
+                                        <Volume2 className="w-3.5 h-3.5 mr-2" />
+                                        Test Audio Alert
+                                    </Button>
                                 </div>
 
                                 {/* Email Alerts */}

@@ -38,7 +38,7 @@ function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
     const [showInfo, setShowInfo] = useState(false)
     return (
         <div className="relative flex-1 min-w-0 h-full">
-            <GlassCard className="premium-glass transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl group relative overflow-hidden h-full">
+            <GlassCard className="glass-system-parent transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl group relative overflow-hidden h-full">
                 <div className="flex items-center gap-4 px-5 py-4 h-full w-full">
                     {/* Category Icon - Left side */}
                     <div className="p-2.5 rounded-xl transition-all duration-500 group-hover:rotate-6 flex-shrink-0" style={{ backgroundColor: `${color}15`, color }}>
@@ -53,21 +53,21 @@ function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
 
                     {/* Info button - Positioned Absolute Top Right of the card */}
                     <button
-                        className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center hover:bg-accent/30 transition-colors z-30"
+                        className="absolute top-2 right-2 w-7 h-7 glass-system-micro flex items-center justify-center z-30"
                         onClick={(e) => {
                             e.stopPropagation();
                             setShowInfo(s => !s);
                         }}
                         title={`${title} device list`}
                     >
-                        <Info className="w-4 h-4 text-muted-foreground hover:opacity-100 transition-opacity" />
+                        <Info className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
                     </button>
                 </div>
             </GlassCard>
 
             {/* Info popover */}
             {showInfo && (
-                <div className="absolute top-full mt-2 left-0 right-0 z-50 premium-glass p-3 min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="absolute top-full mt-2 left-0 right-0 z-50 glass-system-child p-3 min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-300 shadow-2xl border-white/20">
                     <div className="flex items-center gap-2 mb-2 pb-2 border-b border-border/50">
                         <Icon className="w-3.5 h-3.5" style={{ color }} />
                         <span className="text-xs font-semibold text-foreground">{title} ({count})</span>
@@ -95,7 +95,7 @@ function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
 const ChartTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         return (
-            <div className="p-3 premium-glass backdrop-blur-2xl transition-all duration-300">
+            <div className="p-3 glass-system-parent shadow-2xl border-white/20 transition-all duration-300">
                 <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-2 border-b border-border/50 pb-1.5">{label}</p>
                 <div className="space-y-1.5">
                     {payload.map((p: any, i: number) => (
@@ -240,15 +240,15 @@ export default function Dashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">Real-time water quality monitoring</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full glass-card border-border/50 shadow-sm">
-                        <Zap className="w-3.5 h-3.5 text-green-500" />
-                        <span className="text-xs font-medium text-green-500">{systemHealth}% Healthy</span>
+                    <div className="hidden md:flex items-center gap-2 px-4 py-1.5 rounded-full glass-system-child border-white/20 shadow-sm">
+                        <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-xs font-bold text-emerald-400">{systemHealth}% Healthy</span>
                     </div>
-                    <TabsList className="glass-card border-border/50 h-9 p-1">
-                        <TabsTrigger value="default" className="text-xs gap-1.5 h-7 px-3 data-[state=active]:glass-active-glow data-[state=active]:text-foreground data-[state=active]:shadow-md transition-all duration-500">
+                    <TabsList className="glass-system-inset h-10 p-1 border-0">
+                        <TabsTrigger value="default" className="text-xs font-bold gap-1.5 h-8 px-4 data-[state=active]:glass-system-child data-[state=active]:text-foreground data-[state=active]:shadow-lg transition-all duration-300">
                             <LayoutGrid className="w-3.5 h-3.5" /> Default
                         </TabsTrigger>
-                        <TabsTrigger value="all" className="text-xs gap-1.5 h-7 px-3 data-[state=active]:glass-active-glow data-[state=active]:text-foreground data-[state=active]:shadow-md transition-all duration-500">
+                        <TabsTrigger value="all" className="text-xs font-bold gap-1.5 h-8 px-4 data-[state=active]:glass-system-child data-[state=active]:text-foreground data-[state=active]:shadow-lg transition-all duration-300">
                             <AreaChartIcon className="w-3.5 h-3.5" /> All Devices
                         </TabsTrigger>
                     </TabsList>
@@ -270,7 +270,7 @@ export default function Dashboard() {
                 <div className="grid grid-cols-12 gap-4">
                     {/* Pie Chart */}
                     <div className="col-span-12 lg:col-span-4">
-                        <GlassCard className="p-4 pb-2 h-full transition-all duration-500 hover:shadow-xl">
+                        <GlassCard className="glass-system-parent p-4 pb-2 h-full transition-all duration-500 hover:shadow-xl border-white/20">
                             <h3 className="text-sm font-medium mb-2">Device Overview</h3>
                             <div className="h-[320px] relative">
                                 <EChartsNestedPieChart
@@ -289,7 +289,7 @@ export default function Dashboard() {
 
                     {/* Combined TDS + Temperature Chart */}
                     <div className="col-span-12 lg:col-span-8 h-full">
-                        <GlassCard variant="liquid" className="p-4 h-full flex flex-col transition-all duration-500 hover:shadow-xl relative overflow-hidden">
+                        <GlassCard variant="liquid" className="glass-system-parent p-4 h-full flex flex-col transition-all duration-500 hover:shadow-xl border-white/20">
                             {/* Inner Header with Controls */}
                             <div className="flex flex-col gap-4 mb-4">
                                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -316,12 +316,12 @@ export default function Dashboard() {
 
                                     <div className="flex items-center gap-2 flex-wrap ml-auto">
                                         {/* Data point range buttons */}
-                                        <div className="flex gap-0.5 bg-secondary/30 rounded-lg p-0.5 border border-border/50">
+                                        <div className="flex gap-1 glass-system-inset p-1 border-0 shadow-inner">
                                             {[60, 100, 500, 1000].map((count) => (
                                                 <button
                                                     key={count}
                                                     onClick={() => setDataPointLimit(count)}
-                                                    className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all duration-300 ${dataPointLimit === count ? 'bg-primary text-primary-foreground shadow-lg' : 'text-muted-foreground hover:bg-secondary/50'}`}
+                                                    className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all duration-300 ${dataPointLimit === count ? 'glass-system-child text-primary-foreground shadow-md border-white/20' : 'text-muted-foreground hover:bg-white/10'}`}
                                                 >
                                                     {count}
                                                 </button>
@@ -329,10 +329,10 @@ export default function Dashboard() {
                                         </div>
 
                                         <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                                            <SelectTrigger className="w-[140px] h-8 bg-secondary/30 border-border/50 text-[11px] font-medium rounded-lg">
+                                            <SelectTrigger className="w-[140px] h-8 glass-system-inset border-white/10 text-[11px] font-bold rounded-lg shadow-inner">
                                                 <SelectValue placeholder="Device" />
                                             </SelectTrigger>
-                                            <SelectContent className="bg-background/95 backdrop-blur-xl border-border">
+                                            <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
                                                 {devices.length === 0 ? (
                                                     <SelectItem value="none" disabled className="text-xs">No devices</SelectItem>
                                                 ) : (

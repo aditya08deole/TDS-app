@@ -5,7 +5,7 @@
         --background: 210 30% 99%;
         --foreground: 0 0% 0%;
 
-        --card: 0 0% 100% / 0.85;
+        --card: 0 0% 100% / 0.80;
         --card-foreground: 0 0% 0%;
 
         --popover: 0 0% 100%;
@@ -35,19 +35,19 @@
         --sidebar-background: transparent !important;
         --sidebar-foreground: 215 20% 25%;
         --sidebar-border: 214 32% 91% / 0.5;
-        
-        --glass-bg: rgba(255, 255, 255, 0.12); /* Extremely sheer for liquid effect */
-        --glass-border: rgba(0, 0, 0, 0.08); 
-        --glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.03), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
-        --glass-shine: rgba(255, 255, 255, 0.9);
-        --glass-reflection: rgba(255, 255, 255, 0.95);
 
-        --ultra-blur: 45px;
-        --ultra-saturate: 210%; /* More vibrant substrate colors */
-        --specular-highlight: rgba(0, 0, 0, 0.08); 
-        --dynamic-light: rgba(255, 255, 255, 0.2);
+        --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.40), rgba(255, 255, 255, 0.15));
+        --glass-border: rgba(255, 255, 255, 0.35);
+        --glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.04), inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+        --glass-shine: rgba(255, 255, 255, 1.0);
+        --glass-reflection: rgba(255, 255, 255, 0.98);
 
-        --premium-border: rgba(0, 0, 0, 0.08); 
+        --ultra-blur: 55px;
+        --ultra-saturate: 220%;
+        --specular-highlight: rgba(255, 255, 255, 0.45);
+        --dynamic-light: rgba(255, 255, 255, 0.3);
+
+        --premium-border: rgba(0, 0, 0, 0.08);
         --premium-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
         --depth-shadow: 0 20px 50px rgba(0, 0, 0, 0.08);
     }
@@ -55,10 +55,11 @@
     .dark {
         /* Dark Mode - High Contrast Visuals */
         --background: 230 15% 4%;
-        --foreground: 0 0% 100%; /* Pure White */
+        --foreground: 0 0% 100%;
+        /* Pure White */
 
         /* Matte Surfaces - Sophisticated Dark */
-        --card: 230 15% 10% / 0.4;
+        --card: 230 15% 10% / 0.35;
         --card-foreground: 0 0% 100%;
 
         --popover: 230 15% 6%;
@@ -71,7 +72,8 @@
         --secondary-foreground: 0 0% 100%;
 
         --muted: 230 15% 12% / 0.4;
-        --muted-foreground: 0 0% 90%; /* Very Light Gray/White for hierarchy */
+        --muted-foreground: 0 0% 90%;
+        /* Very Light Gray/White for hierarchy */
 
         --accent: 230 15% 15% / 0.6;
         --accent-foreground: 0 0% 100%;
@@ -94,13 +96,17 @@
         --sidebar-ring: 226 96% 64%;
 
         /* Chart Colors - Gemstones */
-        --chart-1: 160 84% 39%; /* Emerald */
-        --chart-2: 226 96% 64%; /* Cobalt */
-        --chart-3: 280 65% 60%; /* Amethyst */
-        --chart-4: 30 95% 55%;  /* Citrine */
+        --chart-1: 160 84% 39%;
+        /* Emerald */
+        --chart-2: 226 96% 64%;
+        /* Cobalt */
+        --chart-3: 280 65% 60%;
+        /* Amethyst */
+        --chart-4: 30 95% 55%;
+        /* Citrine */
         --chart-5: 0 72% 55%;
 
-        --glass-bg: hsla(230, 20%, 8%, 0.45);
+        --glass-bg: hsla(230, 20%, 8%, 0.40);
         --glass-border: rgba(255, 255, 255, 0.08);
         --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         --glass-shine: rgba(255, 255, 255, 0.03);
@@ -117,34 +123,111 @@
     }
 }
 
-/* --- CORE GLASS CLASSES --- */
-
-/* Unified Glass Card Base */
-.glass-card {
-    background: var(--glass-bg);
-    backdrop-filter: blur(var(--ultra-blur)) saturate(var(--ultra-saturate)) contrast(102%) brightness(102%);
-    -webkit-backdrop-filter: blur(var(--ultra-blur)) saturate(var(--ultra-saturate)) contrast(102%) brightness(102%);
-    border: 1px solid var(--specular-highlight);
+/* Master Glass Tier 1: Parent Containers (Cards, Panels) */
+.glass-system-parent {
+    background: rgba(255, 255, 255, 0.08) !important;
+    backdrop-filter: blur(45px) saturate(210%) brightness(102%) !important;
+    -webkit-backdrop-filter: blur(45px) saturate(210%) brightness(102%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.35) !important;
     box-shadow: 
         var(--premium-shadow),
-        inset 0 1px 1px rgba(255, 255, 255, 0.1);
+        inset 0 1px 1px rgba(255, 255, 255, 0.45);
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
-    z-index: 10;
 }
 
-/* Liquid iOS Glass Material with Sheen Animation */
-.liquid-ios-glass {
-    background: var(--glass-bg);
-    backdrop-filter: blur(var(--ultra-blur)) saturate(var(--ultra-saturate)) contrast(101%) brightness(101%);
-    -webkit-backdrop-filter: blur(var(--ultra-blur)) saturate(var(--ultra-saturate)) contrast(101%) brightness(101%);
-    border: 1px solid var(--specular-highlight);
-    position: relative;
-    overflow: hidden;
-    border-radius: 1.25rem;
-    box-shadow: var(--premium-shadow), var(--depth-shadow);
+.dark .glass-system-parent {
+    background: rgba(15, 15, 20, 0.35) !important;
+    backdrop-filter: blur(55px) saturate(230%) brightness(120%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
 }
+
+/* Master Glass Tier 2: Child Elements (Inner Sections, Nested Cards, Buttons) */
+.glass-system-child {
+    background: rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-system-child:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* THE CLICK EFFECT: Dark blue tone + Inset shadow */
+.glass-system-child:active {
+    background: rgba(0, 122, 255, 0.18) !important;
+    box-shadow: inset 0 2px 8px rgba(0, 122, 255, 0.25) !important;
+    transform: scale(0.98);
+}
+
+/* SPECIFIC ACTIVE/SELECTED STATE: Sleek iOS Blue Glass (Matches Reference) */
+.glass-system-active {
+    background: rgba(0, 122, 255, 0.08) !important;
+    backdrop-filter: blur(20px) saturate(180%) brightness(105%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) brightness(105%) !important;
+    border: 1px solid rgba(0, 122, 255, 0.3) !important;
+    color: #007aff !important;
+    z-index: 2;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark .glass-system-active {
+    background: rgba(0, 122, 255, 0.16) !important;
+    backdrop-filter: blur(25px) saturate(200%) brightness(110%) !important;
+    border: 1px solid rgba(0, 122, 255, 0.45) !important;
+    box-shadow: 0 4px 20px rgba(0, 122, 255, 0.25) !important;
+    color: #4dabff !important;
+}
+
+.dark .glass-system-child {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Master Glass Tier 3: Inset Surfaces (Inputs, Fields) */
+.glass-system-inset {
+    background: rgba(0, 0, 0, 0.04) !important;
+    backdrop-filter: blur(15px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.dark .glass-system-inset {
+    background: rgba(0, 0, 0, 0.20) !important;
+    box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Master Glass Tier 4: Micro Elements (Icon Buttons) */
+.glass-system-micro {
+    background: rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.glass-system-micro:hover {
+    background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.glass-system-micro:active {
+    background: rgba(0, 122, 255, 0.25) !important;
+    transform: scale(0.95);
+}
+
+/* legacy class mappings for compatibility */
+.glass-card { @apply glass-system-parent; }
+.liquid-ios-glass { @apply glass-system-parent; }
 
 .liquid-ios-glass::before {
     content: '';
@@ -153,14 +236,12 @@
     left: -50%;
     width: 200%;
     height: 200%;
-    background: linear-gradient(
-        45deg,
-        transparent 45%,
-        var(--glass-shine) 48%,
-        var(--glass-reflection) 50%,
-        var(--glass-shine) 52%,
-        transparent 55%
-    );
+    background: linear-gradient(45deg,
+            transparent 45%,
+            var(--glass-shine) 48%,
+            var(--glass-reflection) 50%,
+            var(--glass-shine) 52%,
+            transparent 55%);
     opacity: 0.12;
     transform: rotate(25deg);
     animation: liquid-glass-sheen 10s infinite linear;
@@ -168,20 +249,24 @@
     z-index: 1;
 }
 
-/* Premium Navigation Header Style */
+/* Unified Navigation Header (LIQUID FROSTED GLASS) */
 .glass-nav-unified {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.05)) !important;
-    backdrop-filter: blur(var(--ultra-blur)) saturate(var(--ultra-saturate)) brightness(103%) !important;
-    -webkit-backdrop-filter: blur(var(--ultra-blur)) saturate(var(--ultra-saturate)) brightness(103%) !important;
-    border: 1px solid var(--specular-highlight) !important;
+    background: rgba(255, 255, 255, 0.12) !important; /* Authentic low opacity glass */
+    backdrop-filter: blur(50px) saturate(210%) brightness(105%) !important;
+    -webkit-backdrop-filter: blur(50px) saturate(210%) brightness(105%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.08),
+        inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
     position: relative;
     z-index: 50;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dark .glass-nav-unified {
-    background: hsla(230, 20%, 3%, 0.35) !important;
-    backdrop-filter: blur(55px) saturate(230%) brightness(120%) !important;
+    background: rgba(10, 10, 15, 0.35) !important; /* Low dark opacity for depth */
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3) !important;
 }
 
 /* Premium High-Fidelity Surface */
@@ -205,13 +290,28 @@
 
 /* --- SUPPORTING GLASS UTILITIES --- */
 
-.glass-layer-1 { z-index: 10; backdrop-filter: blur(20px); }
-.glass-layer-2 { z-index: 20; backdrop-filter: blur(40px); }
-.glass-layer-3 { z-index: 30; backdrop-filter: blur(60px); }
-.glass-layer-4 { z-index: 40; backdrop-filter: blur(80px); }
+.glass-layer-1 {
+    z-index: 10;
+    backdrop-filter: blur(20px);
+}
+
+.glass-layer-2 {
+    z-index: 20;
+    backdrop-filter: blur(40px);
+}
+
+.glass-layer-3 {
+    z-index: 30;
+    backdrop-filter: blur(60px);
+}
+
+.glass-layer-4 {
+    z-index: 40;
+    backdrop-filter: blur(80px);
+}
 
 .nested-glass {
-    background: rgba(255, 255, 255, 0.02);
+    background: rgba(255, 255, 255, 0.01);
     backdrop-filter: blur(20px) saturate(200%);
     -webkit-backdrop-filter: blur(20px) saturate(200%);
     border: 1px solid var(--specular-highlight);
@@ -219,7 +319,7 @@
 }
 
 .dark .nested-glass {
-    background: rgba(0, 0, 0, 0.1);
+    background: rgba(0, 0, 0, 0.05);
 }
 
 /* Active Navigation Glow */
@@ -242,17 +342,31 @@
 /* --- ANIMATIONS --- */
 
 @keyframes liquid-glass-sheen {
-    0% { transform: translate(-30%, -30%) rotate(25deg); }
-    100% { transform: translate(30%, 30%) rotate(25deg); }
+    0% {
+        transform: translate(-30%, -30%) rotate(25deg);
+    }
+
+    100% {
+        transform: translate(30%, 30%) rotate(25deg);
+    }
 }
 
 @keyframes flow-shine {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
 }
 
 /* Universal Glass Reset for specific components */
-.card, .stats-card, .dashboard-card, .activity-panel, .device-panel {
+.card,
+.stats-card,
+.dashboard-card,
+.activity-panel,
+.device-panel {
     border: 1px solid var(--specular-highlight);
     position: relative;
     transition: all 0.3s ease;
@@ -269,7 +383,7 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent 40%, transparent 60%, rgba(255,255,255,0.05)) border-box;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), transparent 40%, transparent 60%, rgba(255, 255, 255, 0.05)) border-box;
     -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: destination-out;
     mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
@@ -293,7 +407,7 @@
     backdrop-filter: blur(var(--ultra-blur)) saturate(var(--ultra-saturate));
     -webkit-backdrop-filter: blur(var(--ultra-blur)) saturate(var(--ultra-saturate));
     border: 1px solid var(--specular-highlight);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
     transition: box-shadow 0.3s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -302,28 +416,42 @@
     transform: translateY(-2px);
 }
 
-/* Premium Refined Button Style */
-.glass-pearl {
-    --pearl-bg: var(--glass-bg);
-    outline: none;
-    cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    position: relative;
+/* Premium Refined Glass Button (The "Function" for buttons) */
+.glass-button {
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(25px) saturate(180%) brightness(105%) !important;
+    -webkit-backdrop-filter: blur(25px) saturate(180%) brightness(105%) !important;
+    border: 1px solid var(--specular-highlight) !important;
     border-radius: 0.75rem;
-    background-color: var(--pearl-bg);
+    color: var(--foreground);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: var(--premium-shadow);
-    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    backdrop-filter: blur(12px);
+    cursor: pointer;
+    font-weight: 500;
 }
 
-.glass-pearl:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.2);
+.dark .glass-button {
+    background: hsla(230, 20%, 5%, 0.4) !important;
+    backdrop-filter: blur(20px) saturate(150%) brightness(120%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.glass-button:hover {
     transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.dark .glass-button:hover {
+    background: hsla(230, 20%, 15%, 0.6) !important;
+}
+
+.glass-button:active {
+    transform: scale(0.96);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Interactive Ripple Effect */
@@ -385,7 +513,8 @@
     border-color: var(--primary);
 }
 
-button:active, .glass-pearl:active {
+button:active,
+.glass-pearl:active {
     box-shadow: 0 0 15px var(--primary), 0 0 30px rgba(129, 140, 248, 0.4) !important;
     transform: scale(0.97) !important;
     transition: all 0.1s ease-out;
@@ -394,19 +523,42 @@ button:active, .glass-pearl:active {
 /* --- MARKER ANIMATIONS & PREMIUM ORB STYLES --- */
 
 @keyframes marker-float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-8px);
+    }
 }
 
 @keyframes marker-glow-pulse {
-    0% { transform: translateX(-50%) scale(0.9); opacity: 0.6; }
-    50% { transform: translateX(-50%) scale(1.4); opacity: 0.2; }
-    100% { transform: translateX(-50%) scale(0.9); opacity: 0.6; }
+    0% {
+        transform: translateX(-50%) scale(0.9);
+        opacity: 0.6;
+    }
+
+    50% {
+        transform: translateX(-50%) scale(1.4);
+        opacity: 0.2;
+    }
+
+    100% {
+        transform: translateX(-50%) scale(0.9);
+        opacity: 0.6;
+    }
 }
 
 @keyframes icon-shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
 }
 
 .marker-float-animation {
@@ -428,7 +580,7 @@ button:active, .glass-pearl:active {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
     background-size: 200% 100%;
     animation: icon-shimmer 4s infinite linear;
 }

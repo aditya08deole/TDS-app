@@ -12,6 +12,7 @@ import {
     useUpdateDevice,
     useDeviceSubscription 
 } from '../hooks/useDeviceQueries'
+import { GlassCard } from '../components/GlassCard'
 import { useAllDevicesThingSpeakData } from '../hooks/useThingSpeakQueries'
 import {
     Plus,
@@ -367,7 +368,7 @@ export default function Devices() {
 
             {/* Add Device Form (Admin Only) */}
             {isAdmin && !selectionMode && (
-                <div className="bg-secondary/30 border border-accent rounded-2xl p-4 lg:p-6 backdrop-blur-sm">
+                <GlassCard size="lg" className="p-4 lg:p-6 mb-6">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                             <Plus className="h-5 w-5 text-blue-400" />
@@ -506,7 +507,7 @@ export default function Devices() {
                                 required
                                 value={newDevice.thingspeak_read_key}
                                 onChange={e => setNewDevice({ ...newDevice, thingspeak_read_key: e.target.value })}
-                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground font-mono focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
+                                className="w-full glass-system-inset px-3 py-2.5 text-foreground font-mono outline-none text-sm"
                                 placeholder="e.g., XXXXXXXXXXXXXX"
                             />
                         </div>
@@ -518,7 +519,7 @@ export default function Devices() {
                                 type="number"
                                 value={newDevice.safe_tds_min}
                                 onChange={e => setNewDevice({ ...newDevice, safe_tds_min: e.target.value })}
-                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
+                                className="w-full glass-system-inset px-3 py-2.5 text-foreground outline-none text-sm"
                                 placeholder="35"
                             />
                         </div>
@@ -529,7 +530,7 @@ export default function Devices() {
                                 type="number"
                                 value={newDevice.safe_tds_max}
                                 onChange={e => setNewDevice({ ...newDevice, safe_tds_max: e.target.value })}
-                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
+                                className="w-full glass-system-inset px-3 py-2.5 text-foreground outline-none text-sm"
                                 placeholder="175"
                             />
                         </div>
@@ -547,7 +548,7 @@ export default function Devices() {
                                     <select
                                         value={newDevice.tds_field}
                                         onChange={e => setNewDevice({ ...newDevice, tds_field: parseInt(e.target.value) })}
-                                        className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
+                                        className="w-full glass-system-inset px-3 py-2.5 text-foreground outline-none text-sm"
                                     >
                                         {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
                                             <option key={num} value={num}>Field {num}</option>
@@ -561,7 +562,7 @@ export default function Devices() {
                                     <select
                                         value={newDevice.temp_field}
                                         onChange={e => setNewDevice({ ...newDevice, temp_field: parseInt(e.target.value) })}
-                                        className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
+                                        className="w-full glass-system-inset px-3 py-2.5 text-foreground outline-none text-sm"
                                     >
                                         {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
                                             <option key={num} value={num}>Field {num}</option>
@@ -575,7 +576,7 @@ export default function Devices() {
                                     <select
                                         value={newDevice.voltage_field}
                                         onChange={e => setNewDevice({ ...newDevice, voltage_field: parseInt(e.target.value) })}
-                                        className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
+                                        className="w-full glass-system-inset px-3 py-2.5 text-foreground outline-none text-sm"
                                     >
                                         {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
                                             <option key={num} value={num}>Field {num}</option>
@@ -590,7 +591,7 @@ export default function Devices() {
                             <button
                                 type="submit"
                                 disabled={addingDevice}
-                                className="px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:bg-primary/50 text-primary-foreground font-medium rounded-lg transition-all shadow-lg shadow-primary/20 text-sm"
+                                className="px-6 py-2.5 glass-system-child text-primary-foreground font-bold rounded-xl transition-all shadow-xl border-white/20 hover:scale-[1.02] active:scale-95 disabled:opacity-50"
                             >
                                 {editingDeviceId 
                                     ? (addingDevice ? 'Updating...' : 'Update Device') 
@@ -599,22 +600,23 @@ export default function Devices() {
                             </button>
                         </div>
                     </form>
-                </div>
+                </GlassCard>
             )}
 
             {/* Device Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
                 {filteredDevices.map(device => (
-                    <div
+                    <GlassCard
+                        size="md"
                         key={device.id}
                         onClick={() => handleDeviceClick(device)}
-                        className={`bg-secondary/40 border rounded-xl p-4 lg:p-6 transition-all cursor-pointer ${selectionMode && selectedDevices.has(device.id)
-                            ? 'border-primary bg-primary/5'
-                            : 'border-accent hover:border-border'
+                        className={`transition-all cursor-pointer ${selectionMode && selectedDevices.has(device.id)
+                            ? 'ring-2 ring-primary bg-primary/5'
+                            : 'hover:border-primary/50'
                             }`}
                     >
                         <div className="flex justify-between items-start mb-3">
-                            <div className="h-10 w-10 lg:h-12 lg:w-12 bg-secondary/80 rounded-xl flex items-center justify-center border border-accent">
+                            <div className="h-10 w-10 lg:h-12 lg:w-12 glass-system-micro flex items-center justify-center border-white/10 shadow-lg">
                                 {selectionMode ? (
                                     selectedDevices.has(device.id) ? (
                                         <CheckSquare className="h-5 w-5 text-primary" />
@@ -622,7 +624,7 @@ export default function Devices() {
                                         <Square className="h-5 w-5 text-muted-foreground" />
                                     )
                                 ) : (
-                                    <Smartphone className="h-5 w-5 lg:h-6 lg:w-6 text-primary" />
+                                    <Smartphone className="h-5 w-5 lg:h-6 lg:w-6 text-primary drop-shadow-[0_0_8px_rgba(59,130,246,0.3)]" />
                                 )}
                             </div>
                             {isAdmin && !selectionMode && (
@@ -670,7 +672,7 @@ export default function Devices() {
                         <p className="text-muted-foreground text-xs mb-3 truncate">CH: {device.thingspeak_channel_id || 'N/A'}</p>
 
                         <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-background/50 p-2 rounded-lg border border-accent/50">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground glass-system-inset p-2 border-0">
                                 <Key className="h-4 w-4 text-emerald-500 flex-shrink-0" />
                                 <code className="font-mono text-xs truncate max-w-[150px]">{device.thingspeak_read_key || 'No Key'}</code>
                             </div>
@@ -690,7 +692,7 @@ export default function Devices() {
                                 </span>
                             </div>
                         </div>
-                    </div>
+                    </GlassCard>
                 ))}
 
                 {filteredDevices.length === 0 && (

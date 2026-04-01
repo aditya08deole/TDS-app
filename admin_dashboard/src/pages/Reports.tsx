@@ -12,6 +12,7 @@ import {
     Database
 } from 'lucide-react'
 import { useUI } from '../context/UIContext'
+import { GlassCard } from '../components/GlassCard'
 
 interface UptimeStat {
     device_id: string
@@ -149,7 +150,7 @@ export default function Reports() {
                                 <button
                                     key={d}
                                     onClick={() => setDays(d)}
-                                    className={`px-4 py-2 rounded-md text-xs font-medium transition-all ${days === d ? 'bg-accent text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${days === d ? 'glass-system-child text-foreground shadow-md border-white/20' : 'text-muted-foreground hover:text-foreground hover:bg-white/5'}`}
                                 >
                                     {d} Days
                                 </button>
@@ -157,7 +158,7 @@ export default function Reports() {
                         </div>
                         <button
                             onClick={handleDownloadCSV}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                            className="flex items-center gap-2 px-4 py-2 glass-system-child text-primary-foreground rounded-lg text-xs font-bold transition-all border-white/20 hover:scale-[1.02] active:scale-95 disabled:opacity-50"
                             disabled={loading || stats.length === 0}
                         >
                             <Download className="h-4 w-4" /> Export CSV
@@ -166,37 +167,37 @@ export default function Reports() {
 
                     {/* KPI Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="glass-card p-5 rounded-xl flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                        <GlassCard size="md" className="p-5 flex items-center gap-4">
+                            <div className="w-12 h-12 glass-system-micro flex items-center justify-center text-emerald-400 border-white/10 shadow-lg">
                                 <TrendingUp className="w-6 h-6" />
                             </div>
                             <div>
                                 <p className="text-2xl font-bold text-foreground">{systemHealth.avgUptime.toFixed(1)}%</p>
                                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Avg Fleet Availability</p>
                             </div>
-                        </div>
-                        <div className="glass-card p-5 rounded-xl flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-500">
+                        </GlassCard>
+                        <GlassCard size="md" className="p-5 flex items-center gap-4">
+                            <div className="w-12 h-12 glass-system-micro flex items-center justify-center text-red-400 border-white/10 shadow-lg">
                                 <AlertTriangle className="w-6 h-6" />
                             </div>
                             <div>
                                 <p className="text-2xl font-bold text-foreground">{systemHealth.totalOutages}</p>
                                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Outage Events</p>
                             </div>
-                        </div>
-                        <div className="glass-card p-5 rounded-xl flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
+                        </GlassCard>
+                        <GlassCard size="md" className="p-5 flex items-center gap-4">
+                            <div className="w-12 h-12 glass-system-micro flex items-center justify-center text-blue-400 border-white/10 shadow-lg">
                                 <BarChart3 className="w-6 h-6" />
                             </div>
                             <div>
                                 <p className="text-2xl font-bold text-foreground">{stats.length}</p>
                                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Devices Monitored</p>
                             </div>
-                        </div>
+                        </GlassCard>
                     </div>
 
                     {/* Data Table */}
-                    <div className="glass-card rounded-xl overflow-hidden border border-accent">
+                    <GlassCard size="lg" className="overflow-hidden border border-accent">
                         <div className="p-4 border-b border-accent flex items-center justify-between">
                             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
                                 <FileText className="h-4 w-4 text-muted-foreground" /> Availability Report
@@ -206,7 +207,7 @@ export default function Reports() {
 
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-sm">
-                                <thead className="bg-secondary text-muted-foreground font-medium">
+                                <thead className="glass-system-child text-muted-foreground font-black uppercase tracking-widest text-[10px] border-b border-white/5">
                                     <tr>
                                         <th className="p-4">Device</th>
                                         <th className="p-4">Uptime</th>
@@ -226,13 +227,13 @@ export default function Reports() {
                                         </tr>
                                     ) : (
                                         stats.map(device => (
-                                            <tr key={device.device_id} className="hover:bg-accent/30 transition-colors group">
+                                            <tr key={device.device_id} className="hover:glass-system-child transition-colors group border-b border-white/5 last:border-0">
                                                 <td className="p-4 font-medium text-foreground">{device.device_name}</td>
                                                 <td className="p-4">
                                                     <div className="flex items-center gap-2">
-                                                        <div className="w-16 h-1.5 bg-secondary rounded-full overflow-hidden">
+                                                        <div className="w-16 h-1.5 glass-system-inset rounded-full overflow-hidden border-0">
                                                             <div
-                                                                className={`h-full rounded-full ${device.uptime_percent > 99 ? 'bg-emerald-500' : device.uptime_percent > 95 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                                                className={`h-full rounded-full shadow-[0_0_8px_rgba(16,185,129,0.4)] ${device.uptime_percent > 99 ? 'bg-emerald-500' : device.uptime_percent > 95 ? 'bg-yellow-500' : 'bg-red-500'}`}
                                                                 style={{ width: `${device.uptime_percent}%` }}
                                                             />
                                                         </div>
@@ -258,12 +259,12 @@ export default function Reports() {
                                 </tbody>
                             </table>
                         </div>
-                    </div>
+                    </GlassCard>
                 </>
             )}
 
             {activeTab === 'health' && (
-                <div className="glass-card rounded-xl overflow-hidden border border-accent">
+                <GlassCard size="lg" className="overflow-hidden border border-accent">
                     <div className="p-4 border-b border-accent flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
                             <Server className="h-4 w-4 text-muted-foreground" /> Infrastructure Status
@@ -321,7 +322,7 @@ export default function Reports() {
                             </tbody>
                         </table>
                     </div>
-                </div>
+                </GlassCard>
             )}
         </div>
     )

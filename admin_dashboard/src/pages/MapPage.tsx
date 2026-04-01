@@ -8,8 +8,10 @@ import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
 import { useAllDevicesThingSpeakData, useDeviceThingSpeakChartData } from '../hooks/useThingSpeakQueries'
 import { getTDSStatus, getDeviceDisplayName, getConnectivityStatus } from '../lib/constants'
 import { getPpmStatus, createWhiteTransparentMarker, type DeviceLocation } from '../components/MapMarkers'
+import { GlassCard } from '../components/GlassCard'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
+import { cn } from '@/lib/utils'
 import {
     Maximize2, Minimize2, Layers, X, Droplets, Thermometer, Clock, MapPin,
     Wifi, WifiOff, Activity, Search, RefreshCw,
@@ -254,7 +256,7 @@ function DevicePanel({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="fixed z-[1000] w-[324px] rounded-2xl overflow-hidden premium-glass"
+            className="fixed z-[1000] w-[324px] rounded-[24px]"
             style={{
                 left: position.x,
                 top: position.y,
@@ -263,6 +265,7 @@ function DevicePanel({
             }}
             onMouseDown={handleMouseDown}
         >
+            <GlassCard size="md" className="p-0 border-0 h-full w-full">
             {/* Header */}
             <div className="relative p-4" style={{ borderBottom: `1px solid ${theme.border.subtle}` }}>
                 <div className="absolute top-0 left-0 right-0 h-[2px]"
@@ -469,6 +472,7 @@ function DevicePanel({
                     {ppmStatus.label}
                 </div>
             </div>
+            </GlassCard>
         </motion.div>
     )
 }
@@ -580,8 +584,9 @@ export default function MapPage() {
                 <motion.div 
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    className="flex flex-col h-full premium-glass border border-white/20 shadow-[0_25px_60px_rgba(0,0,0,0.4)] rounded-2xl overflow-hidden pointer-events-auto"
+                    className="flex flex-col h-full rounded-[24px] pointer-events-auto"
                 >
+                    <GlassCard size="md" className="flex flex-col h-full p-0 border-0">
                     {/* Panel Header */}
                     <div className="p-5 flex flex-col gap-4 border-b border-white/10">
                         <div className="flex items-center justify-between">
@@ -605,7 +610,7 @@ export default function MapPage() {
                                 placeholder="Find a device..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-11 pr-4 py-3 rounded-xl text-xs font-medium outline-none transition-all duration-300 bg-white/5 border border-white/10 focus:border-primary/30 focus:bg-white/10 text-foreground placeholder:text-muted-foreground/70"
+                                className="w-full pl-11 pr-4 py-3 rounded-xl text-xs font-medium outline-none glass-system-inset border-0 focus:ring-1 focus:ring-primary/30 text-foreground placeholder:text-muted-foreground/70"
                             />
                         </div>
 
@@ -620,10 +625,12 @@ export default function MapPage() {
                                 <button
                                     key={s.key}
                                     onClick={() => setStatusFilter(statusFilter === s.key ? 'all' : s.key as FilterType)}
-                                    className="group flex flex-col items-center p-2 rounded-xl transition-all duration-300 hover:bg-white/5 relative"
+                                    className={cn(
+                                        "group flex flex-col items-center p-2 rounded-xl transition-all duration-300 relative border border-transparent",
+                                        statusFilter === s.key ? "glass-system-child border-white/20 shadow-lg scale-105" : "hover:bg-white/5"
+                                    )}
                                     style={{
-                                        background: statusFilter === s.key ? s.bg : 'transparent',
-                                        border: statusFilter === s.key ? `1px solid ${s.color}30` : `1px solid transparent`
+                                        background: statusFilter === s.key ? s.bg : undefined,
                                     }}
                                 >
                                     <div className="w-1.5 h-1.5 rounded-full mb-1.5 transition-transform group-hover:scale-125" style={{ background: s.color, boxShadow: `0 0 10px ${s.color}` }} />
@@ -635,7 +642,7 @@ export default function MapPage() {
                     </div>
 
                     {/* Device List Section */}
-                    <div className="flex-1 overflow-hidden flex flex-col bg-white/5">
+                    <div className="flex-1 overflow-hidden flex flex-col glass-system-child border-0 rounded-none border-t border-white/10">
                         <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-muted-foreground/80">
                             <span>Active Nodes</span>
                             <span className="text-primary">{filteredDevices.length} Connected</span>
@@ -657,8 +664,8 @@ export default function MapPage() {
                                         }}
                                     >
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:rotate-12"
-                                                style={{ background: ppmStatus.bg, border: `1px solid ${ppmStatus.color}20` }}>
+                                            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:rotate-12 glass-system-micro border-white/10"
+                                                style={{ background: ppmStatus.bg }}>
                                                 <Droplets className="w-4.5 h-4.5" style={{ color: ppmStatus.color }} />
                                             </div>
                                             <div className="min-w-0 flex flex-col items-start text-left">
@@ -683,6 +690,7 @@ export default function MapPage() {
                             )}
                         </div>
                     </div>
+                    </GlassCard>
                 </motion.div>
             </div>
 
@@ -714,8 +722,7 @@ export default function MapPage() {
                     {/* Refresh Button - Single rotation */}
                     <button
                         onClick={handleRefresh}
-                        className="p-3 rounded-xl backdrop-blur-xl transition-all duration-300 liquid-ios-glass"
-                        style={{ border: '1px solid var(--specular-highlight)' }}
+                        className="p-3 rounded-xl glass-system-micro border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.2)] transition-all duration-300 active:scale-90"
                     >
                         <RefreshCw
                             className={`w-5 h-5 transition-transform duration-600 ${isRefreshing ? 'rotate-360' : ''}`}
@@ -727,15 +734,13 @@ export default function MapPage() {
                     <div className="relative">
                         <button
                             onClick={() => setShowLayerMenu(!showLayerMenu)}
-                            className="p-3 rounded-xl backdrop-blur-xl transition-all duration-300 liquid-ios-glass"
-                            style={{ border: '1px solid var(--specular-highlight)' }}
+                            className="p-3 rounded-xl glass-system-micro border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.2)] transition-all duration-300 active:scale-90"
                         >
                             <Layers className="w-5 h-5" style={{ color: theme.text.primary }} />
                         </button>
                         {showLayerMenu && (
                             <div
-                                className="absolute top-full right-0 mt-2 p-2 min-w-[140px] rounded-xl backdrop-blur-xl animate-scale-in liquid-ios-glass"
-                                style={{ border: '1px solid var(--specular-highlight)' }}
+                                className="absolute top-full right-0 mt-2 p-2 min-w-[140px] rounded-2xl glass-system-parent border-white/20 shadow-2xl animate-scale-in"
                             >
                                 <p className="text-[9px] uppercase px-3 py-1 font-medium" style={{ color: theme.text.muted }}>Map Style</p>
                                 {[{ id: 'street', label: 'Street Map', icon: '🗺️' }, { id: 'satellite', label: 'Satellite', icon: '🛰️' }].map(style => (

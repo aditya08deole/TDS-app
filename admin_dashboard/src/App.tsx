@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
@@ -38,57 +38,30 @@ const PageLoader = () => (
     </div>
 )
 
-// Safe error boundary that always shows something
-function SafeErrorBoundary({ children }: { children: React.ReactNode }) {
-    const [error, setError] = useState<string | null>(null)
+import { ErrorBoundary } from 'react-error-boundary'
 
-    useEffect(() => {
-        const handler = (event: ErrorEvent) => {
-            console.error('SafeErrorBoundary caught error:', event.error);
-            setError(event.message)
-            event.preventDefault()
-        }
-        const rejectionHandler = (event: PromiseRejectionEvent) => {
-            console.error('SafeErrorBoundary caught rejection:', event.reason);
-            setError(String(event.reason))
-            event.preventDefault()
-        }
-        window.addEventListener('error', handler)
-        window.addEventListener('unhandledrejection', rejectionHandler)
-        return () => {
-            window.removeEventListener('error', handler)
-            window.removeEventListener('unhandledrejection', rejectionHandler)
-        }
-    }, [])
-
-    if (error) {
-        return (
-            <div style={{
-                minHeight: '100vh', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', backgroundColor: 'var(--background)', color: 'var(--foreground)',
-                fontFamily: 'Inter, sans-serif', padding: '2rem', zIndex: 9999
-            }}>
-                <div style={{ maxWidth: '600px', textAlign: 'center' }}>
-                    <h1 style={{ fontSize: '1.5rem', color: '#ef4444', marginBottom: '1rem' }}>Runtime Error Caught</h1>
-                    <pre style={{
-                        backgroundColor: 'var(--secondary)', padding: '1rem', borderRadius: '0.5rem',
-                        textAlign: 'left', fontSize: '0.8rem', overflow: 'auto', color: 'var(--primary)',
-                        whiteSpace: 'pre-wrap', wordBreak: 'break-all', border: '1px solid var(--accent)'
-                    }}>{error}</pre>
-                    <button onClick={() => window.location.reload()} style={{
-                        marginTop: '1rem', padding: '0.5rem 1.5rem', backgroundColor: 'var(--primary)',
-                        border: 'none', borderRadius: '0.5rem', color: 'var(--primary-foreground)', cursor: 'pointer'
-                    }}>Reload System</button>
-                    <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
-                        Please share this error message with the developer.
-                    </p>
-                </div>
-            </div>
-        )
-    }
-
-    return <>{children}</>
-}
+// Fallback Component for Error Boundary
+const ErrorFallback = ({ error, resetErrorBoundary }: { error: any, resetErrorBoundary: () => void }) => (
+    <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', backgroundColor: '#05070a', color: '#fff',
+        fontFamily: 'Inter, sans-serif', padding: '2rem', zIndex: 9999
+    }}>
+        <div style={{ maxWidth: '600px', textAlign: 'center' }}>
+            <h1 style={{ fontSize: '1.5rem', color: '#ef4444', marginBottom: '1rem' }}>System Runtime Error</h1>
+            <pre style={{
+                backgroundColor: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '0.5rem',
+                textAlign: 'left', fontSize: '0.8rem', overflow: 'auto', color: '#cbd5e1',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-all', border: '1px solid rgba(255,255,255,0.1)'
+            }}>{error?.message || String(error)}</pre>
+            <button onClick={resetErrorBoundary} style={{
+                marginTop: '1.5rem', padding: '0.6rem 2rem', backgroundColor: '#3b82f6',
+                border: 'none', borderRadius: '0.5rem', color: '#fff', cursor: 'pointer',
+                fontWeight: '600'
+            }}>Restart System</button>
+        </div>
+    </div>
+)
 
 // App Wrapper to initialize offline sync and monitoring
 function AppWrapper({ children }: { children: React.ReactNode }) {
@@ -177,7 +150,7 @@ function RoutesWrapper() {
 
 function App() {
     return (
-        <SafeErrorBoundary>
+        <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => window.location.reload()}>
             <QueryClientProvider client={queryClient}>
                 <ThemeProvider>
                     <BrowserRouter>
@@ -188,6 +161,10 @@ function App() {
                                         <NotificationProvider>
                                             <GlassEffectProvider>
                                                 <AppWrapper>
+                                                    {/* Global Branding Logo */}
+                                                    <div className="fixed top-8 left-8 z-[100] pointer-events-none select-none">
+                                                        <img src="/evaratech-logo.png" alt="Evaratech" className="h-10 sm:h-14 w-auto object-contain opacity-80 drop-shadow-xl" />
+                                                    </div>
                                                     <RoutesWrapper />
                                                     <ReloadPrompt />
                                                     <NotificationManager />
@@ -203,7 +180,7 @@ function App() {
                 </ThemeProvider>
                 <ReactQueryDevtools initialIsOpen={false} />
             </QueryClientProvider>
-        </SafeErrorBoundary>
+        </ErrorBoundary>
     )
 }
 

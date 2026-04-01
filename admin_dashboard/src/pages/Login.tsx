@@ -8,6 +8,7 @@ import {
     signInWithPopup 
 } from 'firebase/auth'
 import { Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { GlassCard } from '@/components/GlassCard'
 
 // Custom Google Icon
 const GoogleIcon = () => (
@@ -96,7 +97,7 @@ export default function Login() {
     }
 
     return (
-        <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden font-sans selection:bg-primary/30">
+        <div className="min-h-screen bg-transparent flex items-center justify-center p-4 relative overflow-hidden font-sans selection:bg-primary/30">
             {/* Interactive Cursor Glow */}
             <div 
                 className="fixed inset-0 pointer-events-none z-0"
@@ -105,20 +106,16 @@ export default function Login() {
                 }}
             />
 
-            {/* Background Decorative Elements */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40">
-                <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px] animate-pulse" />
-                <div className="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-cyan-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }} />
+            {/* Decorative Overlay - Subtler for Background Image */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
+                <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px]" />
             </div>
 
-            {/* Partner Logos */}
-            <div className="absolute top-8 left-8 z-10 hidden sm:block">
-                <img src="/evaratech-logo.png" alt="EvaraTech" className="h-14 opacity-60 hover:opacity-100 transition-opacity" />
-            </div>
+
 
             {/* Login Card - Wider & More Compact */}
             <div className="w-full max-w-[440px] relative z-10 animate-in fade-in zoom-in-95 duration-700">
-                <div className="premium-glass rounded-[2rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)] p-8 md:px-10 md:py-8 ring-1 ring-accent overflow-hidden">
+                <GlassCard size="lg" className="p-8 md:px-10 md:py-8 ring-1 ring-accent">
                     
                     {/* App Logo & Title - Compact Alignment */}
                     <div className="flex items-center justify-center gap-5 mb-8">
@@ -159,7 +156,7 @@ export default function Login() {
                                     required
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full bg-background/40 border border-accent/40 rounded-xl py-3 pl-11 pr-4 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/60 transition-all text-xs"
+                                    className="w-full glass-system-inset bg-background/5 border border-white/10 rounded-xl py-3.5 pl-11 pr-4 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/60 transition-all text-sm"
                                     placeholder="Enter your email"
                                 />
                             </div>
@@ -172,7 +169,7 @@ export default function Login() {
                                     required
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full bg-background/40 border border-accent/40 rounded-xl py-3 pl-11 pr-11 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/60 transition-all text-xs"
+                                    className="w-full glass-system-inset bg-background/5 border border-white/10 rounded-xl py-3.5 pl-11 pr-11 text-foreground focus:outline-none focus:border-cyan-500/30 focus:ring-4 focus:ring-cyan-500/5 placeholder:text-muted-foreground/60 transition-all text-sm"
                                     placeholder="Password"
                                 />
                                 <button
@@ -246,7 +243,7 @@ export default function Login() {
                             )}
                         </div>
                     </form>
-                </div>
+                </GlassCard>
             </div>
         </div>
     )

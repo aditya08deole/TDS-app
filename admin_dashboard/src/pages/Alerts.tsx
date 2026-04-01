@@ -8,6 +8,7 @@ import { useUI } from '../context/UIContext'
 import { useRole } from '../context/RoleContext'
 import { GlassCard } from '@/components/GlassCard'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 export default function Alerts() {
     const [alerts, setAlerts] = useState<Alert[]>([])
@@ -93,12 +94,15 @@ export default function Alerts() {
                     </h1>
                     <p className="text-muted-foreground mt-1">Critical system notifications and logs</p>
                 </div>
-                <div className="flex bg-secondary p-1 rounded-lg border border-accent">
+                <div className="flex glass-system-inset p-1 rounded-xl border-0">
                     {['all', 'critical', 'warning'].map(f => (
                         <button
                             key={f}
                             onClick={() => setFilter(f as any)}
-                            className={`px-4 py-2 rounded-md text-xs font-medium capitalize transition-all ${filter === f ? 'bg-accent text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                            className={cn(
+                                "px-4 py-2 rounded-md text-xs font-bold capitalize transition-all",
+                                filter === f ? "glass-system-child text-foreground shadow-sm border-white/10" : "text-muted-foreground hover:text-foreground"
+                            )}
                         >
                             {f}
                         </button>
@@ -109,7 +113,7 @@ export default function Alerts() {
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <GlassCard className="p-5 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-500">
+                    <div className="w-12 h-12 glass-system-micro flex items-center justify-center text-red-400 border-white/10 shadow-lg">
                         <AlertCircle className="w-6 h-6" />
                     </div>
                     <div>
@@ -118,7 +122,7 @@ export default function Alerts() {
                     </div>
                 </GlassCard>
                 <GlassCard className="p-5 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-500">
+                    <div className="w-12 h-12 glass-system-micro flex items-center justify-center text-orange-400 border-white/10 shadow-lg">
                         <AlertTriangle className="w-6 h-6" />
                     </div>
                     <div>
@@ -127,7 +131,7 @@ export default function Alerts() {
                     </div>
                 </GlassCard>
                 <GlassCard className="p-5 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
+                    <div className="w-12 h-12 glass-system-micro flex items-center justify-center text-blue-400 border-white/10 shadow-lg">
                         <Bell className="w-6 h-6" />
                     </div>
                     <div>
@@ -148,18 +152,20 @@ export default function Alerts() {
                     filteredAlerts.map(alert => (
                         <GlassCard
                             key={alert.id}
-                            className={`
-                                relative p-5 transition-all duration-300
-                                ${alert.severity === 'critical' && alert.status === 'open' ? 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10' :
-                                    alert.severity === 'warning' && alert.status === 'open' ? 'bg-orange-500/5 border-orange-500/20 hover:bg-orange-500/10' :
-                                        'hover:shadow-[0_0_20px_rgba(0,0,0,0.05)] dark:hover:bg-white/5'}
-                            `}
+                            className={cn(
+                                "relative p-5 transition-all duration-300 border-white/20",
+                                alert.severity === 'critical' && alert.status === 'open' ? 'shadow-[0_0_15px_rgba(239,68,68,0.1)] border-red-500/30' :
+                                alert.severity === 'warning' && alert.status === 'open' ? 'shadow-[0_0_15px_rgba(249,115,22,0.1)] border-orange-500/30' :
+                                'hover:shadow-xl'
+                            )}
                         >
                             <div className="flex items-start gap-4">
-                                <div className={`mt-1 p-2 rounded-lg shrink-0 ${alert.severity === 'critical' ? 'bg-red-500/10 text-red-500' :
-                                    alert.severity === 'warning' ? 'bg-orange-500/10 text-orange-500' :
-                                        'bg-blue-500/10 text-blue-500'
-                                    }`}>
+                                <div className={cn(
+                                    "mt-1 p-2 rounded-xl shrink-0 glass-system-micro border-white/10",
+                                    alert.severity === 'critical' ? 'text-red-400' :
+                                    alert.severity === 'warning' ? 'text-orange-400' :
+                                    'text-blue-400'
+                                )}>
                                     <AlertTriangle className="h-5 w-5" />
                                 </div>
 

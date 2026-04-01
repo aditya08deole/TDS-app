@@ -47,7 +47,7 @@ export default function Users() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <GlassCard className="p-6 border-cyan-500/20 bg-cyan-500/5">
+                <GlassCard className="p-6 border-white/20">
                     <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center">
                             <ShieldCheck className="w-6 h-6 text-cyan-400" />
@@ -72,14 +72,14 @@ export default function Users() {
                 </GlassCard>
             </div>
 
-            <GlassCard className="overflow-hidden">
+            <GlassCard className="overflow-hidden border-white/20 shadow-2xl p-0">
                 <div className="p-6 border-b border-accent">
                     <h3 className="font-semibold text-foreground">Active Administrators</h3>
                 </div>
                 <div className="p-0">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-secondary/50">
+                            <tr className="glass-system-child border-0">
                                 <th className="px-6 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">User</th>
                                 <th className="px-6 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Role</th>
                                 <th className="px-6 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
@@ -93,7 +93,7 @@ export default function Users() {
                                 { email: 'yasha@evaratech.com', role: 'Admin' },
                                 { email: 'aditya@evaratech.com', role: 'Admin' }
                             ].map((u) => (
-                                <tr key={u.email} className="hover:bg-accent/30 transition-colors">
+                                <tr key={u.email} className="glass-system-child hover:scale-[1.005] transition-all border-white/5 border-b">
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-xs font-bold">
@@ -103,7 +103,7 @@ export default function Users() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${u.role === 'Super Admin' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-secondary text-muted-foreground'}`}>
+                                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider glass-system-inset ${u.role === 'Super Admin' ? 'text-cyan-400 border-cyan-500/30' : 'text-muted-foreground border-white/10'}`}>
                                             {u.role}
                                         </span>
                                     </td>

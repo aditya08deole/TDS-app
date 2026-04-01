@@ -72,10 +72,10 @@ export function TopBar() {
                         <Link
                             to={link.url}
                             className={cn(
-                                "flex items-center gap-2.5 px-5 py-2.5 rounded-2xl text-[15px] font-medium transition-all duration-300",
+                                "flex items-center gap-2.5 px-5 py-2.5 rounded-2xl text-[15px] font-bold transition-all duration-300 border-transparent border",
                                 location.pathname === link.url 
-                                    ? "glass-active-glow text-primary brightness-110" 
-                                    : "text-muted-foreground hover:text-foreground hover:bg-accent/30"
+                                    ? "glass-system-active" 
+                                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                             )}
                         >
                             <link.icon className="size-[18px]" strokeWidth={2.5} />
@@ -88,13 +88,13 @@ export function TopBar() {
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <button
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-[15px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent/30 h-auto transition-all outline-none"
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-[15px] font-bold text-muted-foreground hover:text-foreground hover:glass-system-child hover:border-white/10 h-auto transition-all outline-none border border-transparent"
                         >
                             <MoreVertical className="size-[18px]" strokeWidth={2.5} />
                             <span>More</span>
                         </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-56 liquid-ios-glass glass-layer-4 border border-white/20 p-1 mt-2">
+                    <DropdownMenuContent align="start" className="w-56 glass-system-parent p-1 mt-2 border-0 shadow-2xl">
                         {moreLinks.map((link) => (
                             (!link.permission || hasPermission(link.permission as any)) && (
                                 <DropdownMenuItem key={link.url} asChild>

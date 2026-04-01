@@ -9,15 +9,16 @@ const buttonVariants = cva(
     {
         variants: {
             variant: {
-                default: "glass-pearl text-foreground shadow-lg",
+                default: "glass-system-child text-foreground shadow-lg border-white/20",
                 destructive:
-                    "glass-pearl text-destructive border-red-500/25 shadow-lg",
+                    "glass-system-child text-red-500 border-red-500/25 shadow-lg",
                 outline:
-                    "glass-card border-white/30 shadow-md",
+                    "glass-system-child border-white/30 shadow-md",
                 secondary:
-                    "glass-pearl text-secondary-foreground shadow-md backdrop-blur-md",
-                ghost: "border border-transparent",
-                link: "text-primary underline-offset-4 hover:underline",
+                    "glass-system-child bg-white/5 text-secondary-foreground shadow-md backdrop-blur-md",
+                ghost: "border border-transparent hover:glass-system-child",
+                link: "text-primary underline-offset-4 hover:underline border-transparent",
+                glass: "glass-system-child border-white/20 shadow-xl"
             },
             size: {
                 default: "h-10 px-4 py-2",

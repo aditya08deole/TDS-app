@@ -2,47 +2,57 @@ import { cn } from '@/lib/utils'
 
 interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
     hover?: boolean;
-    variant?: "default" | "liquid" | "dynamic" | "frosted";
+    size?: "sm" | "md" | "lg";
     children?: React.ReactNode;
-    depth?: 1 | 2 | 3 | 4;
-    ripple?: boolean;
+    // Legacy props for compatibility, ignored in rendering
+    variant?: any;
+    depth?: any;
+    ripple?: any;
 }
 
 export function GlassCard({ 
     className, 
-    hover = false,
-    variant = "default", 
-    depth = 1,
-    ripple = false,
+    hover = true,
+    size = "md",
+    variant,
+    depth,
+    ripple,
     children, 
     ...props 
 }: GlassCardProps) {
-    const getGlassClass = () => {
-        switch (variant) {
-            case "liquid":
-                return "liquid-ios-glass";
-            case "dynamic":
-                return "glass-dynamic";
-            case "frosted":
-                return "glass-frosted";
+    const getSizeClasses = () => {
+        switch (size) {
+            case "sm":
+                return "rounded-[16px] p-3 backdrop-blur-[20px]";
+            case "lg":
+                return "rounded-[36px] p-6 backdrop-blur-[60px]";
+            case "md":
             default:
-                return "premium-glass";
+                return "rounded-[24px] p-4 backdrop-blur-[40px]";
         }
     };
 
-    const getDepthClass = () => `glass-layer-${depth}`;
-    
     return (
         <div
             className={cn(
-                getGlassClass(),
-                getDepthClass(),
-                "rounded-2xl relative overflow-hidden",
+                "glass-system-parent group",
+                getSizeClasses(),
+                hover && "transition-all duration-500 ease-out hover:scale-[1.01] hover:brightness-105",
                 className
             )}
             {...props}
         >
-            <div className="relative z-20 h-full w-full">
+            {/* Inner Gradient Tint (Liquid Flow Sampling) */}
+            <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/5 dark:from-white/5 dark:via-transparent dark:to-black/20 pointer-events-none z-0" />
+            
+            {/* Top Edge Highlight Glow (40-70% white) */}
+            <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-white/70 to-transparent pointer-events-none z-0 opacity-60 group-hover:opacity-100 transition-opacity duration-300" />
+
+            {/* Specular Light Reflection (Soft Light Streak/Blob at Top-Left) */}
+            <div className="absolute -top-12 -left-12 w-48 h-48 bg-white/30 dark:bg-white/10 blur-[50px] rounded-full pointer-events-none z-0 opacity-40 group-hover:opacity-80 transition-opacity duration-500 group-hover:translate-x-4 group-hover:translate-y-4" />
+
+            {/* Content Container (elevated above effects) */}
+            <div className="relative z-10 w-full h-full">
                 {children}
             </div>
         </div>
