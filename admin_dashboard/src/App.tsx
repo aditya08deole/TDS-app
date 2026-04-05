@@ -41,27 +41,31 @@ const PageLoader = () => (
 import { ErrorBoundary } from 'react-error-boundary'
 
 // Fallback Component for Error Boundary
-const ErrorFallback = ({ error, resetErrorBoundary }: { error: any, resetErrorBoundary: () => void }) => (
-    <div style={{
-        minHeight: '100vh', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', backgroundColor: '#05070a', color: '#fff',
-        fontFamily: 'Inter, sans-serif', padding: '2rem', zIndex: 9999
-    }}>
-        <div style={{ maxWidth: '600px', textAlign: 'center' }}>
-            <h1 style={{ fontSize: '1.5rem', color: '#ef4444', marginBottom: '1rem' }}>System Runtime Error</h1>
-            <pre style={{
-                backgroundColor: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '0.5rem',
-                textAlign: 'left', fontSize: '0.8rem', overflow: 'auto', color: '#cbd5e1',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-all', border: '1px solid rgba(255,255,255,0.1)'
-            }}>{error?.message || String(error)}</pre>
-            <button onClick={resetErrorBoundary} style={{
-                marginTop: '1.5rem', padding: '0.6rem 2rem', backgroundColor: '#3b82f6',
-                border: 'none', borderRadius: '0.5rem', color: '#fff', cursor: 'pointer',
-                fontWeight: '600'
-            }}>Restart System</button>
+const ErrorFallback = ({ error, resetErrorBoundary }: { error: unknown, resetErrorBoundary: () => void }) => {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    
+    return (
+        <div style={{
+            minHeight: '100vh', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', backgroundColor: '#05070a', color: '#fff',
+            fontFamily: 'Inter, sans-serif', padding: '2rem', zIndex: 9999
+        }}>
+            <div style={{ maxWidth: '600px', textAlign: 'center' }}>
+                <h1 style={{ fontSize: '1.5rem', color: '#ef4444', marginBottom: '1rem' }}>System Runtime Error</h1>
+                <pre style={{
+                    backgroundColor: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '0.5rem',
+                    textAlign: 'left', fontSize: '0.8rem', overflow: 'auto', color: '#cbd5e1',
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-all', border: '1px solid rgba(255,255,255,0.1)'
+                }}>{errorMessage}</pre>
+                <button onClick={resetErrorBoundary} style={{
+                    marginTop: '1.5rem', padding: '0.6rem 2rem', backgroundColor: '#3b82f6',
+                    border: 'none', borderRadius: '0.5rem', color: '#fff', cursor: 'pointer',
+                    fontWeight: '600'
+                }}>Restart System</button>
+            </div>
         </div>
-    </div>
-)
+    )
+}
 
 // App Wrapper to initialize offline sync and monitoring
 function AppWrapper({ children }: { children: React.ReactNode }) {
@@ -161,10 +165,6 @@ function App() {
                                         <NotificationProvider>
                                             <GlassEffectProvider>
                                                 <AppWrapper>
-                                                    {/* Global Branding Logo */}
-                                                    <div className="fixed top-8 left-8 z-[100] pointer-events-none select-none">
-                                                        <img src="/evaratech-logo.png" alt="Evaratech" className="h-10 sm:h-14 w-auto object-contain opacity-80 drop-shadow-xl" />
-                                                    </div>
                                                     <RoutesWrapper />
                                                     <ReloadPrompt />
                                                     <NotificationManager />

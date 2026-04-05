@@ -73,6 +73,9 @@ export const queryKeys = {
     // Alerts
     alerts: ['alerts'] as const,
     activeAlerts: ['alerts', 'active'] as const,
+    
+    // Health Events
+    healthEvents: (deviceId: string) => ['health-events', deviceId] as const,
 }
 
 /**

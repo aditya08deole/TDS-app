@@ -22,11 +22,6 @@ export const getPpmStatus = (ppm: number | undefined, status: string, theme: any
         label: 'Good',
         ...theme.status.online
     }
-    if (tdsStatus === 'warning') return {
-        status: 'warning',
-        label: 'Warning',
-        ...theme.status.warning
-    }
     return {
         status: 'critical',
         label: 'Critical',

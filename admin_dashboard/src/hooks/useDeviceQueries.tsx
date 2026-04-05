@@ -16,9 +16,15 @@ import {
     serverTimestamp
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
-import type { Device } from '../types'
+import type { Device, DeviceEvent } from '../types'
 import { queryKeys } from '../lib/queryClient'
 import { cacheDevices, getCachedDevices } from '../lib/cache'
+
+// Typed interface for raw Firestore sensor data records
+export interface SensorDataRecord {
+    id: string
+    [key: string]: unknown
+}
 
 /**
  * Fetch all devices from Firestore
@@ -215,10 +221,37 @@ export function useDeviceSensorData(deviceId: string | undefined, limitCount: nu
             return querySnapshot.docs.map(doc => ({ 
                 id: doc.id, 
                 ...doc.data() 
-            })) as any[] // SensorData mapping
+            })) as SensorDataRecord[]
         },
         enabled: !!deviceId,
         staleTime: 30 * 1000,
         gcTime: 5 * 60 * 1000
+    })
+}
+
+/**
+ * Hook to fetch device health events (state transitions)
+ */
+export function useDeviceHealthEvents(deviceId: string | undefined, limitCount: number = 20) {
+    return useQuery({
+        queryKey: queryKeys.healthEvents(deviceId!),
+        queryFn: async () => {
+            if (!deviceId) return []
+
+            const q = query(
+                collection(db, 'device_state_events'),
+                where('device_id', '==', deviceId),
+                orderBy('started_at', 'desc'),
+                firestoreLimit(limitCount)
+            )
+
+            const querySnapshot = await getDocs(q)
+            return querySnapshot.docs.map(doc => ({ 
+                id: doc.id, 
+                ...doc.data() 
+            })) as DeviceEvent[]
+        },
+        enabled: !!deviceId,
+        staleTime: 60 * 1000,
     })
 }

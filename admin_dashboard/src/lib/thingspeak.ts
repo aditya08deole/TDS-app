@@ -96,10 +96,23 @@ function getFieldValue(entry: ThingSpeakEntry, fieldNumber: number): string | un
 }
 
 function parseEntry(entry: ThingSpeakEntry, mapping: FieldMapping): ParsedSensorData {
+    const rawTds = parseFloat(getFieldValue(entry, mapping.tds) || '0')
+    const temperature = parseFloat(getFieldValue(entry, mapping.temperature) || '0')
+    const voltage = parseFloat(getFieldValue(entry, mapping.voltage) || '0')
+    
+    // ═══ SANITY CHECK: Detect potential voltage/temp misreads
+    // If TDS > 500 and voltage is in normal range (3-10V), likely wrong field mapping
+    const isLikelyMisread = rawTds > 500 && voltage >= 3 && voltage <= 10
+    const validatedTds = isLikelyMisread ? 0 : rawTds
+    
+    if (isLikelyMisread) {
+        console.warn(`⚠️ Potential TDS misread detected: ${rawTds} (voltage: ${voltage}V). Flagged as invalid.`)
+    }
+    
     return {
-        tds: parseFloat(getFieldValue(entry, mapping.tds) || '0'),
-        temperature: parseFloat(getFieldValue(entry, mapping.temperature) || '0'),
-        voltage: parseFloat(getFieldValue(entry, mapping.voltage) || '0'),
+        tds: validatedTds,
+        temperature: temperature,
+        voltage: voltage,
         timestamp: entry.created_at,
         entry_id: entry.entry_id
     }

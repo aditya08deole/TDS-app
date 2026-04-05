@@ -37,15 +37,15 @@ export class ErrorBoundary extends Component<Props, State> {
     public render() {
         if (this.state.hasError) {
             return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white p-4">
-                    <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-xl p-8 text-center shadow-2xl">
+                <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-4">
+                    <div className="max-w-md w-full bg-card border border-border rounded-xl p-8 text-center shadow-2xl">
                         <h1 className="text-3xl font-bold text-red-500 mb-4">System Error</h1>
-                        <p className="text-slate-400 mb-6">
+                        <p className="text-muted-foreground mb-6">
                             The application encountered a critical error. Our engineering team has been notified.
                         </p>
                         <button
                             onClick={() => window.location.reload()}
-                            className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-lg font-medium transition-colors"
                         >
                             Reload System
                         </button>

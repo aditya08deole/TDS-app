@@ -1,8 +1,8 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import type { EnrichedDevice } from '../types'
 import { getDeviceDisplayName } from '../lib/constants'
 import { db } from '../lib/firebase'
-import { collection, addDoc, query, where, getDocs, limit, serverTimestamp } from 'firebase/firestore'
+import { collection, addDoc, query, where, getDocs, updateDoc, limit, serverTimestamp } from 'firebase/firestore'
 
 interface AlertContextValue {
     criticalDevices: EnrichedDevice[]
@@ -22,17 +22,57 @@ const AlertContext = createContext<AlertContextValue>({
 
 export function AlertProvider({ children }: { children: ReactNode }) {
     const [criticalDevices, setCriticalDevicesState] = useState<EnrichedDevice[]>([])
+    // Track previous critical device IDs to detect recovery events
+    const prevCriticalIds = useRef<Set<string>>(new Set())
+    // Debounce timer ref
+    const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     const setCriticalDevices = useCallback((devices: EnrichedDevice[]) => {
         setCriticalDevicesState(devices)
     }, [])
 
-    // Background effect to persist alerts to Firestore
+    // Persist new critical alerts and auto-resolve recovered devices
     useEffect(() => {
-        const persistAlerts = async () => {
+        const currentCriticalIds = new Set(criticalDevices.map(d => d.id))
+
+        // Find devices that recovered (were critical, now safe)
+        const recoveredIds = [...prevCriticalIds.current].filter(id => !currentCriticalIds.has(id))
+
+        // Auto-resolve alerts for recovered devices (frontend-side backup)
+        const autoResolveRecovered = async () => {
+            for (const deviceId of recoveredIds) {
+                try {
+                    const q = query(
+                        collection(db, 'alerts'),
+                        where('device_id', '==', deviceId),
+                        where('status', '==', 'open'),
+                        limit(10)
+                    )
+                    const snap = await getDocs(q)
+                    for (const alertDoc of snap.docs) {
+                        await updateDoc(alertDoc.ref, {
+                            status: 'resolved',
+                            resolved_at: new Date().toISOString(),
+                            resolved_by: 'frontend_auto_recovery'
+                        })
+                    }
+                    if (!snap.empty) {
+                        console.log(`✅ Frontend auto-resolved ${snap.size} alert(s) for recovered device: ${deviceId}`)
+                    }
+                } catch (err) {
+                    console.error('Error auto-resolving alert:', err)
+                }
+            }
+        }
+
+        // Debounced persist to prevent alert spam
+        // NOTE: Server-side deduplication is the primary guard now.
+        // This frontend persist is a backup for when checkSensorData Cloud Function
+        // isn't triggered (e.g., data comes via ThingSpeak client-side polling only).
+        const persistNewAlerts = async () => {
             for (const device of criticalDevices) {
                 try {
-                    // 1. Check if an "open" alert already exists for this device to prevent spam
+                    // DEDUPLICATION: Check if an open alert already exists
                     const q = query(
                         collection(db, 'alerts'),
                         where('device_id', '==', device.id),
@@ -40,13 +80,21 @@ export function AlertProvider({ children }: { children: ReactNode }) {
                         limit(1)
                     )
                     const snap = await getDocs(q)
-                    
                     if (snap.empty) {
-                        // 2. Create new alert if none exists
+                        // Build alert message with context for potential data issues
+                        const tdsValue = device.latest_tds ?? 0
+                        const tempValue = device.latest_temperature ?? 0
+                        const isUnusuallyHigh = tdsValue > 300
+                        
+                        let message = `Critical TDS level detected: ${tdsValue} ppm`
+                        if (isUnusuallyHigh) {
+                            message += ` (Check sensor - unusually high reading, temp: ${tempValue}°C)`
+                        }
+                        
                         await addDoc(collection(db, 'alerts'), {
                             device_id: device.id,
                             device_name: getDeviceDisplayName(device),
-                            message: `Critical TDS level detected: ${device.latest_tds} ppm`,
+                            message: message,
                             severity: 'critical',
                             status: 'open',
                             created_at: new Date().toISOString(),
@@ -54,7 +102,30 @@ export function AlertProvider({ children }: { children: ReactNode }) {
                             temp_value: device.latest_temperature,
                             timestamp: serverTimestamp()
                         })
-                        console.log(`✅ Alert logged for ${device.id}`)
+                        console.log(`🚨 Alert logged for ${device.id}: ${message}`)
+                        
+                        // Perfect Fit: Trigger haptic feedback for critical alerts
+                        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                            navigator.vibrate([200, 100, 200]);
+                        }
+                    } else {
+                        // Update existing alert with latest TDS value (keeps it fresh)
+                        const existingDoc = snap.docs[0]
+                        const tdsValue = device.latest_tds ?? 0
+                        const tempValue = device.latest_temperature ?? 0
+                        const isUnusuallyHigh = tdsValue > 300
+                        
+                        let message = `Critical TDS level detected: ${tdsValue} ppm`
+                        if (isUnusuallyHigh) {
+                            message += ` (Check sensor - unusually high reading, temp: ${tempValue}°C)`
+                        }
+                        
+                        await updateDoc(existingDoc.ref, {
+                            message: message,
+                            tds_value: device.latest_tds,
+                            temp_value: device.latest_temperature,
+                            updated_at: new Date().toISOString()
+                        })
                     }
                 } catch (error) {
                     console.error('Error persisting alert:', error)
@@ -62,8 +133,22 @@ export function AlertProvider({ children }: { children: ReactNode }) {
             }
         }
 
+        // Run auto-resolve immediately for recovered devices
+        if (recoveredIds.length > 0) {
+            autoResolveRecovered()
+        }
+
+        // Debounce the persist to prevent hammering Firestore
         if (criticalDevices.length > 0) {
-            persistAlerts()
+            if (debounceTimer.current) clearTimeout(debounceTimer.current)
+            debounceTimer.current = setTimeout(persistNewAlerts, 5000) // 5s debounce
+        }
+
+        // Update the previous IDs tracker
+        prevCriticalIds.current = currentCriticalIds
+
+        return () => {
+            if (debounceTimer.current) clearTimeout(debounceTimer.current)
         }
     }, [criticalDevices])
 

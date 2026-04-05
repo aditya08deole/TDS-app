@@ -6,14 +6,16 @@ export const TDS_RANGES = {
     SAFE_MAX: 175,
 
     // Minimum valid reading (filter out sensor noise)
-    MIN_VALID: 20
+    MIN_VALID: 20,
+    
+    // Maximum valid reading (filter out voltage/temp misreads like 663)
+    // Realistic TDS for drinking water should never exceed 500 ppm
+    MAX_VALID: 500
 } as const
 
 // Calculate internal thresholds (Fallback)
 export const TDS_THRESHOLDS = {
     CRITICAL_LOW: TDS_RANGES.SAFE_MIN,   // 35 ppm
-    WARNING_LOW: TDS_RANGES.SAFE_MIN + 15, // 50 ppm
-    WARNING_HIGH: TDS_RANGES.SAFE_MAX - 25, // 150 ppm
     CRITICAL_HIGH: TDS_RANGES.SAFE_MAX   // 175 ppm
 } as const
 
@@ -58,7 +60,7 @@ export function getTDSStatus(
     tds: number | null | undefined, 
     customMin?: number, 
     customMax?: number
-): 'online' | 'warning' | 'critical' | 'offline' {
+): 'online' | 'critical' | 'offline' {
     if (tds === null || tds === undefined) return 'offline'
     if (tds <= TDS_RANGES.MIN_VALID) return 'offline' // Invalid reading
 
@@ -69,13 +71,6 @@ export function getTDSStatus(
         return 'critical'
     }
     
-    // Warning thresholds are relative to the safe range
-    const warningLow = min + 15 
-    const warningHigh = max - 25
-
-    if (tds < warningLow || tds > warningHigh) {
-        return 'warning'
-    }
     return 'online'
 }
 
@@ -91,15 +86,20 @@ export function isDeviceOffline(lastReadingTime: string | null | undefined): boo
 }
 
 /**
- * Filter valid TDS readings (exclude <= 20 ppm)
+ * Filter valid TDS readings (exclude <= 20 ppm and >= 500 ppm)
+ * Upper bound prevents false alerts from voltage/temp misreads (e.g., 663)
  */
 export function isValidTDSReading(tds: number | null | undefined): boolean {
-    return tds !== null && tds !== undefined && tds > TDS_RANGES.MIN_VALID
+    return tds !== null && 
+           tds !== undefined && 
+           tds > TDS_RANGES.MIN_VALID && 
+           tds < TDS_RANGES.MAX_VALID
 }
 
 /**
  * Categorize device based on TDS value (independent of connectivity)
  * A device can be offline but still have a TDS category based on last reading
+ * Returns 'unknown' for values outside valid range (prevents false alerts)
  */
 export function getTDSCategory(
     tds: number | null | undefined,
@@ -107,7 +107,7 @@ export function getTDSCategory(
     customMax?: number
 ): 'safe' | 'critical' | 'unknown' {
     if (tds === null || tds === undefined) return 'unknown'
-    if (tds <= TDS_RANGES.MIN_VALID) return 'unknown' // Invalid reading
+    if (tds <= TDS_RANGES.MIN_VALID || tds >= TDS_RANGES.MAX_VALID) return 'unknown' // Invalid reading
 
     const min = customMin ?? TDS_THRESHOLDS.CRITICAL_LOW
     const max = customMax ?? TDS_THRESHOLDS.CRITICAL_HIGH

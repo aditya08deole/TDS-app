@@ -27,15 +27,15 @@ export default function ReloadPrompt() {
         <>
             {(offlineReady || needRefresh) && (
                 <div className="fixed bottom-4 right-4 z-50 max-w-md">
-                    <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-lg p-4">
+                    <div className="bg-card border border-border rounded-lg shadow-lg p-4">
                         <div className="flex items-start gap-3">
                             <div className="flex-1">
                                 {offlineReady ? (
-                                    <p className="text-sm text-slate-200">
+                                    <p className="text-sm text-foreground">
                                         App ready to work offline
                                     </p>
                                 ) : (
-                                    <p className="text-sm text-slate-200">
+                                    <p className="text-sm text-foreground">
                                         New content available, click reload to update.
                                     </p>
                                 )}
@@ -43,14 +43,14 @@ export default function ReloadPrompt() {
                             <div className="flex gap-2">
                                 {needRefresh && (
                                     <button
-                                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
+                                        className="px-3 py-1 bg-primary hover:bg-primary/90 text-primary-foreground text-sm rounded transition-colors"
                                         onClick={() => updateServiceWorker(true)}
                                     >
                                         Reload
                                     </button>
                                 )}
                                 <button
-                                    className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded transition-colors"
+                                    className="px-3 py-1 bg-accent hover:bg-accent/90 text-accent-foreground text-sm rounded transition-colors"
                                     onClick={close}
                                 >
                                     Close

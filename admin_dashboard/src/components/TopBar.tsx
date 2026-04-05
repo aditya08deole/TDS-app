@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button"
 import { useAlerts } from "../context/AlertContext"
 import { useAuth } from "../context/AuthContext"
 import { useRole } from "@/context/RoleContext"
+import type { Permission } from "@/context/RoleContext"
 import { useState, useEffect } from "react"
 import { getDeviceDisplayName } from "../lib/constants"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
+import { useViewport } from "../hooks/useViewport"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -29,6 +31,7 @@ export function TopBar() {
     const { user, profile, signOut } = useAuth()
     const { hasPermission } = useRole()
     const { alertCount, criticalDevices } = useAlerts()
+    const { isLandscape, isDesktop } = useViewport()
     const [blinking, setBlinking] = useState(false)
     const [alertOpen, setAlertOpen] = useState(false)
 
@@ -40,7 +43,7 @@ export function TopBar() {
     ]
 
     // More Links for the dropdown
-    const moreLinks = [
+    const moreLinks: Array<{ title: string; url: string; icon: typeof AlertTriangle; permission?: Permission }> = [
         { title: "Alerts", url: "/alerts", icon: AlertTriangle },
         { title: "Reports", url: "/reports", icon: FileText },
         { title: "Manage Users", url: "/users", icon: UsersIcon, permission: "manage_users" },
@@ -56,7 +59,14 @@ export function TopBar() {
     }, [alertCount])
 
     return (
-        <header className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex h-[80px] w-max max-w-[95%] items-center gap-6 lg:gap-8 px-6 lg:px-8 glass-nav-unified shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-[2.5rem]">
+        <header className={cn(
+            "fixed left-1/2 -translate-x-1/2 z-50 flex items-center transition-all duration-500",
+            // Perfect Fit: Condensed height and tighter padding for landscape mobile
+            isLandscape && !isDesktop 
+                ? "top-3 h-[60px] px-5 lg:px-6 rounded-[1.5rem]" 
+                : "top-6 h-[80px] px-6 lg:px-8 rounded-[2.5rem]",
+            "w-max max-w-[95%] glass-nav-unified shadow-[0_20px_50px_rgba(0,0,0,0.2)]"
+        )}>
             {/* Logo Section */}
             <Link to="/" className="flex items-center gap-4 hover:opacity-80 transition-opacity shrink-0">
                 <img src="/pwa-512x512.png" alt="EvaraTDS" className="size-12 rounded-2xl shadow-inner" />
@@ -96,7 +106,7 @@ export function TopBar() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="w-56 glass-system-parent p-1 mt-2 border-0 shadow-2xl">
                         {moreLinks.map((link) => (
-                            (!link.permission || hasPermission(link.permission as any)) && (
+                            (!link.permission || hasPermission(link.permission)) && (
                                 <DropdownMenuItem key={link.url} asChild>
                                     <Link 
                                         to={link.url} 
@@ -178,7 +188,7 @@ export function TopBar() {
                                 </div>
                             )}
                         </div>
-                        <div className="p-2 border-t border-white/10 bg-white/5">
+                        <div className="p-2 border-t border-border bg-accent/5">
                             <Button variant="ghost" className="w-full h-8 text-[11px] font-bold uppercase tracking-widest hover:bg-primary/10 hover:text-primary" onClick={() => { navigate('/alerts'); setAlertOpen(false) }}>
                                 View All Notifications
                             </Button>
@@ -190,23 +200,23 @@ export function TopBar() {
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <button
-                            className="flex items-center p-1 rounded-full hover:bg-white/5 transition-all group shrink-0 outline-none"
+                            className="flex items-center p-1 rounded-full hover:bg-accent transition-all group shrink-0 outline-none"
                         >
-                            <div className="size-11 rounded-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center border border-white/10 text-[14px] font-black text-primary shadow-inner">
+                            <div className="size-11 rounded-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center border border-border text-[14px] font-black text-primary shadow-inner">
                                 {user?.email?.substring(0, 2).toUpperCase() || 'EV'}
                             </div>
                         </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56 liquid-ios-glass glass-layer-4 border border-white/20 p-1 mt-2">
-                        <div className="px-3 py-3 border-b border-white/10 mb-1">
+                    <DropdownMenuContent align="end" className="w-56 liquid-ios-glass glass-layer-4 border border-border p-1 mt-2">
+                        <div className="px-3 py-3 border-b border-border mb-1">
                             <p className="text-xs font-bold truncate">{profile?.name || user?.email}</p>
                             <p className="text-[9px] font-medium opacity-80 uppercase tracking-widest mt-1">Authorized Account</p>
                         </div>
-                        <DropdownMenuItem onClick={() => navigate('/settings')} className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-white/5">
+                        <DropdownMenuItem onClick={() => navigate('/settings')} className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-accent">
                             <Settings className="size-3.5" />
                             <span className="text-xs font-medium">System Settings</span>
                         </DropdownMenuItem>
-                        <DropdownMenuSeparator className="bg-white/10" />
+                        <DropdownMenuSeparator className="bg-border" />
                         <DropdownMenuItem onClick={signOut} className="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-red-500/10 text-red-400">
                             <LogOut className="size-3.5" />
                             <span className="text-xs font-medium">Log out</span>

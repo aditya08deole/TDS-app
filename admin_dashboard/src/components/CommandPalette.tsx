@@ -4,6 +4,7 @@ import { Search, Command, ArrowRight, Monitor, AlertTriangle } from 'lucide-reac
 import { useNavigate } from 'react-router-dom'
 import { db } from '../lib/firebase'
 import { useUI } from '../context/UIContext'
+import { cn } from '../lib/utils'
 
 interface SearchResult {
     id: string
@@ -121,20 +122,26 @@ export default function CommandPalette() {
         <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[20vh] px-4">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
 
-            <div className="relative w-full max-w-xl bg-[#1c1c1e] border border-white/10 rounded-xl shadow-2xl overflow-hidden animate-scale-in">
+            <div className={cn(
+                "relative w-full max-w-xl border rounded-xl shadow-2xl overflow-hidden animate-scale-in",
+                // Light mode
+                "bg-white/95 border-black/10",
+                // Dark mode
+                "dark:bg-[#1c1c1e] dark:border-white/10"
+            )}>
                 {/* Search Input */}
-                <div className="flex items-center px-4 py-4 border-b border-white/5">
-                    <Search className="w-5 h-5 text-slate-400 mr-3" />
+                <div className="flex items-center px-4 py-4 border-b border-border">
+                    <Search className="w-5 h-5 text-muted-foreground mr-3" />
                     <input
                         autoFocus
                         type="text"
                         placeholder="Search devices, alerts, or commands..."
-                        className="bg-transparent text-white text-lg placeholder:text-slate-500 w-full outline-none"
+                        className="bg-transparent text-foreground text-lg placeholder:text-muted-foreground/60 w-full outline-none"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                     />
                     <div className="flex gap-2">
-                        <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-white/5 rounded text-[10px] text-slate-400 font-mono">
+                        <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-accent/20 rounded text-[10px] text-muted-foreground font-mono">
                             ESC
                         </kbd>
                     </div>
@@ -143,7 +150,7 @@ export default function CommandPalette() {
                 {/* Results */}
                 <div className="max-h-[60vh] overflow-y-auto p-2">
                     {results.length === 0 ? (
-                        <div className="p-8 text-center text-slate-500 text-sm">
+                        <div className="p-8 text-center text-muted-foreground text-sm">
                             No results found for "{query}"
                         </div>
                     ) : (
@@ -152,26 +159,38 @@ export default function CommandPalette() {
                                 <button
                                     key={result.id}
                                     onClick={() => handleSelect(result)}
-                                    className={`w-full flex items-center justify-between px-3 py-3 rounded-lg group transition-colors ${i === selectedIndex ? 'bg-blue-600' : 'hover:bg-white/5'}`}
+                                    className={cn(
+                                        "w-full flex items-center justify-between px-3 py-3 rounded-lg group transition-colors",
+                                        i === selectedIndex ? 'bg-primary/20' : 'hover:bg-accent/50'
+                                    )}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className={`p-2 rounded-md ${i === selectedIndex ? 'bg-white/20' : 'bg-white/5'}`}>
-                                            {result.type === 'device' ? <Monitor className="w-4 h-4 text-white" /> :
+                                        <div className={cn(
+                                            "p-2 rounded-md",
+                                            i === selectedIndex ? 'bg-primary/20' : 'bg-accent/30'
+                                        )}>
+                                            {result.type === 'device' ? <Monitor className="w-4 h-4 text-foreground" /> :
                                                 result.type === 'alert' ? <AlertTriangle className="w-4 h-4 text-amber-400" /> :
-                                                    <Command className="w-4 h-4 text-slate-400" />}
+                                                    <Command className="w-4 h-4 text-muted-foreground" />}
                                         </div>
                                         <div className="text-left">
-                                            <p className={`text-sm font-medium ${i === selectedIndex ? 'text-white' : 'text-slate-200'}`}>
+                                            <p className={cn(
+                                                "text-sm font-medium",
+                                                i === selectedIndex ? 'text-primary' : 'text-foreground'
+                                            )}>
                                                 {result.title}
                                             </p>
                                             {result.subtitle && (
-                                                <p className={`text-xs ${i === selectedIndex ? 'text-blue-200' : 'text-slate-500'}`}>
+                                                <p className={cn(
+                                                    "text-xs",
+                                                    i === selectedIndex ? 'text-primary/70' : 'text-muted-foreground'
+                                                )}>
                                                     {result.subtitle}
                                                 </p>
                                             )}
                                         </div>
                                     </div>
-                                    {i === selectedIndex && <ArrowRight className="w-4 h-4 text-white" />}
+                                    {i === selectedIndex && <ArrowRight className="w-4 h-4 text-primary" />}
                                 </button>
                             ))}
                         </div>
@@ -179,7 +198,7 @@ export default function CommandPalette() {
                 </div>
 
                 {/* Footer */}
-                <div className="px-4 py-2 bg-black/20 text-[10px] text-slate-500 border-t border-white/5 flex justify-between">
+                <div className="px-4 py-2 bg-accent/20 text-[10px] text-muted-foreground border-t border-border flex justify-between">
                     <span>ProTip: Search "Offline" to filter lists</span>
                     <span>EvaraTDS v1.0</span>
                 </div>

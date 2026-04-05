@@ -97,13 +97,13 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
                                     {selectedIds.size === devices.length && devices.length > 0 && <Check className="w-3 h-3" strokeWidth={3} />}
                                 </button>
                             </th>
-                            <th onClick={() => handleSort('name')} className="p-4 cursor-pointer hover:text-white transition-colors group">
+                            <th onClick={() => handleSort('name')} className="p-4 cursor-pointer hover:text-foreground transition-colors group">
                                 <div className="flex items-center gap-1">
                                     Device Name
                                     {sortKey === 'name' && (sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
                                 </div>
                             </th>
-                            <th onClick={() => handleSort('location_name')} className="p-4 cursor-pointer hover:text-white transition-colors">
+                            <th onClick={() => handleSort('location_name')} className="p-4 cursor-pointer hover:text-foreground transition-colors">
                                 Location Name
                             </th>
                             <th className="p-4 text-right">TDS (ppm)</th>
@@ -113,7 +113,7 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
                             <th className="p-4 text-right pr-6">Last Seen</th>
                         </tr>
                     </thead>
-                    <tbody className="text-sm text-slate-300">
+                    <tbody className="text-sm text-muted-foreground">
                         {sortedDevices.map((device) => {
                             const isSelected = selectedIds.has(device.id)
                             return (
@@ -121,30 +121,30 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
                                     key={device.id}
                                     onClick={() => onDeviceClick?.(device)}
                                     className={`
-                                        border-b border-white/5 transition-all cursor-pointer group relative
-                                        ${isSelected ? 'bg-blue-500/10' : 'hover:bg-white/5'}
+                                        border-b border-border transition-all cursor-pointer group relative
+                                        ${isSelected ? 'bg-primary/10' : 'hover:bg-accent/50'}
                                     `}
                                 >
                                     <td className="p-4 pl-6 relative z-10" onClick={(e) => e.stopPropagation()}>
                                         <button
                                             onClick={(e) => toggleSelection(device.id, e)}
                                             className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${isSelected
-                                                ? 'bg-blue-500 border-blue-500 text-white'
-                                                : 'border-[#6e6e73] group-hover:border-slate-400'
+                                                ? 'bg-primary border-primary text-primary-foreground'
+                                                : 'border-muted-foreground group-hover:border-foreground'
                                                 }`}
                                         >
                                             {isSelected && <Check className="w-3 h-3" strokeWidth={3} />}
                                         </button>
                                     </td>
-                                    <td className="p-4 font-medium text-white group-hover:text-cyan-400 transition-colors">
+                                    <td className="p-4 font-medium text-foreground group-hover:text-primary transition-colors">
                                         {device.location_name || device.name}
                                     </td>
-                                    <td className="p-4 text-[#86868b]">{device.location_name}</td>
-                                    <td className="p-4 text-right font-mono text-white">
+                                    <td className="p-4 text-muted-foreground">{device.location_name}</td>
+                                    <td className="p-4 text-right font-mono text-foreground">
                                         {/* Real TDS from device props */}
                                         {(device as any).latest_tds?.toFixed(0) || '--'}
                                     </td>
-                                    <td className="p-4 text-right font-mono text-[#86868b]">
+                                    <td className="p-4 text-right font-mono text-muted-foreground">
                                         {(device as any).latest_temp?.toFixed(1) || '--'}
                                     </td>
                                     <td className="p-4 flex justify-center">
@@ -158,18 +158,16 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
                                         </div>
                                     </td>
                                     <td className="p-4 text-center">
-                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium border border-white/5 ${device.status === 'online' ? 'bg-green-500/10 text-green-400' :
-                                            device.status === 'warning' ? 'bg-orange-500/10 text-orange-400' :
-                                                device.status === 'critical' ? 'bg-red-500/10 text-red-400' : 'bg-slate-500/10 text-slate-400'
+                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium border border-border ${device.status === 'online' ? 'bg-green-500/10 text-green-600 dark:text-green-400' :
+                                                device.status === 'critical' ? 'bg-red-500/10 text-red-600 dark:text-red-400' : 'bg-slate-500/10 text-slate-600 dark:text-slate-400'
                                             }`}>
-                                            <span className={`w-1 h-1 rounded-full ${device.status === 'online' ? 'bg-green-400' :
-                                                device.status === 'warning' ? 'bg-orange-400' :
-                                                    device.status === 'critical' ? 'bg-red-400' : 'bg-slate-400'
+                                            <span className={`w-1 h-1 rounded-full ${device.status === 'online' ? 'bg-green-500' :
+                                                    device.status === 'critical' ? 'bg-red-500' : 'bg-slate-500'
                                                 }`} />
                                             {device.status.charAt(0).toUpperCase() + device.status.slice(1)}
                                         </span>
                                     </td>
-                                    <td className="p-4 text-right pr-6 text-[#6e6e73] text-xs font-mono">
+                                    <td className="p-4 text-right pr-6 text-muted-foreground text-xs font-mono">
                                         {new Date(device.last_seen_at || renderNow).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </td>
                                 </tr>

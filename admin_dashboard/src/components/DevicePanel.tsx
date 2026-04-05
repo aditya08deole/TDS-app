@@ -17,7 +17,6 @@ export default function DevicePanel({ device, onClose, isMobile, chartData = [] 
     const statusColor =
         device.status === 'online' ? 'bg-emerald-500' :
             device.status === 'critical' ? 'bg-red-500' :
-                device.status === 'warning' ? 'bg-amber-500' :
                     'bg-slate-500';
 
     const panelClasses = isMobile
@@ -74,9 +73,9 @@ export default function DevicePanel({ device, onClose, isMobile, chartData = [] 
                             <Thermometer className="h-4 w-4" />
                             <span className="text-xs font-semibold uppercase tracking-wider">Temp</span>
                         </div>
-                        <div className="text-3xl font-bold text-white tracking-tight flex items-baseline gap-1">
+                        <div className="text-3xl font-bold text-foreground tracking-tight flex items-baseline gap-1">
                             {tempValue || '--'}
-                            <span className="text-sm font-medium text-slate-500">°C</span>
+                            <span className="text-sm font-medium text-muted-foreground">°C</span>
                         </div>
                     </div>
                 </div>
@@ -102,7 +101,7 @@ export default function DevicePanel({ device, onClose, isMobile, chartData = [] 
                                 <Area
                                     type="monotone"
                                     dataKey="value"
-                                    stroke="#06b6d4"
+                                    stroke="text-foreground"
                                     strokeWidth={2}
                                     fill="url(#panelChartGrad)"
                                 />

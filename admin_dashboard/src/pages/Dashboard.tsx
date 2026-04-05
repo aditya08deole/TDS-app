@@ -26,6 +26,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AreaChart as AreaChartIcon } from 'lucide-react'
 import { cn } from '../lib/utils'
+import { useViewport } from '../hooks/useViewport'
 
 const containerVariants: Variants = {
     hidden: { opacity: 0 },
@@ -63,7 +64,7 @@ function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
     }, [showInfo]);
 
     return (
-        <motion.div variants={itemVariants} className="relative flex-1 min-w-0 h-full @container">
+        <motion.div variants={itemVariants} className="relative min-w-0 h-full @container">
             <GlassCard className="glass-system-parent transition-all duration-300 hover:shadow-xl group relative h-full">
                 <motion.div whileHover={{ scale: 1.01 }} className="flex items-center gap-2.5 p-2.5 sm:px-3 sm:py-2 h-full w-full">
                     {/* Category Icon - Left side */}
@@ -77,23 +78,30 @@ function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
                         <div className="text-[10px] sm:text-xs text-muted-foreground font-bold uppercase tracking-[0.1em] group-hover:opacity-100 transition-opacity">{title}</div>
                     </div>
 
-                    {/* Info button - Positioned Absolute Top Right of the card, completely native text 'i' directly on the card */}
+                    {/* Info button - Mobile-optimized touch target (44px minimum) */}
                     <button
-                        className="absolute top-2 right-3 w-5 h-5 flex items-center justify-center z-30 bg-transparent hover:bg-white/5 rounded-full transition-colors"
+                        className="absolute top-2 right-2 w-11 h-11 flex items-center justify-center z-30 bg-transparent hover:bg-white/5 rounded-full transition-colors"
                         onClick={(e) => {
                             e.stopPropagation();
                             setShowInfo(s => !s);
                         }}
                         title={`${title} device list`}
+                        aria-label={`View ${title} device list`}
                     >
-                        <span className="font-serif italic font-black text-[13px] text-muted-foreground group-hover:text-foreground">i</span>
+                        <span className="font-serif italic font-black text-[14px] text-muted-foreground group-hover:text-foreground">i</span>
                     </button>
                 </motion.div>
             </GlassCard>
 
             {/* Info popover */}
             {showInfo && (
-                <div className="absolute top-full mt-2 left-0 right-0 z-[100] bg-[#0a0f16]/95 backdrop-blur-3xl rounded-2xl border border-white/10 p-3 min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-300 shadow-2xl">
+                <div className={cn(
+                    "absolute top-full mt-2 left-0 right-0 z-[100] backdrop-blur-3xl rounded-2xl border p-3 min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-300 shadow-2xl",
+                    // Light mode: light translucent background
+                    "bg-white/90 border-black/10",
+                    // Dark mode: dark translucent background
+                    "dark:bg-[#0a0f16]/95 dark:border-white/10"
+                )}>
                     <div className="flex items-center gap-2 mb-2 pb-2 border-b border-border/50">
                         <Icon className="w-3.5 h-3.5" style={{ color }} />
                         <span className="text-xs font-semibold text-foreground">{title} ({count})</span>
@@ -117,14 +125,24 @@ function StatCard({ title, count, icon: Icon, color, devices }: StatCardProps) {
     )
 }
 
+interface ChartPayloadEntry {
+    color: string
+    name: string
+    value: number
+}
+interface ChartTooltipProps {
+    active?: boolean
+    payload?: ChartPayloadEntry[]
+    label?: string
+}
 // ------ Combined Chart Tooltip ------
-const ChartTooltip = ({ active, payload, label }: any) => {
+const ChartTooltip = ({ active, payload, label }: ChartTooltipProps) => {
     if (active && payload && payload.length) {
         return (
             <div className="p-3 glass-system-parent shadow-2xl border-white/20 transition-all duration-300">
                 <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-2 border-b border-border/50 pb-1.5">{label}</p>
                 <div className="space-y-1.5">
-                    {payload.map((p: any, i: number) => (
+                    {payload.map((p, i: number) => (
                         <div key={i} className="flex items-center justify-between gap-4 text-xs font-medium">
                             <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
@@ -143,6 +161,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 }
 
 export default function Dashboard() {
+    const { isLandscape, isPortrait } = useViewport()
     const [selectedLocation, setSelectedLocation] = useState<string>('')
     const [dataPointLimit, setDataPointLimit] = useState<number>(100)
     const [showTDS, setShowTDS] = useState(true)
@@ -192,7 +211,8 @@ export default function Dashboard() {
     
     useEffect(() => {
         setCriticalDevices(criticalTDSDeviceList)
-    }, [criticalIds, setCriticalDevices]) // Use joined IDs string as dependency to ensure stability
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [criticalIds, setCriticalDevices]) // criticalTDSDeviceList is derived from criticalIds - using stable string for memo stability
 
 
     const currentDevice = useMemo(() => {
@@ -258,7 +278,7 @@ export default function Dashboard() {
     )
 
     return (
-        <Tabs defaultValue="default" className="w-full max-w-[1600px] mx-auto space-y-4">
+        <Tabs defaultValue="default" className="w-full max-w-[1600px] mx-auto space-y-4 px-4 sm:px-6">
             {/* Header */}
             <div className="flex items-center justify-between ~mb-2/6">
                 <div>
@@ -284,8 +304,16 @@ export default function Dashboard() {
             {/* Default View */}
             <TabsContent value="default" className="space-y-4 mt-0">
                 <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-4">
-                    {/* ── Row 1: 4 compact stat cards in a single line ── */}
-                    <motion.div variants={containerVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 ~gap-2/4">
+                    {/* ── Row 1: 4 compact stat cards ── */}
+                    <motion.div 
+                        variants={containerVariants} 
+                        className={cn(
+                            "grid gap-3 md:gap-4 lg:gap-5",
+                            isPortrait ? "grid-cols-2" : "grid-cols-2 lg:grid-cols-4",
+                            // Dynamic adjust for landscape mobile/tablet: force 4 cols if orientation is landscape
+                            isLandscape && "grid-cols-2 sm:grid-cols-4 lg:grid-cols-4"
+                        )}
+                    >
                     <StatCard title="Safe TDS" count={categorizedStats.safeTDS.count} icon={Droplets} color="#00df81" devices={categorizedStats.safeTDS.devices} />
                     <StatCard title="Critical TDS" count={categorizedStats.criticalTDS.count} icon={Droplets} color="#ff0055" devices={categorizedStats.criticalTDS.devices} />
                     <StatCard title="Online" count={categorizedStats.online.count} icon={Wifi} color="#818cf8" devices={categorizedStats.online.devices} />
@@ -298,7 +326,10 @@ export default function Dashboard() {
                         <motion.div variants={itemVariants} className="col-span-12 lg:col-span-4 @container">
                         <GlassCard className="glass-system-parent ~p-3/6 pb-2 h-full transition-all duration-500 hover:shadow-xl border-white/20">
                             <h3 className="~text-sm/lg font-medium mb-2">Device Overview</h3>
-                            <div className="~h-[250px]/[350px] relative">
+                            <div className={cn(
+                                "~h-[250px]/[350px] relative",
+                                isLandscape && "min-h-[300px]"
+                            )}>
                                 <EChartsNestedPieChart
                                     connectivityData={[
                                         { name: 'Online', value: categorizedStats.online.count, color: '#818cf8' },
@@ -446,7 +477,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="flex-1 mt-auto min-w-0 overflow-hidden">
-                                <ResponsiveContainer width="100%" height={290}>
+                                <ResponsiveContainer width="100%" height={isPortrait ? 250 : 350}>
                                     <ComposedChart data={formattedChartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
                                         <defs>
                                             <linearGradient id="tdsFill" x1="0" y1="0" x2="0" y2="1">

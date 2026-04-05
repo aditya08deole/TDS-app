@@ -167,26 +167,26 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
             />
 
             {/* Modal */}
-            <div className="relative w-full sm:max-w-2xl max-h-[90vh] bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-800 overflow-hidden animate-slide-up">
+            <div className="relative w-full sm:max-w-2xl max-h-[90vh] bg-background rounded-t-2xl sm:rounded-2xl border border-border overflow-hidden animate-slide-up">
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-slate-800">
+                <div className="flex items-center justify-between p-4 border-b border-border">
                     <div className="flex items-center gap-3">
                         <div className={`w-3 h-3 rounded-full ${getStatusColor(device.status)}`} />
                         <div>
-                            <h2 className="text-lg font-semibold text-white">{getDeviceDisplayName(device)}</h2>
-                            <p className="text-xs text-slate-400">{device.device_id}</p>
+                            <h2 className="text-lg font-semibold text-foreground">{getDeviceDisplayName(device)}</h2>
+                            <p className="text-xs text-muted-foreground">{device.device_id}</p>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
                     >
                         <X className="h-5 w-5" />
                     </button>
                 </div>
 
                 {/* Tabs */}
-                <div className="flex border-b border-slate-800 overflow-x-auto">
+                <div className="flex border-b border-border overflow-x-auto">
                     {[
                         { id: 'overview', label: 'Overview', icon: Activity },
                         { id: 'history', label: 'History', icon: History },
@@ -199,8 +199,8 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id as TabType)}
                                 className={`flex-1 min-w-[80px] flex items-center justify-center gap-2 py-3 px-4 text-sm font-medium transition-colors ${activeTab === tab.id
-                                    ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
-                                    : 'text-slate-400 hover:text-white'
+                                    ? 'text-primary border-b-2 border-primary bg-primary/5'
+                                    : 'text-muted-foreground hover:text-foreground'
                                     }`}
                             >
                                 <Icon className="h-4 w-4" />
@@ -217,33 +217,33 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                         <div className="space-y-4">
                             {/* Status Cards */}
                             <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-slate-800/50 rounded-xl p-3">
-                                    <div className="flex items-center gap-2 text-slate-400 text-xs mb-1">
+                                <div className="bg-accent/10 rounded-xl p-3 border border-border">
+                                    <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                                         <Battery className="h-3 w-3" />
                                         Battery
                                     </div>
-                                    <p className="text-xl font-bold text-white">{device.battery_level ?? '--'}%</p>
+                                    <p className="text-xl font-bold text-foreground">{device.battery_level ?? '--'}%</p>
                                 </div>
-                                <div className="bg-slate-800/50 rounded-xl p-3">
-                                    <div className="flex items-center gap-2 text-slate-400 text-xs mb-1">
+                                <div className="bg-accent/10 rounded-xl p-3 border border-border">
+                                    <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                                         <Wifi className="h-3 w-3" />
                                         Signal
                                     </div>
-                                    <p className="text-xl font-bold text-white">{device.signal_strength ?? '--'} dBm</p>
+                                    <p className="text-xl font-bold text-foreground">{device.signal_strength ?? '--'} dBm</p>
                                 </div>
-                                <div className="bg-slate-800/50 rounded-xl p-3 flex flex-col items-center justify-center">
-                                    <div className="flex items-center gap-2 text-slate-400 text-xs mb-2 w-full">
+                                <div className="bg-accent/10 rounded-xl p-3 flex flex-col items-center justify-center border border-border">
+                                    <div className="flex items-center gap-2 text-muted-foreground text-xs mb-2 w-full">
                                         <Activity className="h-3 w-3" />
                                         Trust Score
                                     </div>
                                     <ConfidenceRing score={device.confidence_score ?? 100} size={50} status={device.status} />
                                 </div>
-                                <div className="bg-slate-800/50 rounded-xl p-3 flex flex-col justify-center">
-                                    <div className="flex items-center gap-2 text-slate-400 text-xs mb-1">
+                                <div className="bg-accent/10 rounded-xl p-3 flex flex-col justify-center border border-border">
+                                    <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                                         <Activity className="h-3 w-3" />
                                         Health
                                     </div>
-                                    <p className="text-sm text-white">
+                                    <p className="text-sm text-foreground">
                                         {(device.confidence_score ?? 100) > 80 ? 'Excellent' : (device.confidence_score ?? 100) > 50 ? 'Fair' : 'Poor'}
                                     </p>
                                 </div>
@@ -253,24 +253,24 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                             <HealthTimeline deviceId={device.id} />
 
                             {/* Location */}
-                            <div className="bg-slate-800/50 rounded-xl p-3">
-                                <div className="flex items-center gap-2 text-slate-400 text-xs mb-1">
+                            <div className="bg-accent/10 rounded-xl p-3 border border-border">
+                                <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                                     <MapPin className="h-3 w-3" />
                                     Location
                                 </div>
-                                <p className="text-sm text-white">{device.location_name || 'Not set'}</p>
+                                <p className="text-sm text-foreground">{device.location_name || 'Not set'}</p>
                                 {device.latitude && device.longitude && (
-                                    <p className="text-xs text-slate-500 mt-1">
+                                    <p className="text-xs text-muted-foreground mt-1">
                                         {device.latitude.toFixed(4)}, {device.longitude.toFixed(4)}
                                     </p>
                                 )}
                             </div>
 
                             {/* Status & Actions */}
-                            <div className="bg-slate-800/50 rounded-xl p-3">
+                            <div className="bg-accent/10 rounded-xl p-3 border border-border">
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <div className="flex items-center gap-2 text-slate-400 text-xs mb-1">
+                                        <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                                             <Clock className="h-3 w-3" />
                                             Status
                                         </div>
@@ -284,7 +284,7 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                     <button
                                         onClick={toggleMaintenanceMode}
                                         disabled={updating}
-                                        className="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm rounded-lg transition-colors flex items-center gap-2"
+                                        className="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary text-sm rounded-lg transition-colors flex items-center gap-2"
                                     >
                                         <Wrench className="h-4 w-4" />
                                         {device.status === 'maintenance' ? 'Exit' : 'Enter'} Maintenance
@@ -294,7 +294,7 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
 
                             {/* Last Seen */}
                             {(device.last_seen_at || device.last_seen) && (
-                                <div className="text-center text-xs text-slate-500">
+                                <div className="text-center text-xs text-muted-foreground">
                                     Last seen: {new Date(device.last_seen_at || device.last_seen!).toLocaleString()}
                                 </div>
                             )}

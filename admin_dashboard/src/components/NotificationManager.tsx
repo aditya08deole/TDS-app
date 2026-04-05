@@ -56,9 +56,17 @@ export default function NotificationManager() {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
                 if (change.type === 'added') {
-                    const alert = change.doc.data() as { severity?: string; message?: string; type?: string; created_at?: any }
+                    const alert = change.doc.data() as { severity?: string; message?: string; type?: string; created_at?: any; tds_value?: number }
                     const isNew = alert.created_at?.toDate ? (new Date().getTime() - alert.created_at.toDate().getTime()) < 5000 : true
                     if (!isNew) return
+                    
+                    // ═══ FILTER: Skip showing alerts with invalid TDS values (≥500)
+                    // These are likely voltage/temp misreads, not real critical alerts
+                    const tdsValue = alert.tds_value
+                    if (tdsValue !== undefined && tdsValue >= 500) {
+                        console.warn(`🚫 Filtered invalid alert: TDS ${tdsValue} ppm (likely misread)`)
+                        return
+                    }
 
                     const severity = alert.severity?.toLowerCase()
                     const type = severity === 'critical' ? 'error' :

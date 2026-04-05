@@ -1,73 +1,55 @@
-import { useState, useEffect } from 'react'
-import { doc, getDoc, updateDoc } from 'firebase/firestore'
-import { db } from '../lib/firebase'
-import type { Device } from '../types'
+import { useState, useEffect, useMemo } from 'react'
 import { getDeviceDisplayName } from '../lib/constants'
 import { toast } from 'sonner'
 import {
-    X,
-    MapPin,
-    Activity,
-    Settings,
-    History,
-    CheckCircle,
-    Wrench,
-    RefreshCw,
-    Minimize2
+    X, MapPin, Activity, Settings, History, CheckCircle, Wrench, RefreshCw, Minimize2
 } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import HealthTimeline from './HealthTimeline'
 import ConfidenceRing from './ConfidenceRing'
 import { useUI } from '../context/UIContext'
-
-// Extended Device type for Inspector specific needs
-type InspectorDevice = Device & {
-    device_id?: string
-    battery_level?: number
-    signal_strength?: number
-    last_seen?: string | null
-    first_seen_at?: string
-    metadata?: {
-        firmware_version?: string
-        last_maintenance?: string
-        [key: string]: any
-    }
-    // Allow any other props
-    [key: string]: any
-}
-
-interface SensorReading {
-    id: string
-    tds: number
-    temperature?: number
-    recorded_at: string
-}
-
-
+import { useDevice, useUpdateDevice } from '../hooks/useDeviceQueries'
+import { useDeviceThingSpeakChartData } from '../hooks/useThingSpeakQueries'
+import { useRole } from '../context/RoleContext'
+import type { Device } from '../types'
 
 type TabType = 'overview' | 'history' | 'maintenance' | 'config'
-
-import { useRole } from '../context/RoleContext'
 
 export default function DeviceInspector() {
     const { inspectorDeviceId, closeInspector, isMobile } = useUI()
     const { hasPermission, isAtLeast } = useRole()
-    const [device, setDevice] = useState<InspectorDevice | null>(null)
-    const [activeTab, setActiveTab] = useState<TabType>('overview')
-    const [sensorHistory, setSensorHistory] = useState<SensorReading[]>([])
-    const [renderNow] = useState(() => Date.now())
+    
+    // Hooks for data fetching
+    const { data: device, isLoading: deviceLoading } = useDevice(inspectorDeviceId || undefined)
+    const { data: sensorData = [], isLoading: sensorLoading } = useDeviceThingSpeakChartData(device || undefined, 100)
+    const updateMutation = useUpdateDevice()
 
-    const [loading, setLoading] = useState(false)
+    const [activeTab, setActiveTab] = useState<TabType>('overview')
+    const [renderNow] = useState(() => Date.now())
     const [updating, setUpdating] = useState(false)
     const [isEditing, setIsEditing] = useState(false)
     const [editForm, setEditForm] = useState({ name: '', location_name: '', firmware_version: '' })
+
+    // Map sensor data to SensorReading format
+    const sensorHistory = useMemo(() => {
+        return sensorData.map((d, i) => ({
+            id: i.toString(),
+            tds: d.tds,
+            temperature: d.temperature,
+            recorded_at: d.timestamp
+        }))
+    }, [sensorData])
+
+    const latestReading = useMemo(() => {
+        return sensorHistory.length > 0 ? sensorHistory[sensorHistory.length - 1] : null
+    }, [sensorHistory])
 
     useEffect(() => {
         if (device) {
             setEditForm({
                 name: device.name,
                 location_name: device.location_name || '',
-                firmware_version: device.metadata?.firmware_version || ''
+                firmware_version: device.metadata?.firmware_version?.toString() || ''
             })
         }
     }, [device])
@@ -75,29 +57,33 @@ export default function DeviceInspector() {
     const handleSaveConfig = async () => {
         if (!device) return
         setUpdating(true)
+        const toastId = toast.loading('Saving configuration...')
         try {
-            const updatedMetadata = { ...device.metadata, firmware_version: editForm.firmware_version }
-            const docRef = doc(db, 'devices', device.id)
-            await updateDoc(docRef, {
-                name: editForm.name,
-                location_name: editForm.location_name,
-                metadata: updatedMetadata
+            const updatedMetadata = { 
+                ...device.metadata, 
+                firmware_version: editForm.firmware_version 
+            }
+            
+            await updateMutation.mutateAsync({
+                id: device.id,
+                updates: {
+                    name: editForm.name,
+                    location_name: editForm.location_name,
+                    metadata: updatedMetadata
+                }
             })
 
-            setDevice(prev => prev ? { ...prev, ...editForm, metadata: updatedMetadata } : null)
             setIsEditing(false)
-            toast.success('Configuration saved successfully')
+            toast.success('Configuration saved successfully', { id: toastId })
         } catch (err) {
             console.error('Failed to save config', err)
-            toast.error('Failed to save configuration')
+            toast.error('Failed to save configuration', { id: toastId })
         }
         setUpdating(false)
     }
 
     const handleRegenerateQR = async () => {
         if (!device) return
-
-        // Use toast for confirmation
         const confirmed = window.confirm('Are you sure you want to regenerate the QR code? The old QR code will stop working immediately.')
         if (!confirmed) return
 
@@ -105,106 +91,36 @@ export default function DeviceInspector() {
         const toastId = toast.loading('Regenerating QR code...')
 
         try {
-            // Note: rotation logic should be moved to a Cloud Function
-            // For now, we update a trigger field in Firestore
-            const docRef = doc(db, 'devices', device.id)
-            await updateDoc(docRef, {
-                qr_rotation_pending: true,
-                updated_at: new Date().toISOString()
+            await updateMutation.mutateAsync({
+                id: device.id,
+                updates: {
+                    qr_rotation_pending: true,
+                    updated_at: new Date().toISOString()
+                }
             })
             
             toast.success('QR Code rotation requested!', { id: toastId })
         } catch (err) {
             console.error('Failed to rotate QR', err)
-            toast.error('Failed to rotate QR code', {
-                id: toastId,
-                description: err instanceof Error ? err.message : 'Unknown error'
-            })
+            toast.error('Failed to rotate QR code', { id: toastId })
         }
         setUpdating(false)
     }
 
-    useEffect(() => {
-        if (inspectorDeviceId) {
-            fetchDeviceDetails(inspectorDeviceId)
-        } else {
-            setDevice(null)
-        }
-    }, [inspectorDeviceId])
-
-    useEffect(() => {
-        if (device) {
-            fetchSensorHistory()
-        }
-    }, [device])
-
-    const fetchDeviceDetails = async (id: string) => {
-        setLoading(true)
-        try {
-            const docRef = doc(db, 'devices', id)
-            const docSnap = await getDoc(docRef)
-            if (docSnap.exists()) {
-                setDevice({ id: docSnap.id, ...docSnap.data() } as InspectorDevice)
-            }
-        } catch (err) {
-            console.error('Failed to fetch device details', err)
-        }
-        setLoading(false)
-    }
-
-    const fetchSensorHistory = async () => {
-        if (!device) return
-        try {
-            // Try to fetch real ThingSpeak data via the device's channel_id and read key
-            const channelId = (device as any).thingspeak_channel_id
-            const readKey = (device as any).thingspeak_read_key
-            const tdsField = (device as any).tds_field_number || 1
-            const tempField = (device as any).temperature_field_number || 2
-
-            if (channelId && readKey) {
-                // Correct URL: /channels/{CHANNEL_ID}/feeds.json?api_key={READ_KEY}
-                const url = `https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${readKey}&results=100`
-                console.log('DeviceInspector fetching:', url)
-
-                const response = await fetch(url)
-                const json = await response.json()
-
-                if (json.feeds && json.feeds.length > 0) {
-                    const readings = json.feeds.map((entry: any, i: number) => ({
-                        id: i.toString(),
-                        tds: parseFloat(entry[`field${tdsField}`]) || 0,
-                        temperature: parseFloat(entry[`field${tempField}`]) || 0,
-                        recorded_at: entry.created_at
-                    })).filter((r: any) => r.tds > 20) // Remove TDS <= 20 (invalid/noise)
-
-                    console.log(`DeviceInspector: Got ${readings.length} readings`)
-                    setSensorHistory(readings)
-                    return
-                }
-            }
-
-            // Fallback: No longer using legacy readings table
-            setSensorHistory([])
-        } catch (err) {
-            console.error(err)
-            setSensorHistory([])
-        }
-    }
-
-
-
     const toggleMaintenanceMode = async () => {
         if (!device) return
         setUpdating(true)
+        const toastId = toast.loading('Updating status...')
         try {
             const newStatus = device.status === 'maintenance' ? 'online' : 'maintenance'
-            const docRef = doc(db, 'devices', device.id)
-            await updateDoc(docRef, { status: newStatus })
-            setDevice(prev => prev ? { ...prev, status: newStatus } : null)
-            toast.success(`Device ${newStatus === 'maintenance' ? 'entered maintenance mode' : 'is now online'}`)
+            await updateMutation.mutateAsync({
+                id: device.id,
+                updates: { status: newStatus as Device['status'] }
+            })
+            toast.success(`Device ${newStatus === 'maintenance' ? 'entered maintenance mode' : 'is now online'}`, { id: toastId })
         } catch (err) {
             console.error(err)
-            toast.error('Failed to update maintenance mode')
+            toast.error('Failed to update status', { id: toastId })
         }
         setUpdating(false)
     }
@@ -243,7 +159,7 @@ export default function DeviceInspector() {
                 </div>
             </div>
 
-            {loading && !device ? (
+            {deviceLoading && !device ? (
                 <div className="flex-1 flex items-center justify-center text-slate-500">
                     <RefreshCw className="h-6 w-6 animate-spin" />
                 </div>
@@ -300,13 +216,13 @@ export default function DeviceInspector() {
 
                                 <HealthTimeline deviceId={device.id} />
 
-                                <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+                                <div className="bg-accent/5 rounded-xl p-4 border border-border">
                                     <div className="flex items-center gap-2 mb-3">
                                         <MapPin className="h-4 w-4 text-blue-400" />
-                                        <span className="text-sm font-medium text-white">Location</span>
+                                        <span className="text-sm font-medium text-foreground">Location</span>
                                     </div>
-                                    <p className="text-sm text-slate-300">{device.location_name || 'Unknown Location'}</p>
-                                    <p className="text-xs text-slate-500 mt-1 font-mono">{device.latitude?.toFixed(4)}, {device.longitude?.toFixed(4)}</p>
+                                    <p className="text-sm text-muted-foreground">{device.location_name || 'Unknown Location'}</p>
+                                    <p className="text-xs text-muted-foreground/60 mt-1 font-mono">{device.latitude?.toFixed(4)}, {device.longitude?.toFixed(4)}</p>
                                 </div>
 
                                 {hasPermission('maintenance_mode') && (
@@ -411,19 +327,19 @@ export default function DeviceInspector() {
                                         <div className="bg-accent/5 rounded-xl p-4 border border-border">
                                             <div className="flex items-center justify-between mb-4">
                                                 <h3 className="text-xs font-black text-muted-foreground uppercase tracking-widest">Live Metrics</h3>
-                                                <div className="animate-pulse flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-[10px] font-bold text-emerald-500 border border-emerald-500/20">
-                                                    <span className="w-1 h-1 rounded-full bg-emerald-500" />
-                                                    Live
+                                                <div className={`animate-pulse flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${sensorLoading ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'}`}>
+                                                    <span className={`w-1 h-1 rounded-full ${sensorLoading ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`} />
+                                                    {sensorLoading ? 'Syncing...' : 'Live'}
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-1">
                                                     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-tighter">Current TDS</span>
-                                                    <div className="text-2xl font-black font-mono text-foreground">{device.latest_tds || '--'}</div>
+                                                    <div className="text-2xl font-black font-mono text-foreground">{latestReading?.tds || '--'}</div>
                                                 </div>
                                                 <div className="space-y-1">
                                                     <span className="text-[10px] font-black text-muted-foreground uppercase tracking-tighter">Water Temp</span>
-                                                    <div className="text-2xl font-black font-mono text-foreground">{device.latest_temperature ? `${device.latest_temperature.toFixed(1)}°` : '--'}</div>
+                                                    <div className="text-2xl font-black font-mono text-foreground">{latestReading?.temperature ? `${latestReading.temperature.toFixed(1)}°` : '--'}</div>
                                                 </div>
                                             </div>
                                         </div>

@@ -75,8 +75,8 @@ export default function Login() {
                 await signInWithEmailAndPassword(auth, email, password)
             }
             navigate(from, { replace: true })
-        } catch (err: any) {
-            setError(err.message || 'Authentication failed')
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Authentication failed')
         } finally {
             setLoading(false)
         }
@@ -89,8 +89,8 @@ export default function Login() {
         try {
             await signInWithPopup(auth, provider)
             navigate(from, { replace: true })
-        } catch (err: any) {
-            setError(err.message || 'Google login failed')
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Google login failed')
         } finally {
             setLoading(false)
         }
@@ -98,6 +98,11 @@ export default function Login() {
 
     return (
         <div className="min-h-screen bg-transparent flex items-center justify-center p-4 relative overflow-hidden font-sans selection:bg-primary/30">
+            {/* EvaraTech Branding Logo (Only on Login) */}
+            <div className="fixed top-8 left-8 z-[100] pointer-events-none select-none">
+                <img src="/evaratech-logo.png" alt="Evaratech" className="h-10 sm:h-14 w-auto object-contain opacity-80 drop-shadow-xl" />
+            </div>
+
             {/* Interactive Cursor Glow */}
             <div 
                 className="fixed inset-0 pointer-events-none z-0"

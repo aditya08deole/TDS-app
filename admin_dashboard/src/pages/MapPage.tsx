@@ -2,21 +2,33 @@ import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import { useTheme } from '../context/ThemeContext'
-import { AreaChart, Area, LineChart, Line, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { type EnrichedDevice } from '../types'
 import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
 import { useAllDevicesThingSpeakData, useDeviceThingSpeakChartData } from '../hooks/useThingSpeakQueries'
 import { getTDSStatus, getDeviceDisplayName, getConnectivityStatus } from '../lib/constants'
 import { getPpmStatus, createWhiteTransparentMarker, type DeviceLocation } from '../components/MapMarkers'
 import { GlassCard } from '../components/GlassCard'
-import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { cn } from '@/lib/utils'
+import { MapSidebarContent } from '../components/MapSidebarContent'
+import { useViewport } from '../hooks/useViewport'
+import { useIsMobile } from '@/components/ui/use-mobile'
 import {
-    Maximize2, Minimize2, Layers, X, Droplets, Thermometer, Clock, MapPin,
-    Wifi, WifiOff, Activity, Search, RefreshCw,
+    Sheet,
+    SheetContent,
+    SheetTrigger,
+} from "@/components/ui/sheet"
+import {
+    Maximize2, Minimize2, Layers, X, Droplets, Thermometer, MapPin,
+    Wifi, WifiOff, Activity, RefreshCw, List,
     TrendingUp, TrendingDown
 } from 'lucide-react'
+import type { ParsedSensorData } from '../lib/thingspeak'
+
+// Derived type for map theme to avoid `any` casts
+type MapTheme = ReturnType<typeof getMapTheme>
 
 // Default icon fix
 import icon from 'leaflet/dist/images/marker-icon.png'
@@ -32,7 +44,7 @@ const DeviceMarkers = ({
     setSelectedDevice 
 }: { 
     devices: DeviceLocation[], 
-    theme: any, 
+    theme: MapTheme, 
     setSelectedDevice: (d: DeviceLocation) => void 
 }) => {
     const map = useMap()
@@ -81,7 +93,15 @@ function MapController({ center, zoom }: { center: [number, number] | null; zoom
 }
 
 
-const CustomChartTooltip = ({ active, payload, label, type, theme }: any) => {
+interface ChartTooltipProps {
+    active?: boolean
+    payload?: Array<{ value: number }>
+    label?: string
+    type: 'tds' | 'temp'
+    theme: MapTheme
+}
+
+const CustomChartTooltip = ({ active, payload, label, type, theme }: ChartTooltipProps) => {
     if (active && payload && payload.length) {
         const colors = type === 'tds' ? theme.chart.tds : theme.chart.temp
         return (
@@ -98,7 +118,7 @@ const CustomChartTooltip = ({ active, payload, label, type, theme }: any) => {
 }
 
 type MapStyle = 'street' | 'satellite'
-type FilterType = 'all' | 'online' | 'warning' | 'critical' | 'offline'
+type FilterType = 'all' | 'online' | 'critical' | 'offline'
 
 
 const getMapTheme = (isDark: boolean) => ({
@@ -122,7 +142,6 @@ const getMapTheme = (isDark: boolean) => ({
     },
     status: {
         online: { color: '#00df81', glow: 'rgba(0, 223, 129, 0.4)', bg: 'rgba(0, 223, 129, 0.1)' },
-        warning: { color: '#fb923c', glow: 'rgba(251, 146, 60, 0.4)', bg: 'rgba(251, 146, 60, 0.1)' },
         critical: { color: '#ff0055', glow: 'rgba(255, 0, 85, 0.4)', bg: 'rgba(255, 0, 85, 0.1)' },
         offline: isDark ?
             { color: '#6b7280', glow: 'rgba(107, 114, 128, 0.3)', bg: 'rgba(107, 114, 128, 0.1)' } :
@@ -147,106 +166,286 @@ function DevicePanel({
     
     const { data: sensorData = [] } = useDeviceThingSpeakChartData(device, 30)
     const panelRef = useRef<HTMLDivElement>(null)
-    // Calculate safe initial position: shifted down and right as requested
+    const { width, height, isPortrait } = useViewport()
+
+    // Calculate safe initial position: shifted down and right
     const [position, setPosition] = useState(() => {
-        const leftPanelWidth = 320 // Accounts for 300px + some margin
-        const panelWidth = 324 // Reduced by 10% from 360
-        const availableWidth = window.innerWidth - leftPanelWidth
+        const leftPanelWidth = isPortrait ? 0 : 320 
+        const availableWidth = Math.max(width - leftPanelWidth, 300)
         
-        // Position at 82% of available width (further right), minus half panel width
         return {
-            x: leftPanelWidth + (availableWidth * 0.82) - (panelWidth / 2),
-            y: 140 // Shifted down from 100
+            x: leftPanelWidth + (availableWidth * 0.7) - 160,
+            y: height * 0.15 
         }
     })
     const [isDragging, setIsDragging] = useState(false)
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
     const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview')
 
-    const ppmStatus = getPpmStatus(device.latest_tds, device.status || 'offline', theme)
+    const isMobile = useIsMobile()
 
     // Chart data - limit to last 30 points for cleaner trend visualization
     const chartData = useMemo(() => {
         const last30 = sensorData.slice(-30)
-        return last30.map((d, i) => ({
+        return last30.map((d: ParsedSensorData) => ({
             time: new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            tds: d.tds,
-            temp: d.temperature,
-            index: i
+            tds: Math.round(d.tds || 0),
+            temp: Math.round(d.temperature || 0)
         }))
     }, [sensorData])
 
-    // Calculate trends
     const tdsTrend = useMemo(() => {
         if (chartData.length < 2) return 0
-        const last = chartData[chartData.length - 1].tds
-        const prev = chartData[chartData.length - 2].tds
-        return last - prev
+        return chartData[chartData.length - 1].tds - chartData[chartData.length - 2].tds
     }, [chartData])
 
     const tempTrend = useMemo(() => {
         if (chartData.length < 2) return 0
-        const last = chartData[chartData.length - 1].temp
-        const prev = chartData[chartData.length - 2].temp
-        return Number((last - prev).toFixed(1))
+        return chartData[chartData.length - 1].temp - chartData[chartData.length - 2].temp
     }, [chartData])
 
-    // Ensure panel stays within viewport - account for left panel
-    useEffect(() => {
-        const ensureInViewport = () => {
-            const leftPanelWidth = 320 // Left panel + margin
-            const panelWidth = 324
-            const panelHeight = 600
+    const ppmStatus = useMemo(() => getPpmStatus(device.latest_tds, device.status || 'offline', theme), [device.latest_tds, device.status, theme])
 
-            const maxX = window.innerWidth - panelWidth - 20
-            const maxY = window.innerHeight - panelHeight - 20
-            const minX = leftPanelWidth
-
-            setPosition(prev => ({
-                x: Math.max(minX, Math.min(maxX, prev.x)),
-                y: Math.max(20, Math.min(maxY, prev.y))
-            }))
-        }
-        ensureInViewport()
-        window.addEventListener('resize', ensureInViewport)
-        return () => window.removeEventListener('resize', ensureInViewport)
-    }, [])
-
-    // Drag handlers
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
-        if ((e.target as HTMLElement).closest('button')) return
+    const handleMouseDown = (e: React.MouseEvent) => {
+        if (isMobile) return
         setIsDragging(true)
-        const rect = panelRef.current?.getBoundingClientRect()
-        if (rect) setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top })
-    }, [])
+        setDragOffset({
+            x: e.clientX - position.x,
+            y: e.clientY - position.y
+        })
+    }
 
     useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
-            if (isDragging) {
-                const leftPanelWidth = 320
-                const panelWidth = 324
-                const panelHeight = 600
-
-                const newX = Math.max(leftPanelWidth, Math.min(window.innerWidth - panelWidth - 20, e.clientX - dragOffset.x))
-                const newY = Math.max(20, Math.min(window.innerHeight - panelHeight - 20, e.clientY - dragOffset.y))
-                setPosition({ x: newX, y: newY })
+            if (isDragging && !isMobile) {
+                setPosition({
+                    x: e.clientX - dragOffset.x,
+                    y: e.clientY - dragOffset.y
+                })
             }
         }
         const handleMouseUp = () => setIsDragging(false)
 
         if (isDragging) {
-            document.addEventListener('mousemove', handleMouseMove)
-            document.addEventListener('mouseup', handleMouseUp)
+            window.addEventListener('mousemove', handleMouseMove)
+            window.addEventListener('mouseup', handleMouseUp)
         }
         return () => {
-            document.removeEventListener('mousemove', handleMouseMove)
-            document.removeEventListener('mouseup', handleMouseUp)
+            window.removeEventListener('mousemove', handleMouseMove)
+            window.removeEventListener('mouseup', handleMouseUp)
         }
-    }, [isDragging, dragOffset])
+    }, [isDragging, dragOffset, isMobile])
 
-    // Close with animation
-    const handleClose = () => {
-        onClose()
+    const panelContent = (
+        <GlassCard size="md" className={cn("p-0 border-0 h-full w-full", isMobile ? "rounded-t-[32px] rounded-b-none" : "rounded-[24px]")}>
+            {/* Header */}
+            <div className="relative p-4" style={{ borderBottom: `1px solid ${theme.border.subtle}` }}>
+                {isMobile && (
+                    <div className="absolute top-2 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-white/10" />
+                )}
+                <div className="absolute top-0 left-0 right-0 h-[2px]"
+                    style={{ background: `linear-gradient(90deg, transparent, ${ppmStatus.color}, transparent)` }} />
+
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="relative w-11 h-11 rounded-xl flex items-center justify-center shadow-lg"
+                            style={{ background: ppmStatus.bg, border: `1px solid ${ppmStatus.color}30` }}>
+                            {device.status === 'offline' ? (
+                                <WifiOff className="w-5 h-5" style={{ color: ppmStatus.color }} />
+                            ) : (
+                                <Wifi className="w-5 h-5" style={{ color: ppmStatus.color }} />
+                            )}
+                            {device.status !== 'offline' && (
+                                <div className="absolute inset-0 rounded-xl animate-ping opacity-20"
+                                    style={{ background: ppmStatus.color }} />
+                            )}
+                        </div>
+
+                        <div>
+                            <h3 className="text-base font-black text-foreground tracking-tight">{getDeviceDisplayName(device)}</h3>
+                            <p className="text-[11px] flex items-center gap-1 font-medium" style={{ color: theme.text.muted }}>
+                                <MapPin className="w-3 h-3" /> {device.location_name || 'Infrastructure Node'}
+                            </p>
+                        </div>
+                    </div>
+
+                    {!isMobile && (
+                        <button
+                            onClick={onClose}
+                            className="p-2 rounded-lg transition-all duration-200 hover:scale-110 hover:bg-white/5"
+                            style={{ background: theme.bg.tertiary }}
+                        >
+                            <X className="w-4 h-4" style={{ color: theme.text.muted }} />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Tab Switcher */}
+            <div className="flex p-2 gap-1 mx-4 mt-3 rounded-xl shadow-inner overflow-hidden" style={{ background: theme.bg.tertiary }}>
+                {['overview', 'history'].map((tab) => (
+                    <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab as 'overview' | 'history')}
+                        className="flex-1 py-2 rounded-lg text-xs font-bold transition-all duration-300"
+                        style={{
+                            background: activeTab === tab ? theme.bg.secondary : 'transparent',
+                            color: activeTab === tab ? theme.text.primary : theme.text.muted,
+                            boxShadow: activeTab === tab ? '0 4px 12px rgba(0,0,0,0.2)' : 'none'
+                        }}
+                    >
+                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    </button>
+                ))}
+            </div>
+
+            {/* Content Area */}
+            <div className="p-4 space-y-4">
+                {activeTab === 'overview' && (
+                    <>
+                        {/* Compact Stats Grid */}
+                        <div className="grid grid-cols-2 gap-3">
+                            {/* TDS Card */}
+                            <div className="p-3 rounded-2xl nested-glass border border-white/5 shadow-lg">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-1 px-1.5 rounded-md bg-indigo-500/10 border border-indigo-500/20">
+                                            <Droplets className="w-3.5 h-3.5" style={{ color: theme.chart.tds.stroke }} />
+                                        </div>
+                                        <span className="text-[9px] font-black uppercase tracking-[0.15em]" style={{ color: theme.text.muted }}>TDS</span>
+                                    </div>
+                                    {tdsTrend !== 0 && (
+                                        <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-black" 
+                                            style={{ background: tdsTrend > 0 ? theme.status.critical.bg : theme.status.online.bg, color: tdsTrend > 0 ? theme.status.critical.color : theme.status.online.color }}>
+                                            {tdsTrend > 0 ? <TrendingUp className="w-2 h-2" /> : <TrendingDown className="w-2 h-2" />}
+                                            {Math.abs(tdsTrend)}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-baseline gap-1 mt-1">
+                                    <span className="text-2xl font-black font-mono tracking-tighter" style={{ color: ppmStatus.color }}>{device.latest_tds || '--'}</span>
+                                    <span className="text-[10px] font-bold text-muted-foreground uppercase">ppm</span>
+                                </div>
+                            </div>
+
+                            {/* Temp Card */}
+                            <div className="p-3 rounded-2xl nested-glass border border-white/5 shadow-lg">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-1 px-1.5 rounded-md bg-orange-500/10 border border-orange-500/20">
+                                            <Thermometer className="w-3.5 h-3.5" style={{ color: theme.chart.temp.stroke }} />
+                                        </div>
+                                        <span className="text-[9px] font-black uppercase tracking-[0.15em]" style={{ color: theme.text.muted }}>Temp</span>
+                                    </div>
+                                    {tempTrend !== 0 && (
+                                        <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-black" 
+                                            style={{ background: 'rgba(251, 146, 60, 0.1)', color: theme.chart.temp.stroke }}>
+                                            {tempTrend > 0 ? <TrendingUp className="w-2 h-2" /> : <TrendingDown className="w-2 h-2" />}
+                                            {Math.abs(tempTrend)}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-baseline gap-1 mt-1">
+                                    <span className="text-2xl font-black font-mono tracking-tighter" style={{ color: theme.chart.temp.stroke }}>{device.latest_temperature || '--'}</span>
+                                    <span className="text-[10px] font-bold text-muted-foreground uppercase">°C</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Analysis Indicators */}
+                        <div className="p-4 rounded-2xl nested-glass border border-white/5">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2">
+                                    <Activity className="w-4 h-4 text-primary" />
+                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-foreground">Spectral Analysis</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span className="text-[9px] font-bold text-muted-foreground uppercase">Live Channel</span>
+                                </div>
+                            </div>
+                            
+                            <div className={cn(
+                                "w-full",
+                                isPortrait ? "h-[120px]" : "h-[160px]"
+                            )}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -25, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="tdsGradMap" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor={theme.chart.tds.stroke} stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor={theme.chart.tds.stroke} stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke={theme.border.subtle} vertical={false} />
+                                        <XAxis dataKey="time" hide />
+                                        <YAxis tick={{ fontSize: 9, fill: theme.text.muted, fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+                                        <Tooltip content={<CustomChartTooltip type="tds" theme={theme} />} />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="tds"
+                                            stroke={theme.chart.tds.stroke}
+                                            strokeWidth={2.5}
+                                            fill="url(#tdsGradMap)"
+                                            animationDuration={1000}
+                                        />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {activeTab === 'history' && (
+                    <div className="space-y-2 max-h-[350px] overflow-y-auto px-1 custom-scrollbar">
+                        {chartData.slice().reverse().map((data, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-3.5 rounded-xl nested-glass border border-white/5 backdrop-blur-3xl transition-transform active:scale-[0.98]">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest leading-none mb-1">{data.time}</span>
+                                    <span className="text-[9px] font-bold text-muted-foreground/60">Node telemetry sync</span>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-1.5">
+                                        <Droplets className="w-3 h-3" style={{ color: theme.chart.tds.stroke }} />
+                                        <span className="text-sm font-black font-mono text-foreground">{data.tds}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <Thermometer className="w-3 h-3" style={{ color: theme.chart.temp.stroke }} />
+                                        <span className="text-sm font-black font-mono text-foreground">{data.temp}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 pb-6 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        Refreshed: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.15em] border shadow-sm"
+                    style={{ background: ppmStatus.bg, color: ppmStatus.color, borderColor: `${ppmStatus.color}40` }}>
+                    {ppmStatus.label} Logic
+                </div>
+            </div>
+        </GlassCard>
+    )
+
+    if (isMobile) {
+        return (
+            <Sheet open={true} onOpenChange={(open) => !open && onClose()}>
+                <SheetContent side="bottom" className="p-0 h-[80vh] rounded-t-[32px] border-t-white/10 glass-system-parent backdrop-blur-3xl overflow-hidden focus-visible:ring-0">
+                    <div className="h-full overflow-y-auto custom-scrollbar">
+                        {panelContent}
+                    </div>
+                </SheetContent>
+            </Sheet>
+        )
     }
 
     return (
@@ -261,221 +460,15 @@ function DevicePanel({
                 left: position.x,
                 top: position.y,
                 cursor: isDragging ? 'grabbing' : 'grab',
-                boxShadow: `0 0 60px rgba(0, 0, 0, 0.4), 0 0 30px ${ppmStatus.glow}`,
+                boxShadow: `0 0 60px rgba(0, 0, 0, 0.4), 0 0 30px ${ppmStatus.color}20`,
             }}
             onMouseDown={handleMouseDown}
         >
-            <GlassCard size="md" className="p-0 border-0 h-full w-full">
-            {/* Header */}
-            <div className="relative p-4" style={{ borderBottom: `1px solid ${theme.border.subtle}` }}>
-                <div className="absolute top-0 left-0 right-0 h-[2px]"
-                    style={{ background: `linear-gradient(90deg, transparent, ${ppmStatus.color}, transparent)` }} />
-
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="relative w-11 h-11 rounded-xl flex items-center justify-center"
-                            style={{ background: ppmStatus.bg, border: `1px solid ${ppmStatus.color}30` }}>
-                            {device.status === 'offline' ? (
-                                <WifiOff className="w-5 h-5" style={{ color: ppmStatus.color }} />
-                            ) : (
-                                <Wifi className="w-5 h-5" style={{ color: ppmStatus.color }} />
-                            )}
-                            {device.status !== 'offline' && (
-                                <div className="absolute inset-0 rounded-xl animate-ping opacity-20"
-                                    style={{ background: ppmStatus.color }} />
-                            )}
-                        </div>
-
-                        <div>
-                            <h3 className="text-base font-semibold text-foreground">{getDeviceDisplayName(device)}</h3>
-                            <p className="text-[11px] flex items-center gap-1" style={{ color: theme.text.muted }}>
-                                <MapPin className="w-3 h-3" /> {device.location_name || 'No location set'}
-                            </p>
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={handleClose}
-                        className="p-2 rounded-lg transition-all duration-200 hover:scale-110 hover:bg-white/5"
-                        style={{ background: theme.bg.tertiary }}
-                    >
-                        <X className="w-4 h-4" style={{ color: theme.text.muted }} />
-                    </button>
-                </div>
-            </div>
-
-            {/* Tab Switcher */}
-            <div className="flex p-2 gap-1 mx-4 mt-3 rounded-lg" style={{ background: theme.bg.tertiary }}>
-                {['overview', 'history'].map((tab) => (
-                    <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab as any)}
-                        className="flex-1 py-2 rounded-md text-xs font-medium transition-all duration-200"
-                        style={{
-                            background: activeTab === tab ? theme.bg.secondary : 'transparent',
-                            color: activeTab === tab ? theme.text.primary : theme.text.muted,
-                            border: activeTab === tab ? `1px solid ${theme.border.accent}` : '1px solid transparent'
-                        }}
-                    >
-                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                    </button>
-                ))}
-            </div>
-
-            {/* Content */}
-            <div className="p-4 space-y-3">
-                {activeTab === 'overview' && (
-                    <>
-                        {/* Compact Stats Grid */}
-                        <div className="grid grid-cols-2 gap-2">
-                            {/* TDS Card - Smaller */}
-                            <div className="p-3 rounded-xl nested-glass">
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <div className="flex items-center gap-1.5">
-                                        <Droplets className="w-3.5 h-3.5" style={{ color: theme.chart.tds.stroke }} />
-                                        <span className="text-[9px] uppercase tracking-wider" style={{ color: theme.text.muted }}>TDS</span>
-                                    </div>
-                                    {tdsTrend !== 0 && (
-                                        <div className="flex items-center gap-0.5" style={{ color: tdsTrend > 0 ? theme.status.critical.color : theme.status.online.color }}>
-                                            {tdsTrend > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                                            <span className="text-[8px]">{Math.abs(tdsTrend)}</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-xl font-bold font-mono" style={{ color: ppmStatus.color }}>{device.latest_tds || '--'}</span>
-                                    <span className="text-[10px]" style={{ color: theme.text.muted }}>ppm</span>
-                                </div>
-                            </div>
-
-                            {/* Temp Card - Smaller */}
-                            <div className="p-3 rounded-xl nested-glass">
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <div className="flex items-center gap-1.5">
-                                        <Thermometer className="w-3.5 h-3.5" style={{ color: theme.chart.temp.stroke }} />
-                                        <span className="text-[9px] uppercase tracking-wider" style={{ color: theme.text.muted }}>Temp</span>
-                                    </div>
-                                    {tempTrend !== 0 && (
-                                        <div className="flex items-center gap-0.5" style={{ color: tempTrend > 0 ? theme.chart.temp.stroke : theme.chart.tds.stroke }}>
-                                            {tempTrend > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                                            <span className="text-[8px]">{Math.abs(tempTrend)}</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-xl font-bold font-mono" style={{ color: theme.chart.temp.stroke }}>{device.latest_temperature || '--'}</span>
-                                    <span className="text-[10px]" style={{ color: theme.text.muted }}>°C</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* TDS Chart */}
-                        <div className="p-3 rounded-xl nested-glass">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: theme.chart.tds.stroke }}>
-                                    TDS History (24H)
-                                </span>
-                                <Activity className="w-3 h-3" style={{ color: theme.chart.tds.stroke }} />
-                            </div>
-                            <div className="h-[70px]">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                                        <defs>
-                                            <linearGradient id="tdsGradPanel" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor={theme.chart.tds.stroke} stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor={theme.chart.tds.stroke} stopOpacity={0} />
-                                            </linearGradient>
-                                        </defs>
-                                        <CartesianGrid strokeDasharray="3 3" stroke={theme.border.subtle} vertical={false} />
-                                        <XAxis dataKey="time" tick={false} axisLine={false} />
-                                        <YAxis tick={{ fontSize: 8, fill: theme.text.muted }} axisLine={false} tickLine={false} />
-                                        <Tooltip content={<CustomChartTooltip type="tds" theme={theme} />} />
-                                        <Area
-                                            type="monotone"
-                                            dataKey="tds"
-                                            stroke={theme.chart.tds.stroke}
-                                            strokeWidth={2}
-                                            fill="url(#tdsGradPanel)"
-                                            animationDuration={600}
-                                        />
-                                    </AreaChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-
-                        {/* Temp Chart */}
-                        <div className="p-3 rounded-xl nested-glass">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: theme.chart.temp.stroke }}>
-                                    Temp History (24H)
-                                </span>
-                                <Activity className="w-3 h-3" style={{ color: theme.chart.temp.stroke }} />
-                            </div>
-                            <div className="h-[70px]">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke={theme.border.subtle} vertical={false} />
-                                        <XAxis dataKey="time" tick={false} axisLine={false} />
-                                        <YAxis tick={{ fontSize: 8, fill: theme.text.muted }} axisLine={false} tickLine={false} domain={['dataMin - 2', 'dataMax + 2']} />
-                                        <Tooltip content={<CustomChartTooltip type="temp" theme={theme} />} />
-                                        <Line
-                                            type="monotone"
-                                            dataKey="temp"
-                                            stroke={theme.chart.temp.stroke}
-                                            strokeWidth={2}
-                                            dot={false}
-                                            animationDuration={600}
-                                        />
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                    </>
-                )}
-
-                {activeTab === 'history' && (
-                    <div className="space-y-2 max-h-[320px] overflow-y-auto custom-scrollbar">
-                        {chartData.slice().reverse().map((data, idx) => (
-                                <div
-                                    key={idx}
-                                    className="flex items-center justify-between p-3 rounded-lg transition-all duration-200 hover:scale-[1.01] nested-glass"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="text-[11px]" style={{ color: theme.text.muted }}>{data.time}</div>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex items-center gap-1">
-                                            <Droplets className="w-3 h-3" style={{ color: theme.chart.tds.stroke }} />
-                                            <span className="text-sm font-mono" style={{ color: theme.text.secondary }}>{data.tds} ppm</span>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <Thermometer className="w-3 h-3" style={{ color: theme.chart.temp.stroke }} />
-                                            <span className="text-sm font-mono" style={{ color: theme.text.secondary }}>{data.temp}°C</span>
-                                        </div>
-                                    </div>
-                                </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {/* Footer */}
-            <div className="px-4 pb-4 flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-[10px]" style={{ color: theme.text.muted }}>
-                    <Clock className="w-3 h-3" />
-                    Updated: {new Date().toLocaleTimeString()}
-                </div>
-                <div
-                    className="px-3 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider"
-                    style={{ background: ppmStatus.bg, color: ppmStatus.color, border: `1px solid ${ppmStatus.color}30` }}
-                >
-                    {ppmStatus.label}
-                </div>
-            </div>
-            </GlassCard>
+            {panelContent}
         </motion.div>
     )
 }
+
 
 
 export default function MapPage() {
@@ -509,7 +502,7 @@ export default function MapPage() {
             const connectivity = getConnectivityStatus(device.last_reading_at || device.last_seen_at)
             
             // Default to connectivity status
-            let status: 'online' | 'warning' | 'critical' | 'offline' = connectivity
+            let status: 'online' | 'critical' | 'offline' = connectivity
 
             // If online, further refine based on TDS value
             if (connectivity === 'online' && device.latest_tds !== undefined) {
@@ -534,7 +527,7 @@ export default function MapPage() {
         if (s !== 'offline') acc.online_connected++
         
         return acc
-    }, { online: 0, warning: 0, critical: 0, offline: 0, online_connected: 0 }), [devices])
+    }, { online: 0, critical: 0, offline: 0, online_connected: 0 }), [devices])
 
     // Update 'online' to match connectivity as requested by user
     const finalStats = useMemo(() => ({
@@ -577,121 +570,56 @@ export default function MapPage() {
     const labelTileUrl = 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png'
 
     return (
-        <div className="relative h-screen overflow-hidden" style={{ minHeight: '600px', background: 'transparent' }}>
+        <div className="relative h-[100dvh] overflow-hidden" style={{ minHeight: '600px', background: 'transparent' }}>
 
 
-            <div className="absolute top-28 left-6 z-[500] w-[320px] max-h-[calc(100%-140px)] flex flex-col pointer-events-none">
+            {/* Desktop Sidebar (Left) */}
+            <div className="absolute top-28 left-6 z-[500] w-[320px] max-h-[calc(100%-140px)] hidden lg:flex flex-col pointer-events-none">
                 <motion.div 
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     className="flex flex-col h-full rounded-[24px] pointer-events-auto"
                 >
                     <GlassCard size="md" className="flex flex-col h-full p-0 border-0">
-                    {/* Panel Header */}
-                    <div className="p-5 flex flex-col gap-4 border-b border-white/10">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                                    style={{ background: `linear-gradient(135deg, ${theme.status.online.color}, ${theme.chart.tds.stroke})`, boxShadow: `0 8px 20px -5px ${theme.status.online.color}60` }}>
-                                    <MapPin className="w-5 h-5 text-white" />
-                                </div>
-                                <div className="flex flex-col">
-                                    <h1 className="text-sm font-black text-foreground tracking-tight leading-none">Map View</h1>
-                                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mt-1">Infrastructure</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Search Bar */}
-                        <div className="relative group">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                            <input
-                                type="text"
-                                placeholder="Find a device..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-11 pr-4 py-3 rounded-xl text-xs font-medium outline-none glass-system-inset border-0 focus:ring-1 focus:ring-primary/30 text-foreground placeholder:text-muted-foreground/70"
-                            />
-                        </div>
-
-                        {/* Stats Grid */}
-                        <div className="grid grid-cols-4 gap-2">
-                            {[
-                                { key: 'online', label: 'ON', value: finalStats.online, ...theme.status.online },
-                                { key: 'warning', label: 'WARN', value: finalStats.warning, ...theme.status.warning },
-                                { key: 'critical', label: 'CRIT', value: finalStats.critical, ...theme.status.critical },
-                                { key: 'offline', label: 'OFF', value: finalStats.offline, ...theme.status.offline },
-                            ].map(s => (
-                                <button
-                                    key={s.key}
-                                    onClick={() => setStatusFilter(statusFilter === s.key ? 'all' : s.key as FilterType)}
-                                    className={cn(
-                                        "group flex flex-col items-center p-2 rounded-xl transition-all duration-300 relative border border-transparent",
-                                        statusFilter === s.key ? "glass-system-child border-white/20 shadow-lg scale-105" : "hover:bg-white/5"
-                                    )}
-                                    style={{
-                                        background: statusFilter === s.key ? s.bg : undefined,
-                                    }}
-                                >
-                                    <div className="w-1.5 h-1.5 rounded-full mb-1.5 transition-transform group-hover:scale-125" style={{ background: s.color, boxShadow: `0 0 10px ${s.color}` }} />
-                                    <span className="text-sm font-black text-foreground leading-none">{s.value}</span>
-                                    <span className="text-[7px] font-bold text-muted-foreground mt-1 group-hover:text-primary transition-colors">{s.label}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Device List Section */}
-                    <div className="flex-1 overflow-hidden flex flex-col glass-system-child border-0 rounded-none border-t border-white/10">
-                        <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-muted-foreground/80">
-                            <span>Active Nodes</span>
-                            <span className="text-primary">{filteredDevices.length} Connected</span>
-                        </div>
-                        
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                            {filteredDevices.map(device => {
-                                const ppmStatus = getPpmStatus(device.latest_tds, device.status || 'offline', theme)
-                                const isSelected = selectedDevice?.id === device.id
-
-                                return (
-                                    <button
-                                        key={device.id}
-                                        onClick={() => setSelectedDevice(device)}
-                                        className="w-full flex items-center justify-between p-3 rounded-xl transition-all duration-300 group hover:bg-white/10 border border-transparent"
-                                        style={{
-                                            background: isSelected ? `${ppmStatus.color}15` : 'transparent',
-                                            borderColor: isSelected ? `${ppmStatus.color}30` : 'transparent'
-                                        }}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:rotate-12 glass-system-micro border-white/10"
-                                                style={{ background: ppmStatus.bg }}>
-                                                <Droplets className="w-4.5 h-4.5" style={{ color: ppmStatus.color }} />
-                                            </div>
-                                            <div className="min-w-0 flex flex-col items-start text-left">
-                                                <span className="text-xs font-bold text-foreground truncate max-w-[140px] leading-tight">{getDeviceDisplayName(device)}</span>
-                                                <span className="text-[9px] text-muted-foreground font-medium truncate max-w-[140px] mt-0.5">{device.location_name || 'GIS Node'}</span>
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col items-end gap-1">
-                                            <span className="text-xs font-black font-mono tracking-tighter" style={{ color: ppmStatus.color }}>
-                                                {device.latest_tds || '0'}
-                                            </span>
-                                            <div className="w-1.5 h-1.5 rounded-full" style={{ background: ppmStatus.color }} />
-                                        </div>
-                                    </button>
-                                )
-                            })}
-                            {filteredDevices.length === 0 && (
-                                <div className="py-20 text-center opacity-80">
-                                    <Search className="w-8 h-8 mx-auto mb-2" />
-                                    <p className="text-xs font-medium italic">No matches found</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                        <MapSidebarContent 
+                            theme={theme}
+                            searchQuery={searchQuery}
+                            setSearchQuery={setSearchQuery}
+                            statusFilter={statusFilter}
+                            setStatusFilter={setStatusFilter}
+                            finalStats={finalStats}
+                            filteredDevices={filteredDevices}
+                            selectedDevice={selectedDevice}
+                            setSelectedDevice={setSelectedDevice}
+                        />
                     </GlassCard>
                 </motion.div>
+            </div>
+
+            {/* Mobile Nodes Drawer Trigger (Bottom Left) */}
+            <div className="lg:hidden absolute bottom-28 left-6 z-[500]">
+                <Sheet>
+                    <SheetTrigger asChild>
+                        <button className="flex items-center gap-2 px-5 py-3 rounded-2xl glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl active:scale-95 transition-all">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                            <span className="text-xs font-black uppercase tracking-widest text-foreground">Nodes</span>
+                            <List className="w-4 h-4 text-muted-foreground ml-1" />
+                        </button>
+                    </SheetTrigger>
+                    <SheetContent side="left" className="p-0 w-[85%] max-w-[400px] border-r-white/10 glass-system-parent backdrop-blur-3xl">
+                        <MapSidebarContent 
+                            theme={theme}
+                            searchQuery={searchQuery}
+                            setSearchQuery={setSearchQuery}
+                            statusFilter={statusFilter}
+                            setStatusFilter={setStatusFilter}
+                            finalStats={finalStats}
+                            filteredDevices={filteredDevices}
+                            selectedDevice={selectedDevice}
+                            setSelectedDevice={setSelectedDevice}
+                        />
+                    </SheetContent>
+                </Sheet>
             </div>
 
 

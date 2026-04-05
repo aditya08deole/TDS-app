@@ -24,19 +24,18 @@ export default defineConfig(({ mode }) => {
                     const swPath = path.resolve(__dirname, 'dist/firebase-messaging-sw.js');
                     if (fs.existsSync(swPath)) {
                         let content = fs.readFileSync(swPath, 'utf8');
-                        const config = {
-                            apiKey: env.VITE_FIREBASE_API_KEY || '',
-                            authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || '',
-                            projectId: env.VITE_FIREBASE_PROJECT_ID || '',
-                            storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || '',
-                            messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-                            appId: env.VITE_FIREBASE_APP_ID || '',
-                            measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || ''
+                        // Replace placeholders with format __FIREBASE_KEY_NAME__
+                        const placeholders = {
+                            '__FIREBASE_API_KEY__': env.VITE_FIREBASE_API_KEY || '',
+                            '__FIREBASE_AUTH_DOMAIN__': env.VITE_FIREBASE_AUTH_DOMAIN || '',
+                            '__FIREBASE_PROJECT_ID__': env.VITE_FIREBASE_PROJECT_ID || '',
+                            '__FIREBASE_STORAGE_BUCKET__': env.VITE_FIREBASE_STORAGE_BUCKET || '',
+                            '__FIREBASE_MESSAGING_SENDER_ID__': env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+                            '__FIREBASE_APP_ID__': env.VITE_FIREBASE_APP_ID || '',
+                            '__FIREBASE_MEASUREMENT_ID__': env.VITE_FIREBASE_MEASUREMENT_ID || ''
                         };
                         
-                        // Replace placeholders
-                        Object.entries(config).forEach(([key, value]) => {
-                            const placeholder = `__${key.toUpperCase()}__`;
+                        Object.entries(placeholders).forEach(([placeholder, value]) => {
                             content = content.split(placeholder).join(value);
                         });
                         
@@ -98,11 +97,11 @@ export default defineConfig(({ mode }) => {
                     ]
                 },
                 manifest: {
-                    name: 'EvaraTDS - Water Quality Monitor',
+                    name: 'EvaraTDS Dashboard',
                     short_name: 'EvaraTDS',
-                    description: 'Real-time water quality monitoring and infrastructure management system',
-                    theme_color: '#0f172a',
-                    background_color: '#0f172a',
+                    description: 'Professional water quality monitoring for infrastructure',
+                    theme_color: '#0a0c10',
+                    background_color: '#0a0c10',
                     display: 'standalone',
                     orientation: 'portrait',
                     scope: '/',

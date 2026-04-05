@@ -6,7 +6,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "cd admin_dashboard && npm install && npm run build",
+    "build": "cd admin_dashboard && npm install --include=dev && npm run build",
     "start": "cd admin_dashboard && npm run start"
   }
 }

@@ -166,7 +166,7 @@ export function useAllDevicesThingSpeakData(devices: Device[]) {
                 latest_voltage: latest?.voltage,
                 last_reading_at: latest?.timestamp,
                 is_offline: getConnectivityStatus(latest?.timestamp) === 'offline'
-            } as any
+            } as EnrichedDevice
         })
     }, [devices, queries])
 

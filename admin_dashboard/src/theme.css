@@ -145,14 +145,22 @@
 
 /* Master Glass Tier 1.5: Premium Translucent Surface (Panels, Drawers) */
 .glass-system-solid {
-    background: rgba(15, 15, 20, 0.35) !important; /* Exact match to device card glass */
+    background: rgba(255, 255, 255, 0.25) !important; /* Light mode: translucent white */
+    backdrop-filter: blur(45px) saturate(200%) brightness(105%) !important;
+    -webkit-backdrop-filter: blur(45px) saturate(200%) brightness(105%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.35) !important;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.5) !important;
+    position: relative;
+    overflow: hidden;
+    z-index: 9999 !important;
+}
+
+.dark .glass-system-solid {
+    background: rgba(15, 15, 20, 0.35) !important; /* Dark mode: translucent dark */
     backdrop-filter: blur(55px) saturate(230%) brightness(120%) !important;
     -webkit-backdrop-filter: blur(55px) saturate(230%) brightness(120%) !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5) !important;
-    position: relative;
-    overflow: hidden;
-    z-index: 9999 !important;
 }
 
 /* Master Glass Tier 2: Child Elements (Inner Sections, Nested Cards, Buttons) */

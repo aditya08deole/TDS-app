@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getMessaging, isSupported, type Messaging } from "firebase/messaging";
 
 // Utility to safely access environment variables
 const getEnv = (key: string): string => {
@@ -22,8 +23,10 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
+import { type Analytics } from "firebase/analytics";
+
 // Analytics - guarded: can fail on localhost or in non-browser environments
-let analytics: any = null;
+let analytics: Analytics | null = null;
 try {
   if (typeof window !== 'undefined') {
     import('firebase/analytics').then(({ getAnalytics }) => {
@@ -40,5 +43,17 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-export { app, analytics, auth, db, storage };
+// Initialize messaging with a safety check
+let messaging: Messaging | null = null;
+if (typeof window !== 'undefined') {
+  isSupported().then(supported => {
+    if (supported) {
+      messaging = getMessaging(app);
+    }
+  }).catch(err => {
+    console.warn('FCM isSupported check failed:', err);
+  });
+}
+
+export { app, analytics, auth, db, storage, messaging };
 export default app;

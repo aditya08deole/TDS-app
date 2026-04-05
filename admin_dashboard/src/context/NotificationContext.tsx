@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
-import { db } from '../lib/firebase'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { db, messaging } from '../lib/firebase'
+import { collection, addDoc, serverTimestamp, query, where, getDocs, limit } from 'firebase/firestore'
 import { useAuth } from './AuthContext'
+import { onMessage, getToken } from 'firebase/messaging'
+import { toast } from 'sonner'
 
 const VAPID_PUBLIC_KEY = (import.meta.env['VITE_VAPID_PUBLIC_KEY'] as string) || "";
 
@@ -27,28 +29,15 @@ export const useNotification = () => {
     return context
 }
 
-function urlBase64ToUint8Array(base64String: string) {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4)
-    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/')
-    const rawData = window.atob(base64)
-    const outputArray = new Uint8Array(rawData.length)
-    for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i)
-    }
-    return outputArray
-}
-
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user } = useAuth()
-    const [soundEnabled, setSoundEnabled] = useState(() => {
-        return localStorage.getItem('alert-sound') !== 'false'
-    })
-    const [soundProfile, setSoundProfileState] = useState(() => {
-        return localStorage.getItem('alert-sound-profile') || 'classic'
-    })
+    const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('alert-sound') !== 'false')
+    const [soundProfile, setSoundProfileState] = useState(() => localStorage.getItem('alert-sound-profile') || 'classic')
     const [isSubscribed, setIsSubscribed] = useState(false)
     const [loading, setLoading] = useState(false)
-    const [permission, setPermission] = useState<NotificationPermission>('default')
+    const [permission, setPermission] = useState<NotificationPermission>(
+        typeof Notification !== 'undefined' ? Notification.permission : 'default'
+    )
 
     const setSoundProfile = useCallback((profile: string) => {
         setSoundProfileState(profile)
@@ -57,106 +46,91 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const playSound = useCallback((type: 'success' | 'warning' | 'error' = 'success') => {
         if (!soundEnabled) return
-
         try {
-            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+            const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+            if (!AudioContextClass) return;
+            const audioContext = new AudioContextClass();
             const oscillator = audioContext.createOscillator()
             const gainNode = audioContext.createGain()
-
-            oscillator.connect(gainNode)
-            gainNode.connect(audioContext.destination)
-
+            oscillator.connect(gainNode); gainNode.connect(audioContext.destination)
             const now = audioContext.currentTime
 
             if (soundProfile === 'modern') {
-                // Modern Chime - Soft sine waves
                 oscillator.type = 'sine'
                 if (type === 'error') {
-                    oscillator.frequency.setValueAtTime(440, now)
-                    oscillator.frequency.exponentialRampToValueAtTime(110, now + 0.5)
-                    gainNode.gain.setValueAtTime(0.3, now)
-                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5)
-                    oscillator.start(now)
-                    oscillator.stop(now + 0.5)
+                    oscillator.frequency.setValueAtTime(440, now); oscillator.frequency.exponentialRampToValueAtTime(110, now + 0.5)
+                    gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5)
+                    oscillator.start(now); oscillator.stop(now + 0.5)
                 } else {
-                    oscillator.frequency.setValueAtTime(880, now)
-                    oscillator.frequency.exponentialRampToValueAtTime(440, now + 0.3)
-                    gainNode.gain.setValueAtTime(0.2, now)
-                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3)
-                    oscillator.start(now)
-                    oscillator.stop(now + 0.3)
+                    oscillator.frequency.setValueAtTime(880, now); oscillator.frequency.exponentialRampToValueAtTime(440, now + 0.3)
+                    gainNode.gain.setValueAtTime(0.2, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3)
+                    oscillator.start(now); oscillator.stop(now + 0.3)
                 }
             } else if (soundProfile === 'digital') {
-                // Digital Pulse - Square waves
                 oscillator.type = 'square'
                 if (type === 'error') {
-                    oscillator.frequency.setValueAtTime(150, now)
-                    oscillator.frequency.setValueAtTime(100, now + 0.1)
+                    oscillator.frequency.setValueAtTime(150, now); oscillator.frequency.setValueAtTime(100, now + 0.1)
                     gainNode.gain.value = 0.2
-                    oscillator.start(now)
-                    oscillator.stop(now + 0.2)
+                    oscillator.start(now); oscillator.stop(now + 0.2)
                 } else {
-                    oscillator.frequency.setValueAtTime(1200, now)
-                    gainNode.gain.setValueAtTime(0.1, now)
+                    oscillator.frequency.setValueAtTime(1200, now); gainNode.gain.setValueAtTime(0.1, now)
                     gainNode.gain.setValueAtTime(0, now + 0.05)
-                    oscillator.start(now)
-                    oscillator.stop(now + 0.05)
+                    oscillator.start(now); oscillator.stop(now + 0.05)
                 }
             } else if (soundProfile === 'sonar') {
-                // Sonar - High pitch ping
-                oscillator.type = 'sine'
-                oscillator.frequency.setValueAtTime(2000, now)
-                gainNode.gain.setValueAtTime(0.3, now)
-                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1)
-                oscillator.start(now)
-                oscillator.stop(now + 1)
+                oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(2000, now)
+                gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1)
+                oscillator.start(now); oscillator.stop(now + 1)
             } else {
-                // Evara Classic (Default)
                 if (type === 'error') {
-                    oscillator.type = 'square'
-                    oscillator.frequency.setValueAtTime(1000, now)
-                    oscillator.frequency.setValueAtTime(800, now + 0.1)
-                    oscillator.frequency.setValueAtTime(1000, now + 0.2)
-                    gainNode.gain.value = 0.4
-                    oscillator.start(now)
-                    oscillator.stop(now + 0.3)
+                    oscillator.type = 'square'; oscillator.frequency.setValueAtTime(1000, now)
+                    oscillator.frequency.setValueAtTime(800, now + 0.1); oscillator.frequency.setValueAtTime(1000, now + 0.2)
+                    gainNode.gain.value = 0.4; oscillator.start(now); oscillator.stop(now + 0.3)
                 } else if (type === 'warning') {
-                    oscillator.type = 'sine'
-                    oscillator.frequency.value = 800
-                    gainNode.gain.value = 0.3
-                    oscillator.start(now)
-                    oscillator.stop(now + 0.2)
+                    oscillator.type = 'sine'; oscillator.frequency.value = 800; gainNode.gain.value = 0.3
+                    oscillator.start(now); oscillator.stop(now + 0.2)
                 } else {
-                    oscillator.type = 'sine'
-                    oscillator.frequency.setValueAtTime(600, now)
-                    oscillator.frequency.linearRampToValueAtTime(800, now + 0.1)
-                    gainNode.gain.value = 0.2
-                    oscillator.start(now)
-                    oscillator.stop(now + 0.15)
+                    oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(600, now)
+                    oscillator.frequency.linearRampToValueAtTime(800, now + 0.1); gainNode.gain.value = 0.2
+                    oscillator.start(now); oscillator.stop(now + 0.15)
                 }
             }
-        } catch (err) {
-            console.error('Failed to play sound:', err)
-        }
+        } catch (err) { console.error('Failed to play sound:', err) }
     }, [soundEnabled, soundProfile])
 
     const testSound = useCallback(() => {
         playSound('success')
+        toast.success('Sound Diagnostic', { description: `Profile "${soundProfile}" is playing correctly.` })
+    }, [playSound, soundProfile])
+
+    useEffect(() => {
+        if (!messaging) return
+        const unsubscribe = onMessage(messaging, (payload) => {
+            console.log('🔔 Foreground Message:', payload)
+            toast.error(payload.notification?.title || 'System Alert', {
+                description: payload.notification?.body,
+                duration: 5000,
+                action: {
+                    label: 'View',
+                    onClick: () => {
+                        window.focus()
+                        if (payload.data?.url) window.location.href = payload.data.url
+                    }
+                }
+            })
+            playSound(payload.data?.severity === 'critical' ? 'error' : 'warning')
+        })
+        return () => unsubscribe()
     }, [playSound])
 
     const testNotification = useCallback(() => {
-        if (!('Notification' in window)) {
-            alert('This browser does not support desktop notifications')
-            return
-        }
-
-        if (Notification.permission === 'granted') {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             new Notification('🔔 EvaraTDS Test Notification', {
-                body: 'Your system notification system is working correctly!',
+                body: 'Your notification system is working correctly!',
                 icon: '/pwa-192x192.png'
             })
         } else {
-            alert(`Notification permission is currently: ${Notification.permission}. Please enable it in browser settings.`)
+            toast('Notifications not granted', { description: 'Please subscribe/enable from settings.' })
         }
     }, [])
 
@@ -164,38 +138,32 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setSoundEnabled(prev => {
             const newValue = !prev
             localStorage.setItem('alert-sound', String(newValue))
-            // Play a small confirmation sound if enabling
-            if (newValue) {
-                // We can't use playSound yet because state hasn't updated, 
-                // but we can manually trigger a small beep or just skip it.
-            }
             return newValue
         })
     }, [])
 
     useEffect(() => {
         const checkSubscription = async () => {
-            if (!user) return
-            if ('serviceWorker' in navigator) {
-                const registration = await navigator.serviceWorker.ready
-                const subscription = await registration.pushManager.getSubscription()
-                setIsSubscribed(!!subscription)
+            if (!user || !messaging) return
+            try {
+                if ('serviceWorker' in navigator) {
+                    const registration = await navigator.serviceWorker.ready
+                    const subscription = await registration.pushManager.getSubscription()
+                    setIsSubscribed(!!subscription)
+                }
+            } catch (err) {
+                console.warn('Check subscription failed:', err)
             }
         }
-
-        if ('Notification' in window) {
+        if (typeof Notification !== 'undefined') {
             setPermission(Notification.permission)
             checkSubscription()
         }
     }, [user])
 
     const subscribe = async () => {
-        if (!user) return
-
-        if (!('Notification' in window)) {
-            console.error('This browser does not support desktop notification')
-            return
-        }
+        if (!user || !messaging) return
+        if (typeof Notification === 'undefined') return
 
         if (Notification.permission === 'default') {
             const result = await Notification.requestPermission()
@@ -204,35 +172,46 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
 
         if (!VAPID_PUBLIC_KEY) {
-            console.warn('Missing VAPID key, only basic notifications enabled')
+            toast.error('VAPID Key Missing', { description: 'Contact admin to configure push keys.' })
             return
         }
 
         setLoading(true)
         try {
-            const registration = await navigator.serviceWorker.ready
-            const subscription = await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-            })
+            // 1. Get FCM Token (Industry Grade)
+            const token = await getToken(messaging, { vapidKey: VAPID_PUBLIC_KEY })
+            
+            if (!token) {
+                throw new Error('No registration token available.')
+            }
 
-            const p256dh = subscription.getKey('p256dh')
-            const auth = subscription.getKey('auth')
-
-            if (!p256dh || !auth) throw new Error('Missing keys')
-
-            await addDoc(collection(db, 'notification_subscriptions'), {
-                user_id: user.uid,
-                endpoint: subscription.endpoint,
-                p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(p256dh) as unknown as number[])),
-                auth: btoa(String.fromCharCode.apply(null, new Uint8Array(auth) as unknown as number[])),
-                created_at: serverTimestamp()
-            })
-
-            setIsSubscribed(true)
-            setPermission('granted')
+            // 2. DEDUPLICATION: Check if this token already exists for this user
+            const q = query(
+                collection(db, 'notification_subscriptions'),
+                where('user_id', '==', user.uid),
+                where('token', '==', token),
+                limit(1)
+            )
+            const existing = await getDocs(q)
+            
+            if (existing.empty) {
+                await addDoc(collection(db, 'notification_subscriptions'), {
+                    user_id: user.uid,
+                    token: token,
+                    platform: 'web_pwa',
+                    userAgent: navigator.userAgent,
+                    created_at: serverTimestamp(),
+                    last_seen_at: serverTimestamp()
+                })
+                setIsSubscribed(true)
+                toast.success('Real-time alerts enabled!', { description: 'You will now receive push notifications.' })
+            } else {
+                setIsSubscribed(true)
+                toast('Already subscribed', { description: 'This device is already configured for alerts.' })
+            }
         } catch (error) {
             console.error('Subscription error:', error)
+            toast.error('Subscription failed', { description: 'Please check your browser notification permissions.' })
         } finally {
             setLoading(false)
         }
@@ -240,17 +219,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     return (
         <NotificationContext.Provider value={{
-            soundEnabled,
-            toggleSound,
-            isSubscribed,
-            permission,
-            loading,
-            subscribe,
-            soundProfile,
-            setSoundProfile,
-            playSound,
-            testSound,
-            testNotification
+            soundEnabled, toggleSound, isSubscribed, permission, loading,
+            subscribe, soundProfile, setSoundProfile, playSound, testSound, testNotification
         }}>
             {children}
         </NotificationContext.Provider>

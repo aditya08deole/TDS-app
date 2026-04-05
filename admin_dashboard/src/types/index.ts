@@ -33,12 +33,16 @@ export type Device = {
     temperature_field_number?: number
     voltage_field_number?: number
 
-    status: 'online' | 'offline' | 'warning' | 'critical' | 'maintenance'
+    status: 'online' | 'offline' | 'critical' | 'maintenance'
     last_seen_at?: string
     deployment_date?: string
     metadata?: Record<string, any>
     confidence_score?: number
     last_reading_at?: string
+
+    // Lifecycle/Rotation
+    qr_rotation_pending?: boolean
+    updated_at?: string
 
     // TDS Thresholds (Custom per device)
     safe_tds_min?: number
@@ -83,7 +87,7 @@ export type Alert = {
     id: string
     device_id: string
     type: string
-    severity: 'info' | 'warning' | 'critical'
+    severity: 'info' | 'critical'
     message: string
     value_at_time: number
     threshold_snapshot?: Record<string, any>
@@ -94,4 +98,15 @@ export type Alert = {
     resolved_by?: string
     escalation_level?: number
     device_name?: string // Added for convenience in UI
+}
+
+export interface DeviceEvent {
+    id: string
+    device_id: string
+    previous_state: string
+    new_state: 'online' | 'offline' | 'warning' | 'critical'
+    reason: string
+    started_at: string
+    ended_at: string | null
+    duration_seconds: number | null
 }

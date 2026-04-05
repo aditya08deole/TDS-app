@@ -29,7 +29,7 @@ export function ActivityPanel({
                     <button
                         key={device.id}
                         onClick={() => onDeviceClick?.(device.id)}
-                        className="w-full flex items-center justify-between p-3 rounded-lg glass-system-child hover:scale-[1.01] transition-all text-left group border-white/10"
+                        className="w-full flex items-center justify-between p-3 rounded-lg glass-system-child hover:scale-[1.01] transition-all text-left group border-border"
                     >
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-foreground truncate">
@@ -43,7 +43,7 @@ export function ActivityPanel({
                         <div className={cn(
                             "ml-2 px-2 py-1 rounded-md text-[10px] font-bold border glass-system-inset",
                             device.connectivity_status === 'online' && "text-emerald-400 border-emerald-500/20 shadow-emerald-500/10",
-                            device.connectivity_status === 'offline' && "text-muted-foreground border-white/10"
+                            device.connectivity_status === 'offline' && "text-muted-foreground border-border"
                         )}>
                             {device.connectivity_status === 'online' ? 'Online' : 'Offline'}
                         </div>
@@ -66,7 +66,7 @@ export function ActivityPanel({
         color: string
         children: React.ReactNode
     }) => (
-        <div className="glass-system-parent rounded-2xl overflow-hidden border-white/20 shadow-xl">
+        <div className="glass-system-parent rounded-2xl overflow-hidden border-border shadow-xl">
             <div className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
                     <div className={cn("p-2 rounded-lg", color)}>

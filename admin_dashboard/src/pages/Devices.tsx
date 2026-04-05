@@ -16,6 +16,10 @@ import {
 import { GlassCard } from '../components/GlassCard'
 import { useAllDevicesThingSpeakData } from '../hooks/useThingSpeakQueries'
 import {
+    Sheet,
+    SheetContent,
+} from "@/components/ui/sheet"
+import {
     Plus,
     Trash2,
     Smartphone,
@@ -37,12 +41,25 @@ import {
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { getConnectivityStatus } from '../lib/constants'
+import { useViewport } from '../hooks/useViewport'
+import { cn } from '@/lib/utils'
+
+// Typed interfaces for ThingSpeak feed data in Devices
+interface ThingSpeakFeedEntry {
+    created_at: string
+    [key: string]: string | undefined
+}
+interface HistoryReading {
+    time: string
+    tds: number
+}
 
 type StatusFilter = 'all' | 'online' | 'offline' | 'maintenance'
 
 export default function Devices() {
     const { isAdmin } = useAuth()
     const { isMobile } = useUI()
+    const { isLandscape, isDesktop } = useViewport()
     
     // Use Firestore hooks
     const { data: devices = [], isLoading, refetch } = useDevices()
@@ -90,7 +107,7 @@ export default function Devices() {
 
     // Device Quick View State
     const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
-    const [sensorHistory, setSensorHistory] = useState<any[]>([])
+    const [sensorHistory, setSensorHistory] = useState<HistoryReading[]>([])
     const [historyLoading, setHistoryLoading] = useState(false)
     const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview')
 
@@ -147,10 +164,10 @@ export default function Devices() {
                 const json = await response.json()
                 
                 if (json.feeds && isMounted) {
-                    const readings = json.feeds.map((f: any) => ({
+                    const readings: HistoryReading[] = (json.feeds as ThingSpeakFeedEntry[]).map((f) => ({
                         time: new Date(f.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        tds: parseFloat(f[`field${tdsField}`]) || 0
-                    })).filter((r: any) => r.tds > 10)
+                        tds: parseFloat(f[`field${tdsField}`] || '0') || 0
+                    })).filter((r) => r.tds > 10)
                     setSensorHistory(readings)
                 }
             } catch (err) {
@@ -675,199 +692,335 @@ export default function Devices() {
                 </GlassCard>
             )}
 
-            {/* Device Quick View Floating Panel */}
+            {/* Device Quick View Floating Panel / Drawer */}
             <AnimatePresence>
                 {selectedDeviceId && (
-                    <motion.div
-                        initial={{ opacity: 0, x: 20, scale: 0.95 }}
-                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                        exit={{ opacity: 0, x: 20, scale: 0.95 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                        className="fixed top-[37vh] right-6 z-[9999] w-[340px] shadow-2xl"
-                    >
-                        {(() => {
-                            const device = enrichedDevices.find(d => d.id === selectedDeviceId);
-                            if (!device) return null;
-                            
-                            const tds = device.latest_tds || 0;
-                            const temp = device.latest_temperature || 0;
-                            const min = device.safe_tds_min || 35;
-                            const max = device.safe_tds_max || 175;
-                            const isSafe = tds >= min && tds <= max;
-                            
-                            // Map View inspired status logic
-                            const statusColor = isSafe ? '#00df81' : '#ff0055';
-                            const statusBg = isSafe ? 'rgba(0, 223, 129, 0.1)' : 'rgba(255, 0, 85, 0.1)';
+                    isMobile ? (
+                        <Sheet open={!!selectedDeviceId} onOpenChange={(open) => !open && setSelectedDeviceId(null)}>
+                            <SheetContent side="bottom" className="p-0 h-[85vh] rounded-t-[32px] border-t-white/20 glass-system-parent backdrop-blur-3xl overflow-hidden flex flex-col">
+                                {(() => {
+                                    const device = enrichedDevices.find(d => d.id === selectedDeviceId);
+                                    if (!device) return null;
+                                    
+                                    const tds = device.latest_tds || 0;
+                                    const temp = device.latest_temperature || 0;
+                                    const min = device.safe_tds_min || 35;
+                                    const max = device.safe_tds_max || 175;
+                                    const isSafe = tds >= min && tds <= max;
+                                    const statusColor = isSafe ? '#00df81' : '#ff0055';
+                                    const statusBg = isSafe ? 'rgba(0, 223, 129, 0.1)' : 'rgba(255, 0, 85, 0.1)';
 
-                            return (
-                                <div 
-                                    className="glass-system-solid rounded-[24px] overflow-hidden flex flex-col h-[580px]"
-                                >
-                                    {/* Header */}
-                                    <div className="relative p-4 border-b border-white/10">
-                                        <div className="absolute top-0 left-0 right-0 h-[2px]"
-                                            style={{ background: `linear-gradient(90deg, transparent, ${statusColor}, transparent)` }} />
-                                        
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 glass-system-micro border-white/10"
-                                                    style={{ background: statusBg }}>
-                                                    <Droplets className="w-5 h-5" style={{ color: statusColor }} />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-sm font-bold text-foreground leading-tight">{device.name}</h3>
-                                                    <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-1 font-medium">
-                                                        <MapPin className="w-3 h-3" /> {device.location_name || 'GIS Node'}
-                                                    </p>
+                                    return (
+                                        <div className="flex flex-col h-full">
+                                            {/* Header */}
+                                            <div className="relative p-6 border-b border-white/10">
+                                                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-white/20 rounded-full mt-3" />
+                                                <div className="flex items-center gap-4 mt-4">
+                                                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 glass-system-micro border-white/10"
+                                                        style={{ background: statusBg }}>
+                                                        <Droplets className="w-7 h-7" style={{ color: statusColor }} />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-xl font-black text-foreground tracking-tight">{device.name}</h3>
+                                                        <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-1 font-medium">
+                                                            <MapPin className="w-4 h-4 text-primary" /> {device.location_name || 'GIS Node'}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <button 
-                                                onClick={() => setSelectedDeviceId(null)}
-                                                className="p-2 hover:bg-secondary rounded-lg transition-all active:scale-95"
-                                            >
-                                                <X className="h-4 w-4 text-muted-foreground" />
-                                            </button>
-                                        </div>
-                                    </div>
 
-                                    {/* Tabs */}
-                                    <div className="flex p-2 gap-1 mx-4 mt-3 rounded-lg bg-secondary/50 border border-white/5">
-                                        {['overview', 'history'].map((tab) => (
-                                            <button
-                                                key={tab}
-                                                onClick={() => setActiveTab(tab as any)}
-                                                className={`flex-1 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
-                                                    activeTab === tab 
-                                                        ? 'bg-secondary text-foreground shadow-sm' 
-                                                        : 'text-muted-foreground hover:text-foreground'
-                                                }`}
-                                            >
-                                                {tab}
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    {/* Content Area */}
-                                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-                                        {activeTab === 'overview' ? (
-                                            <>
-                                                {/* Stats Grid */}
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div className="p-3 rounded-xl glass-system-inset border-white/5">
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <Activity className="w-3 h-3 text-primary" />
-                                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">TDS PPM</span>
-                                                        </div>
-                                                        <div className="flex items-baseline gap-1">
-                                                            <span className="text-xl font-black font-mono tracking-tighter" style={{ color: statusColor }}>{tds}</span>
-                                                            <span className="text-[9px] font-bold text-muted-foreground/50">ppm</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-3 rounded-xl glass-system-inset border-white/5">
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <Thermometer className="w-3 h-3 text-emerald-400" />
-                                                            <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Temp</span>
-                                                        </div>
-                                                        <div className="flex items-baseline gap-1">
-                                                            <span className="text-xl font-black font-mono tracking-tighter text-emerald-400">{temp.toFixed(1)}</span>
-                                                            <span className="text-[9px] font-bold text-muted-foreground/50">°C</span>
-                                                        </div>
-                                                    </div>
+                                            {/* Tabs & Content */}
+                                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                                <div className="flex p-1.5 gap-1.5 rounded-2xl bg-secondary/50 border border-white/5">
+                                                    {['overview', 'history'].map((tab) => (
+                                                        <button
+                                                            key={tab}
+                                                            onClick={() => setActiveTab(tab as 'overview' | 'history')}
+                                                            className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                                                                activeTab === tab 
+                                                                    ? 'bg-secondary text-foreground shadow-xl border border-white/10' 
+                                                                    : 'text-muted-foreground'
+                                                            }`}
+                                                        >
+                                                            {tab}
+                                                        </button>
+                                                    ))}
                                                 </div>
 
-                                                {/* Safety Banner */}
-                                                <div className={`p-3 rounded-xl flex items-center gap-3 border transition-all ${
-                                                    isSafe 
-                                                        ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.05)]' 
-                                                        : 'bg-red-500/5 border-red-500/20 text-red-100 shadow-[0_0_15px_rgba(239,68,68,0.05)]'
-                                                }`}>
-                                                    <Zap className={`h-4 w-4 shrink-0 ${isSafe ? 'text-emerald-400' : 'text-red-400 animate-pulse'}`} />
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[10px] font-black uppercase tracking-tighter">
-                                                            {isSafe ? 'Water Quality Safe' : 'Unsafe Levels Detected'}
-                                                        </span>
-                                                        <span className="text-[8px] opacity-60 font-medium">Auto-analysis via AI Safety Guard</span>
-                                                    </div>
-                                                </div>
-
-                                                {/* Sparkline History */}
-                                                <div className="p-4 rounded-xl glass-system-inset border-white/5 space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">24H TDS Trend</span>
-                                                        {historyLoading && <RefreshCw className="w-2.5 h-2.5 animate-spin opacity-50" />}
-                                                    </div>
-                                                    <div className="h-[120px] w-full">
-                                                        <ResponsiveContainer width="100%" height="100%">
-                                                            <AreaChart data={sensorHistory} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
-                                                                <defs>
-                                                                    <linearGradient id="tdsChartFill" x1="0" y1="0" x2="0" y2="1">
-                                                                        <stop offset="5%" stopColor={statusColor} stopOpacity={0.3} />
-                                                                        <stop offset="95%" stopColor={statusColor} stopOpacity={0} />
-                                                                    </linearGradient>
-                                                                </defs>
-                                                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                                                <XAxis dataKey="time" hide />
-                                                                <YAxis tick={{ fontSize: 8, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} />
-                                                                <Tooltip 
-                                                                    contentStyle={{ 
-                                                                        backgroundColor: 'rgba(15, 23, 42, 0.95)', 
-                                                                        border: '1px solid rgba(255,255,255,0.1)',
-                                                                        borderRadius: '8px',
-                                                                        fontSize: '10px'
-                                                                    }} 
-                                                                />
-                                                                <Area 
-                                                                    type="monotone" 
-                                                                    dataKey="tds" 
-                                                                    stroke={statusColor} 
-                                                                    strokeWidth={2}
-                                                                    fill="url(#tdsChartFill)"
-                                                                    animationDuration={1000}
-                                                                />
-                                                            </AreaChart>
-                                                        </ResponsiveContainer>
-                                                    </div>
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <div className="space-y-2">
-                                                {sensorHistory.length > 0 ? (
-                                                    sensorHistory.slice().reverse().map((read, idx) => (
-                                                        <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg glass-system-micro border-white/5 transition-all hover:bg-white/5">
-                                                            <span className="text-[10px] text-muted-foreground font-medium">{read.time}</span>
-                                                            <div className="flex items-center gap-3">
-                                                                <span className="text-xs font-black font-mono tracking-tighter text-foreground">{read.tds} <small className="text-[8px] opacity-40 font-bold">PPM</small></span>
-                                                                <div className="w-1 h-3 rounded-full" style={{ background: statusColor }} />
+                                                {activeTab === 'overview' ? (
+                                                    <div className="space-y-6">
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div className="p-5 rounded-3xl glass-system-inset border-white/5">
+                                                                <div className="flex items-center gap-2 mb-3">
+                                                                    <Activity className="w-4 h-4 text-primary" />
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">TDS PPM</span>
+                                                                </div>
+                                                                <div className="flex items-baseline gap-1">
+                                                                    <span className="text-3xl font-black font-mono tracking-tighter" style={{ color: statusColor }}>{tds}</span>
+                                                                    <span className="text-sm font-bold text-muted-foreground/40">ppm</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-5 rounded-3xl glass-system-inset border-white/5">
+                                                                <div className="flex items-center gap-2 mb-3">
+                                                                    <Thermometer className="w-4 h-4 text-emerald-400" />
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Temp</span>
+                                                                </div>
+                                                                <div className="flex items-baseline gap-1">
+                                                                    <span className="text-3xl font-black font-mono tracking-tighter text-emerald-400">{temp.toFixed(1)}</span>
+                                                                    <span className="text-sm font-bold text-muted-foreground/40">°C</span>
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    ))
+
+                                                        {/* Sparkline */}
+                                                        <div className="p-6 rounded-3xl glass-system-inset border-white/5">
+                                                            <div className="flex items-center justify-between mb-4">
+                                                                <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">24H Trend Analysis</span>
+                                                                <RefreshCw className={`w-4 h-4 ${historyLoading ? 'animate-spin' : 'opacity-30'}`} />
+                                                            </div>
+                                                            <div className="h-[180px] w-full">
+                                                                <ResponsiveContainer width="100%" height="100%">
+                                                                    <AreaChart data={sensorHistory}>
+                                                                        <defs>
+                                                                            <linearGradient id="tdsChartFillMobile" x1="0" y1="0" x2="0" y2="1">
+                                                                                <stop offset="5%" stopColor={statusColor} stopOpacity={0.3} />
+                                                                                <stop offset="95%" stopColor={statusColor} stopOpacity={0} />
+                                                                            </linearGradient>
+                                                                        </defs>
+                                                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.02)" vertical={false} />
+                                                                        <XAxis dataKey="time" hide />
+                                                                        <YAxis hide />
+                                                                        <Area 
+                                                                            type="monotone" 
+                                                                            dataKey="tds" 
+                                                                            stroke={statusColor} 
+                                                                            strokeWidth={3}
+                                                                            fill="url(#tdsChartFillMobile)"
+                                                                        />
+                                                                    </AreaChart>
+                                                                </ResponsiveContainer>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 ) : (
-                                                    <div className="py-20 text-center opacity-30 italic text-xs">No history available</div>
+                                                    <div className="space-y-3 pb-12">
+                                                        {sensorHistory.length > 0 ? (
+                                                            sensorHistory.slice().reverse().map((read, idx) => (
+                                                                <div key={idx} className="flex items-center justify-between p-4 rounded-2xl glass-system-micro border-white/5">
+                                                                    <span className="text-xs text-muted-foreground font-bold">{read.time}</span>
+                                                                    <div className="flex items-center gap-4">
+                                                                        <span className="text-lg font-black font-mono tracking-tighter">{read.tds} <small className="text-[10px] opacity-40 uppercase">PPM</small></span>
+                                                                        <div className="w-1.5 h-6 rounded-full" style={{ background: statusColor }} />
+                                                                    </div>
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            <div className="py-20 text-center opacity-30 italic text-sm font-bold tracking-widest">NO TELEMETRY LOGS</div>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )
+                                })()}
+                            </SheetContent>
+                        </Sheet>
+                    ) : (
+                        <motion.div
+                            initial={{ opacity: 0, x: 20, scale: 0.95 }}
+                            animate={{ opacity: 1, x: 0, scale: 1 }}
+                            exit={{ opacity: 0, x: 20, scale: 0.95 }}
+                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                            className="fixed top-[37vh] right-6 z-[9999] w-[340px] shadow-2xl"
+                        >
+                            {(() => {
+                                const device = enrichedDevices.find(d => d.id === selectedDeviceId);
+                                if (!device) return null;
+                                
+                                const tds = device.latest_tds || 0;
+                                const temp = device.latest_temperature || 0;
+                                const min = device.safe_tds_min || 35;
+                                const max = device.safe_tds_max || 175;
+                                const isSafe = tds >= min && tds <= max;
+                                
+                                // Map View inspired status logic
+                                const statusColor = isSafe ? '#00df81' : '#ff0055';
+                                const statusBg = isSafe ? 'rgba(0, 223, 129, 0.1)' : 'rgba(255, 0, 85, 0.1)';
 
-                                    {/* Footer */}
-                                    <div className="p-4 border-t border-white/10 flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5 opacity-50">
-                                            <Clock className="w-3 h-3" />
-                                            <span className="text-[9px] font-bold">LIVE SYNC ACTIVE</span>
+                                return (
+                                    <div 
+                                        className="glass-system-solid rounded-[24px] overflow-hidden flex flex-col h-[580px]"
+                                    >
+                                        {/* Header */}
+                                        <div className="relative p-4 border-b border-white/10">
+                                            <div className="absolute top-0 left-0 right-0 h-[2px]"
+                                                style={{ background: `linear-gradient(90deg, transparent, ${statusColor}, transparent)` }} />
+                                            
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 glass-system-micro border-white/10"
+                                                        style={{ background: statusBg }}>
+                                                        <Droplets className="w-5 h-5" style={{ color: statusColor }} />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-sm font-bold text-foreground leading-tight">{device.name}</h3>
+                                                        <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-1 font-medium">
+                                                            <MapPin className="w-3 h-3" /> {device.location_name || 'GIS Node'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    onClick={() => setSelectedDeviceId(null)}
+                                                    className="p-2 hover:bg-secondary rounded-lg transition-all active:scale-95"
+                                                >
+                                                    <X className="h-4 w-4 text-muted-foreground" />
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="px-2.5 py-1 rounded-md text-[8px] font-black uppercase tracking-tighter"
-                                            style={{ backgroundColor: statusBg, color: statusColor, border: `1px solid ${statusColor}40`, boxShadow: `0 0 10px ${statusColor}10` }}>
-                                            {isSafe ? 'Analysis: Safe' : 'Analysis: Warn'}
+
+                                        {/* Tabs */}
+                                        <div className="flex p-2 gap-1 mx-4 mt-3 rounded-lg bg-secondary/50 border border-white/5">
+                                            {['overview', 'history'].map((tab) => (
+                                                <button
+                                                    key={tab}
+                                                    onClick={() => setActiveTab(tab as 'overview' | 'history')}
+                                                    className={`flex-1 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${
+                                                        activeTab === tab 
+                                                            ? 'bg-secondary text-foreground shadow-sm' 
+                                                            : 'text-muted-foreground hover:text-foreground'
+                                                    }`}
+                                                >
+                                                    {tab}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {/* Content Area */}
+                                        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+                                            {activeTab === 'overview' ? (
+                                                <>
+                                                    {/* Stats Grid */}
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div className="p-3 rounded-xl glass-system-inset border-white/5">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <Activity className="w-3 h-3 text-primary" />
+                                                                <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">TDS PPM</span>
+                                                            </div>
+                                                            <div className="flex items-baseline gap-1">
+                                                                <span className="text-xl font-black font-mono tracking-tighter" style={{ color: statusColor }}>{tds}</span>
+                                                                <span className="text-[9px] font-bold text-muted-foreground/50">ppm</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="p-3 rounded-xl glass-system-inset border-white/5">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <Thermometer className="w-3 h-3 text-emerald-400" />
+                                                                <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Temp</span>
+                                                            </div>
+                                                            <div className="flex items-baseline gap-1">
+                                                                <span className="text-xl font-black font-mono tracking-tighter text-emerald-400">{temp.toFixed(1)}</span>
+                                                                <span className="text-[9px] font-bold text-muted-foreground/50">°C</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Safety Banner */}
+                                                    <div className={`p-3 rounded-xl flex items-center gap-3 border transition-all ${
+                                                        isSafe 
+                                                            ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.05)]' 
+                                                            : 'bg-red-500/5 border-red-500/20 text-red-100 shadow-[0_0_15px_rgba(239,68,68,0.05)]'
+                                                    }`}>
+                                                        <Zap className={`h-4 w-4 shrink-0 ${isSafe ? 'text-emerald-400' : 'text-red-400 animate-pulse'}`} />
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[10px] font-black uppercase tracking-tighter">
+                                                                {isSafe ? 'Water Quality Safe' : 'Unsafe Levels Detected'}
+                                                            </span>
+                                                            <span className="text-[8px] opacity-60 font-medium">Auto-analysis via AI Safety Guard</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Sparkline History */}
+                                                    <div className="p-4 rounded-xl glass-system-inset border-white/5 space-y-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">24H TDS Trend</span>
+                                                            {historyLoading && <RefreshCw className="w-2.5 h-2.5 animate-spin opacity-50" />}
+                                                        </div>
+                                                        <div className="h-[120px] w-full">
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <AreaChart data={sensorHistory} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
+                                                                    <defs>
+                                                                        <linearGradient id="tdsChartFill" x1="0" y1="0" x2="0" y2="1">
+                                                                            <stop offset="5%" stopColor={statusColor} stopOpacity={0.3} />
+                                                                            <stop offset="95%" stopColor={statusColor} stopOpacity={0} />
+                                                                        </linearGradient>
+                                                                    </defs>
+                                                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                                                    <XAxis dataKey="time" hide />
+                                                                    <YAxis tick={{ fontSize: 8, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} />
+                                                                    <Tooltip 
+                                                                        contentStyle={{ 
+                                                                            backgroundColor: 'rgba(15, 23, 42, 0.95)', 
+                                                                            border: '1px solid rgba(255,255,255,0.1)',
+                                                                            borderRadius: '8px',
+                                                                            fontSize: '10px'
+                                                                        }} 
+                                                                    />
+                                                                    <Area 
+                                                                        type="monotone" 
+                                                                        dataKey="tds" 
+                                                                        stroke={statusColor} 
+                                                                        strokeWidth={2}
+                                                                        fill="url(#tdsChartFill)"
+                                                                        animationDuration={1000}
+                                                                    />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    {sensorHistory.length > 0 ? (
+                                                        sensorHistory.slice().reverse().map((read, idx) => (
+                                                            <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg glass-system-micro border-white/5 transition-all hover:bg-white/5">
+                                                                <span className="text-[10px] text-muted-foreground font-medium">{read.time}</span>
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-xs font-black font-mono tracking-tighter text-foreground">{read.tds} <small className="text-[8px] opacity-40 font-bold">PPM</small></span>
+                                                                    <div className="w-1 h-3 rounded-full" style={{ background: statusColor }} />
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <div className="py-20 text-center opacity-30 italic text-xs">No history available</div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Footer */}
+                                        <div className="p-4 border-t border-white/10 flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5 opacity-50">
+                                                <Clock className="w-3 h-3" />
+                                                <span className="text-[9px] font-bold">LIVE SYNC ACTIVE</span>
+                                            </div>
+                                            <div className="px-2.5 py-1 rounded-md text-[8px] font-black uppercase tracking-tighter"
+                                                style={{ backgroundColor: statusBg, color: statusColor, border: `1px solid ${statusColor}40`, boxShadow: `0 0 10px ${statusColor}10` }}>
+                                                {isSafe ? 'Analysis: Safe' : 'Analysis: Warn'}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            );
-                        })()}
-                    </motion.div>
+                                );
+                            })()}
+                        </motion.div>
+                    )
                 )}
             </AnimatePresence>
 
             {/* Device Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+            <div className={cn(
+                "grid gap-4 transition-all duration-500",
+                // Perfect Fit: High-density landscape grid
+                isLandscape && !isDesktop ? "grid-cols-2 lg:grid-cols-3 gap-3" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
+            )}>
                 {filteredDevices.map(device => (
                     <GlassCard
                         size="md"
