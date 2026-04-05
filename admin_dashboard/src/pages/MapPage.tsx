@@ -269,15 +269,13 @@ function DevicePanel({
                         </div>
                     </div>
 
-                    {!isMobile && (
-                        <button
-                            onClick={onClose}
-                            className="p-2 rounded-lg transition-all duration-200 hover:scale-110 hover:bg-white/5"
-                            style={{ background: theme.bg.tertiary }}
-                        >
-                            <X className="w-4 h-4" style={{ color: theme.text.muted }} />
-                        </button>
-                    )}
+                    <button
+                        onClick={onClose}
+                        className="p-1 rounded-full bg-red-500 text-white shadow-lg active:scale-90 transition-all border-2 border-white/20"
+                        aria-label="Close"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
             </div>
 
@@ -421,16 +419,16 @@ function DevicePanel({
             </div>
 
             {/* Footer */}
-            <div className="px-5 pb-6 flex items-center justify-between">
+            <div className="px-5 pb-8 flex items-center justify-between border-t border-white/5 pt-4">
                 <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                        Refreshed: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">
+                        Refreshed {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                 </div>
-                <div className="flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.15em] border shadow-sm"
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.1em] border shadow-sm"
                     style={{ background: ppmStatus.bg, color: ppmStatus.color, borderColor: `${ppmStatus.color}40` }}>
-                    {ppmStatus.label} Logic
+                    {ppmStatus.label}
                 </div>
             </div>
         </GlassCard>
@@ -439,8 +437,8 @@ function DevicePanel({
     if (isMobile) {
         return (
             <Sheet open={true} onOpenChange={(open) => !open && onClose()}>
-                <SheetContent side="bottom" className="p-0 h-[80vh] rounded-t-[32px] border-t-white/10 glass-system-parent backdrop-blur-3xl overflow-hidden focus-visible:ring-0">
-                    <div className="h-full overflow-y-auto custom-scrollbar">
+                <SheetContent side="bottom" className="p-0 pb-8 h-[85vh] rounded-t-[40px] border-t-white/20 glass-system-parent backdrop-blur-3xl overflow-hidden focus-visible:ring-0">
+                    <div className="h-full overflow-y-auto custom-scrollbar scrollbar-hide">
                         {panelContent}
                     </div>
                 </SheetContent>
@@ -597,7 +595,7 @@ export default function MapPage() {
             </div>
 
             {/* Mobile Nodes Drawer Trigger (Bottom Left) */}
-            <div className="lg:hidden absolute bottom-28 left-6 z-[500]">
+            <div className="lg:hidden absolute bottom-44 left-6 z-[500]">
                 <Sheet>
                     <SheetTrigger asChild>
                         <button className="flex items-center gap-2 px-5 py-3 rounded-2xl glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl active:scale-95 transition-all">

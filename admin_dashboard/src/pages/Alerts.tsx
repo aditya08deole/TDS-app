@@ -90,7 +90,7 @@ export default function Alerts() {
     })
 
     return (
-        <div className="space-y-6 max-w-[1200px] mx-auto pb-20 animate-fade-in">
+         <div className="space-y-3 md:space-y-6 max-w-[1200px] mx-auto pb-20 pt-2 md:pt-0 px-4 animate-fade-in">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>

@@ -19,7 +19,7 @@ export const getPpmStatus = (ppm: number | undefined, status: string, theme: any
     
     if (tdsStatus === 'online') return {
         status: 'online',
-        label: 'Good',
+        label: 'Safe to Drink',
         ...theme.status.online
     }
     return {

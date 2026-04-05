@@ -142,12 +142,12 @@ export default function Settings() {
     }
 
     return (
-        <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-140px)] animate-fade-in text-left">
+        <div className="flex flex-col lg:flex-row gap-6 animate-fade-in text-left px-4 pt-2 md:pt-0">
             {/* Sidebar (Left Panel) */}
-            <div className="w-full lg:w-64 shrink-0 space-y-6">
+            <div className="w-full lg:w-64 shrink-0 space-y-4 md:space-y-6">
                 <div>
                     <h1 className="text-2xl font-bold text-foreground tracking-tight">Settings</h1>
-                    <p className="text-muted-foreground text-sm mt-1">System Preferences</p>
+                    <p className="text-muted-foreground text-[10px] mt-0.5 font-medium uppercase tracking-wider">System Preferences</p>
                 </div>
 
                 <GlassCard className="p-2 flex flex-col gap-1">

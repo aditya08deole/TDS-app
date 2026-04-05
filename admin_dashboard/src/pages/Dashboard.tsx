@@ -278,12 +278,12 @@ export default function Dashboard() {
     )
 
     return (
-        <Tabs defaultValue="default" className="w-full max-w-[1600px] mx-auto space-y-4 px-4 sm:px-6">
+        <Tabs defaultValue="default" className="w-full max-w-[1600px] mx-auto space-y-2 md:space-y-4 px-4 sm:px-6 pt-2 md:pt-0">
             {/* Header */}
-            <div className="flex items-center justify-between ~mb-2/6">
+            <div className="flex items-center justify-between pb-1">
                 <div>
-                    <h1 className="~text-xl/3xl font-semibold tracking-tight">Overview</h1>
-                    <p className="~text-xs/sm text-muted-foreground mt-0.5">Real-time water quality monitoring</p>
+                    <h1 className="text-3xl sm:text-3xl font-bold tracking-tight">Overview</h1>
+                    <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">Real-time tracking and metrics</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <div className="hidden md:flex items-center gap-2 px-4 py-1.5 rounded-full glass-system-child border-white/20 shadow-sm">

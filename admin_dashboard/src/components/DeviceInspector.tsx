@@ -12,6 +12,7 @@ import { useDevice, useUpdateDevice } from '../hooks/useDeviceQueries'
 import { useDeviceThingSpeakChartData } from '../hooks/useThingSpeakQueries'
 import { useRole } from '../context/RoleContext'
 import type { Device } from '../types'
+import { cn } from '@/lib/utils'
 
 type TabType = 'overview' | 'history' | 'maintenance' | 'config'
 
@@ -135,10 +136,19 @@ export default function DeviceInspector() {
         }
     }
 
-    if (!inspectorDeviceId) return null
-
     return (
-        <div className={`fixed top-0 right-0 h-full bg-background/95 backdrop-blur-2xl border-l border-border shadow-2xl z-40 transition-transform duration-300 ease-in-out flex flex-col ${isMobile ? 'w-full' : 'w-[400px]'} ${inspectorDeviceId ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className={cn(
+            "fixed top-0 right-0 h-full bg-background/95 backdrop-blur-2xl border-l border-border shadow-2xl z-50 transition-all duration-500 ease-in-out flex flex-col",
+            isMobile ? "w-full" : "w-[400px]",
+            inspectorDeviceId ? "translate-x-0" : "translate-x-full"
+        )}>
+            {/* Mobile Backdrop */}
+            {inspectorDeviceId && isMobile && (
+                <div 
+                    className="fixed inset-0 bg-black/40 -z-10 md:hidden animate-in fade-in duration-300" 
+                    onClick={closeInspector} 
+                />
+            )}
 
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-border bg-accent/5">

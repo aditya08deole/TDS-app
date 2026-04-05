@@ -328,17 +328,17 @@ export default function Devices() {
 
     return (
         <div
-            className="space-y-6"
+            className="space-y-3 md:space-y-6 px-4 pt-2 md:pt-0"
             {...handlers}
         >
             <PullIndicator />
 
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 md:gap-4 pb-1">
                 <div>
                     <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">Devices</h1>
-                    <p className="text-muted-foreground mt-1 text-sm lg:text-base">
-                        {filteredDevices.length} of {devices.length} devices
+                    <p className="text-muted-foreground mt-0.5 text-[10px] lg:text-base font-medium">
+                        {filteredDevices.length} of {devices.length} nodes active
                     </p>
                 </div>
                 <div className="flex items-center gap-2">

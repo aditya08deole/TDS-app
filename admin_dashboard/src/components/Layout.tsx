@@ -38,8 +38,8 @@ export default function Layout() {
                     : cn(
                         isLandscape && !isDesktop 
                             ? "pt-20 pb-16 px-8" 
-                            : "pt-32 pb-28 md:pt-32 lg:pt-32 md:pb-8",
-                        isPortrait && !isDesktop && "px-4"
+                            : "pt-0 pb-28 md:pt-32 lg:pt-32 md:pb-8",
+                        isPortrait && !isDesktop && "px-0 pt-0"
                     )
             )}>
                 <Outlet />
