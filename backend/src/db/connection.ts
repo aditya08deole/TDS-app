@@ -14,7 +14,10 @@ export function initializePool(): Pool {
     connectionString: databaseUrl,
     max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 5000, // Slightly longer for stability
+    ssl: {
+      rejectUnauthorized: false
+    }
   });
 
   pool.on('error', (err) => {
