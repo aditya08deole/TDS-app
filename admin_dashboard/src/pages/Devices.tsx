@@ -232,10 +232,10 @@ export default function Devices() {
             return
         }
 
-        // Validate field numbers (1-8 for ThingSpeak)
-        const tdsField = parseInt(newDevice.tds_field)
-        const tempField = parseInt(newDevice.temp_field)
-        const voltageField = parseInt(newDevice.voltage_field)
+        // Use fields directly since they are already numbers in state
+        const tdsField = newDevice.tds_field
+        const tempField = newDevice.temp_field
+        const voltageField = newDevice.voltage_field
         if ([tdsField, tempField, voltageField].some(f => isNaN(f) || f < 1 || f > 8)) {
             alert('Invalid field numbers. ThingSpeak fields must be 1-8')
             return
