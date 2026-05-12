@@ -7,7 +7,7 @@
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
     "build": "tsc",
-    "db:init": "psql $DATABASE_URL -f src/db/schema.sql",
+    "db:init": "npm run build && node dist/db/init.js",
     "db:migrate": "npm run build && node dist/db/migrate.js"
   },
   "engines": {
