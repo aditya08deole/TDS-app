@@ -33,10 +33,20 @@ app.use(express.urlencoded({ extended: true }));
 // ═══ FIREBASE SETUP ═══
 function initializeFirebase() {
   try {
-    const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    let serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 
     if (!serviceAccountKey) {
       throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY environment variable is required');
+    }
+
+    // Handle Base64 encoding (much more reliable for Railway)
+    if (!serviceAccountKey.trim().startsWith('{')) {
+      try {
+        console.log('📦 Decoding Base64 Firebase key...');
+        serviceAccountKey = Buffer.from(serviceAccountKey, 'base64').toString('utf8');
+      } catch (e) {
+        console.warn('⚠️ Key is not Base64, attempting to parse as raw JSON');
+      }
     }
 
     const serviceAccount = typeof serviceAccountKey === 'string'
