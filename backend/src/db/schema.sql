@@ -1,8 +1,16 @@
 -- PostgreSQL Schema for TDS-APP Firestore Mirror
 
+-- Drop tables to ensure clean recreation with correct types
+DROP TABLE IF EXISTS sync_log CASCADE;
+DROP TABLE IF EXISTS sensor_data CASCADE;
+DROP TABLE IF EXISTS alerts CASCADE;
+DROP TABLE IF EXISTS devices CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS last_sync CASCADE;
+
 -- Devices Table
 CREATE TABLE IF NOT EXISTS devices (
-  id UUID PRIMARY KEY,
+  id VARCHAR(255) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   location_name VARCHAR(255),
   description TEXT,
@@ -57,8 +65,8 @@ CREATE INDEX IF NOT EXISTS idx_devices_firestore_id ON devices(firestore_id);
 
 -- Alerts Table
 CREATE TABLE IF NOT EXISTS alerts (
-  id UUID PRIMARY KEY,
-  device_id UUID REFERENCES devices(id) ON DELETE CASCADE,
+  id VARCHAR(255) PRIMARY KEY,
+  device_id VARCHAR(255) REFERENCES devices(id) ON DELETE CASCADE,
   device_name VARCHAR(255),
 
   type VARCHAR(100),
@@ -88,8 +96,8 @@ CREATE INDEX IF NOT EXISTS idx_alerts_firestore_id ON alerts(firestore_id);
 
 -- Sensor Data Table (Historical - Optional for analytics)
 CREATE TABLE IF NOT EXISTS sensor_data (
-  id UUID PRIMARY KEY,
-  device_id UUID REFERENCES devices(id) ON DELETE CASCADE,
+  id VARCHAR(255) PRIMARY KEY,
+  device_id VARCHAR(255) REFERENCES devices(id) ON DELETE CASCADE,
 
   tds FLOAT,
   temperature FLOAT,
@@ -127,11 +135,11 @@ CREATE INDEX IF NOT EXISTS idx_sync_log_status ON sync_log(status);
 
 -- Users Table (Optional - for multi-tenant support)
 CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY,
+  id VARCHAR(255) PRIMARY KEY,
   email VARCHAR(255) UNIQUE NOT NULL,
   name VARCHAR(255),
   role VARCHAR(50),
-  organization_id UUID,
+  organization_id VARCHAR(255),
 
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   synced_at TIMESTAMP,
