@@ -16,22 +16,32 @@ export async function initializeDatabase() {
   try {
     console.log('🔄 Initializing database...');
     
-    // In production (dist), __dirname is backend/dist/db. schema.sql is in backend/src/db/schema.sql
-    // So we need to look one level up then into src/db
-    let schemaPath = path.join(__dirname, '../../src/db/schema.sql');
-    
-    // Fallback for different build structures
-    if (!fs.existsSync(schemaPath)) {
-      schemaPath = path.join(__dirname, '../db/schema.sql');
-    }
-    
-    if (!fs.existsSync(schemaPath)) {
-      throw new Error(`Schema file not found at ${schemaPath}`);
+    // Check multiple potential paths for schema.sql
+    const pathsToTry = [
+      path.join(__dirname, '../../src/db/schema.sql'), // Prod: backend/dist/db -> backend/src/db
+      path.join(__dirname, '../db/schema.sql'),      // Prod alternative
+      path.join(__dirname, './schema.sql'),          // Same dir
+      path.join(process.cwd(), 'backend/src/db/schema.sql'),
+      path.join(process.cwd(), 'src/db/schema.sql')
+    ];
+
+    let schemaContent = '';
+    let foundPath = '';
+
+    for (const p of pathsToTry) {
+      if (fs.existsSync(p)) {
+        schemaContent = fs.readFileSync(p, 'utf8');
+        foundPath = p;
+        break;
+      }
     }
 
-    const schema = fs.readFileSync(schemaPath, 'utf8');
+    if (!schemaContent) {
+      throw new Error('Could not find schema.sql in any expected location: ' + pathsToTry.join(', '));
+    }
 
-    await pool.query(schema);
+    console.log(`✅ Found schema at: ${foundPath}`);
+    await pool.query(schemaContent);
     console.log('✅ Database initialized successfully!');
     return { success: true };
   } catch (error) {

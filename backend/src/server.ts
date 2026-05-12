@@ -199,6 +199,13 @@ async function start() {
     initializePool();
     console.log('✅ Database connection initialized');
 
+    // 🚀 AUTO-INITIALIZE TABLES (If missing)
+    try {
+      await initializeDatabase();
+    } catch (dbErr) {
+      console.warn('⚠️ Auto-init check finished with status:', dbErr);
+    }
+
     // Start scheduler
     startScheduler();
 
