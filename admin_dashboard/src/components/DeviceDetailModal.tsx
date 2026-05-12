@@ -62,6 +62,9 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
     const [maintenanceLogs, setMaintenanceLogs] = useState<MaintenanceLog[]>([])
     const [loading, setLoading] = useState(false)
     const [updating, setUpdating] = useState(false)
+    const [editTdsMin, setEditTdsMin] = useState<number>(device?.safe_tds_min ?? 35)
+    const [editTdsMax, setEditTdsMax] = useState<number>(device?.safe_tds_max ?? 175)
+    const [isEditingTds, setIsEditingTds] = useState(false)
 
     useEffect(() => {
         if (device && isOpen) {
@@ -134,6 +137,34 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
             console.error('Error updating device:', err)
         }
         setUpdating(false)
+    }
+
+    const handleSaveTdsLimits = async () => {
+        if (!device) return
+
+        // Validation
+        if (editTdsMin < 0 || editTdsMax < editTdsMin || editTdsMax > 10000) {
+            alert('Invalid TDS range. Min must be >= 0 and Max must be >= Min and <= 10000')
+            return
+        }
+
+        setUpdating(true)
+        try {
+            const deviceRef = doc(db, 'devices', device.id)
+            await updateDoc(deviceRef, {
+                safe_tds_min: editTdsMin,
+                safe_tds_max: editTdsMax,
+                updated_at: serverTimestamp()
+            })
+
+            setIsEditingTds(false)
+            onRefresh?.()
+        } catch (err) {
+            console.error('Error updating TDS thresholds:', err)
+            alert('Failed to update thresholds: ' + err.message)
+        } finally {
+            setUpdating(false)
+        }
     }
 
     const getStatusColor = (status: string) => {
@@ -395,6 +426,89 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                     <span className="text-sm text-white">
                                         {new Date(device.deployment_date || device.installed_at || device.created_at).toLocaleDateString()}
                                     </span>
+                                </div>
+                            </div>
+
+                            {/* TDS Threshold Configuration Section */}
+                            <div className="bg-slate-800/50 rounded-xl overflow-hidden">
+                                <div className="p-4 space-y-3 border-b border-slate-700">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="text-sm font-medium text-slate-300">Water Quality Thresholds (PPM)</h4>
+                                        {!isEditingTds && (
+                                            <button
+                                                onClick={() => {
+                                                    setEditTdsMin(device.safe_tds_min ?? 35)
+                                                    setEditTdsMax(device.safe_tds_max ?? 175)
+                                                    setIsEditingTds(true)
+                                                }}
+                                                className="text-xs px-2 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded transition-colors"
+                                            >
+                                                Edit
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {isEditingTds ? (
+                                        <div className="space-y-3">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="text-xs text-slate-400 block mb-2">Safe Minimum</label>
+                                                    <input
+                                                        type="number"
+                                                        value={editTdsMin}
+                                                        onChange={(e) => setEditTdsMin(Number(e.target.value))}
+                                                        disabled={isUpdating}
+                                                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-primary disabled:opacity-50"
+                                                        placeholder="e.g., 35"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-xs text-slate-400 block mb-2">Safe Maximum</label>
+                                                    <input
+                                                        type="number"
+                                                        value={editTdsMax}
+                                                        onChange={(e) => setEditTdsMax(Number(e.target.value))}
+                                                        disabled={isUpdating}
+                                                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-primary disabled:opacity-50"
+                                                        placeholder="e.g., 175"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <p className="text-xs text-slate-500">
+                                                ℹ️ Readings outside this range will trigger alerts
+                                            </p>
+
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={handleSaveTdsLimits}
+                                                    disabled={isUpdating}
+                                                    className="flex-1 px-3 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-sm rounded-lg transition-colors disabled:opacity-50"
+                                                >
+                                                    {isUpdating ? 'Saving...' : 'Save'}
+                                                </button>
+                                                <button
+                                                    onClick={() => setIsEditingTds(false)}
+                                                    disabled={isUpdating}
+                                                    className="flex-1 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-lg transition-colors"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="bg-slate-700/50 rounded p-2">
+                                                <p className="text-xs text-slate-500">Minimum</p>
+                                                <p className="text-lg font-bold text-white">{device.safe_tds_min ?? 35}</p>
+                                            </div>
+                                            <div className="bg-slate-700/50 rounded p-2">
+                                                <p className="text-xs text-slate-500">Maximum</p>
+                                                <p className="text-lg font-bold text-white">{device.safe_tds_max ?? 175}</p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

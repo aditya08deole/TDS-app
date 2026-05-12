@@ -75,7 +75,7 @@ export function useDeviceThingSpeakData(device: Device | undefined) {
         queryFn: () => fetchDeviceThingSpeakData(device!),
         enabled: !!device?.thingspeak_channel_id && !!device?.thingspeak_read_key,
         staleTime: 0, // Always consider stale - fetch immediately on mount/focus
-        refetchInterval: 3 * 1000, // Poll every 3 seconds for real-time updates
+        refetchInterval: 15 * 1000, // Poll every 15 seconds (respects ThingSpeak 4 req/sec free tier limit)
         refetchOnWindowFocus: true, // Refetch when user returns to tab
         refetchOnReconnect: true, // Refetch on network reconnect
         refetchIntervalInBackground: false, // Don't poll when tab is hidden (save resources)
@@ -118,7 +118,7 @@ export function useDeviceLatestReading(device: Device | undefined) {
         },
         enabled: !!device?.thingspeak_channel_id && !!device?.thingspeak_read_key,
         staleTime: 0, // Always fresh
-        refetchInterval: 3 * 1000, // Poll every 3 seconds
+        refetchInterval: 15 * 1000, // Poll every 15 seconds (respects ThingSpeak free tier limit)
         refetchOnWindowFocus: true,
         refetchOnReconnect: true,
         refetchIntervalInBackground: false,

@@ -5,9 +5,10 @@
     "buildCommand": "npm run build"
   },
   "deploy": {
-    "startCommand": "npm start",
+    "numReplicas": 1,
     "restartPolicyType": "ON_FAILURE",
-    "healthCheckPath": "/",
-    "healthCheckTimeout": 120
+    "startCommand": "npm start",
+    "healthCheckPath": "/health",
+    "healthCheckTimeout": 30
   }
 }

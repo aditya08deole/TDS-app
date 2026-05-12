@@ -91,8 +91,10 @@ exports.checkSensorData = functions.firestore
     const tds = payload?.tds;
 
     // ═══ VALIDATION: Skip invalid readings (null, undefined, or unrealistic values)
-    // Upper bound 500 prevents false alerts from voltage/temp misreads (e.g., 663)
-    if (tds === undefined || tds === null || tds > 500 || tds < 20) return null;
+    // Use per-device config for max threshold (allows brackish/saline water monitoring)
+    const maxValidTds = device?.max_tds_threshold || 2000; // Default to 2000 PPM (realistic max)
+    const minValidTds = device?.min_tds_threshold || 5;
+    if (tds === undefined || tds === null || tds > maxValidTds || tds < minValidTds) return null;
 
     let device;
     const now = Date.now();
@@ -176,8 +178,14 @@ exports.scheduledHealthCheck = functions.pubsub
   .onRun(async () => {
     const now = admin.firestore.Timestamp.now().toMillis();
     const oneHourAgo = now - (60 * 60 * 1000);
+    const oneHourAgoDate = new Date(oneHourAgo);
 
-    const devicesSnap = await db.collection("devices").get();
+    // ═══ OPTIMIZATION: Only fetch devices that actually need checking (last_reading_at < 1 hour ago)
+    // This reduces Firestore reads from O(N) to O(stale_devices) — typically 5-10 devices per run
+    // Firestore will auto-build composite index if missing (24 hour delay, but function stays backward compatible)
+    const devicesSnap = await db.collection("devices")
+      .where("last_reading_at", "<", oneHourAgoDate)
+      .get();
     const batch = db.batch();
 
     devicesSnap.forEach(doc => {

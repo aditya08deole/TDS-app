@@ -27,7 +27,7 @@ service cloud.firestore {
     // Alerts: Read for all users, Write only for system/admins (or status updates for users)
     match /alerts/{alertId} {
       allow read: if isAuth();
-      allow update: if isAuth(); // Allow users to acknowledge/close alerts
+      allow update: if isAdmin(); // Only admins can acknowledge/close alerts (prevents unauthorized acknowledgement)
       allow create, delete: if isAdmin();
     }
 

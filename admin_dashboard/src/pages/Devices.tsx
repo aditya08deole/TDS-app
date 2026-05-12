@@ -6,15 +6,16 @@ import { useUI } from '../context/UIContext'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { QRCodeGenerator } from '../components/QRCodeGenerator'
 import { QRCodeScanner } from '../components/QRCodeScanner'
-import { 
-    useDevices, 
-    useAddDevice, 
-    useDeleteDevice, 
+import {
+    useDevices,
+    useAddDevice,
+    useDeleteDevice,
     useUpdateDevice,
-    useDeviceSubscription 
+    useDeviceSubscription
 } from '../hooks/useDeviceQueries'
 import { GlassCard } from '../components/GlassCard'
 import { useAllDevicesThingSpeakData } from '../hooks/useThingSpeakQueries'
+import { triggerSync } from '../lib/api'
 import {
     Sheet,
     SheetContent,
@@ -105,6 +106,9 @@ export default function Devices() {
     // Toggle for Add/Edit Form
     const [isFormOpen, setIsFormOpen] = useState(false)
 
+    // Sync state
+    const [isSyncing, setIsSyncing] = useState(false)
+
     // Device Quick View State
     const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
     const [sensorHistory, setSensorHistory] = useState<HistoryReading[]>([])
@@ -181,24 +185,82 @@ export default function Devices() {
         return () => { isMounted = false }
     }, [selectedDeviceId, activeChannelConfig])
 
+    const handleSync = async () => {
+        setIsSyncing(true)
+        try {
+            const result = await triggerSync()
+            console.log('✅ Sync complete:', result)
+            await refetch()
+        } catch (error) {
+            console.error('❌ Sync failed:', error)
+            alert('Sync failed: ' + (error instanceof Error ? error.message : 'Unknown error'))
+        } finally {
+            setIsSyncing(false)
+        }
+    }
+
     const handleAddDevice = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!isAdmin) return
 
+        // ═══ INPUT VALIDATION ═══
+        // Validate GPS coordinates
+        const lat = parseFloat(newDevice.latitude)
+        const lon = parseFloat(newDevice.longitude)
+        if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+            alert('Invalid GPS coordinates. Latitude must be -90 to 90, Longitude must be -180 to 180')
+            return
+        }
+
+        // Validate TDS thresholds
+        const tdsMin = parseFloat(newDevice.safe_tds_min)
+        const tdsMax = parseFloat(newDevice.safe_tds_max)
+        if (isNaN(tdsMin) || isNaN(tdsMax) || tdsMin < 0 || tdsMax < tdsMin || tdsMax > 10000) {
+            alert('Invalid TDS thresholds. Min must be >= 0 and Max must be >= Min and <= 10000')
+            return
+        }
+
+        // Validate ThingSpeak Channel ID (numeric)
+        if (!newDevice.thingspeak_channel_id || !/^\d+$/.test(newDevice.thingspeak_channel_id)) {
+            alert('Invalid ThingSpeak Channel ID. Must be numeric')
+            return
+        }
+
+        // Validate ThingSpeak Read Key
+        if (!newDevice.thingspeak_read_key || newDevice.thingspeak_read_key.length < 10) {
+            alert('Invalid ThingSpeak Read Key. Must be at least 10 characters')
+            return
+        }
+
+        // Validate field numbers (1-8 for ThingSpeak)
+        const tdsField = parseInt(newDevice.tds_field)
+        const tempField = parseInt(newDevice.temp_field)
+        const voltageField = parseInt(newDevice.voltage_field)
+        if ([tdsField, tempField, voltageField].some(f => isNaN(f) || f < 1 || f > 8)) {
+            alert('Invalid field numbers. ThingSpeak fields must be 1-8')
+            return
+        }
+
+        // Validate required fields
+        if (!newDevice.name.trim()) {
+            alert('Device name is required')
+            return
+        }
+
         const devicePayload = {
-            name: newDevice.name,
-            location_name: newDevice.location_name,
-            latitude: parseFloat(newDevice.latitude),
-            longitude: parseFloat(newDevice.longitude),
-            sim_number: newDevice.sim_number,
-            node_number: newDevice.node_number,
-            thingspeak_channel_id: newDevice.thingspeak_channel_id,
-            thingspeak_read_key: newDevice.thingspeak_read_key,
-            tds_field_number: newDevice.tds_field,
-            temperature_field_number: newDevice.temp_field,
-            voltage_field_number: newDevice.voltage_field,
-            safe_tds_min: parseFloat(newDevice.safe_tds_min),
-            safe_tds_max: parseFloat(newDevice.safe_tds_max),
+            name: newDevice.name.trim(),
+            location_name: newDevice.location_name.trim(),
+            latitude: lat,
+            longitude: lon,
+            sim_number: newDevice.sim_number.trim(),
+            node_number: newDevice.node_number.trim(),
+            thingspeak_channel_id: newDevice.thingspeak_channel_id.trim(),
+            thingspeak_read_key: newDevice.thingspeak_read_key.trim(),
+            tds_field_number: tdsField,
+            temperature_field_number: tempField,
+            voltage_field_number: voltageField,
+            safe_tds_min: tdsMin,
+            safe_tds_max: tdsMax,
             status: 'offline' as const
         }
 
@@ -348,6 +410,15 @@ export default function Devices() {
                         className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
                     >
                         <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                    <button
+                        onClick={handleSync}
+                        disabled={isSyncing}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-xs font-semibold bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed border border-blue-500/30"
+                        title="Sync devices from Firebase to local database"
+                    >
+                        <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                        {isSyncing ? 'Syncing...' : 'Fetch Latest'}
                     </button>
                     <button
                         onClick={exportToCSV}

@@ -1,17 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import { 
-    collection, 
-    query, 
-    where, 
-    getDocs, 
-    getDoc, 
-    doc, 
-    addDoc, 
-    updateDoc, 
-    deleteDoc, 
-    onSnapshot, 
-    orderBy, 
+import {
+    collection,
+    query,
+    where,
+    getDocs,
+    getDoc,
+    doc,
+    addDoc,
+    updateDoc,
+    deleteDoc,
+    onSnapshot,
+    orderBy,
     limit as firestoreLimit,
     serverTimestamp
 } from 'firebase/firestore'
@@ -19,6 +19,7 @@ import { db } from '../lib/firebase'
 import type { Device, DeviceEvent } from '../types'
 import { queryKeys } from '../lib/queryClient'
 import { cacheDevices, getCachedDevices } from '../lib/cache'
+import { fetchDevices as fetchDevicesFromApi } from '../lib/api'
 
 // Typed interface for raw Firestore sensor data records
 export interface SensorDataRecord {
@@ -27,30 +28,29 @@ export interface SensorDataRecord {
 }
 
 /**
- * Fetch all devices from Firestore
+ * Fetch all devices from backend API
  */
 async function fetchDevices(): Promise<Device[]> {
-    // Try cache first
-    const cached = await getCachedDevices()
-    if (cached) {
-        console.log('📦 Using cached devices')
-        return cached
+    try {
+        console.log('📡 Fetching devices from API...')
+        const data = await fetchDevicesFromApi()
+
+        // Cache the result
+        if (data) {
+            await cacheDevices(data)
+        }
+
+        return data || []
+    } catch (error) {
+        console.error('❌ Error fetching from API:', error)
+        // Fallback to cache
+        const cached = await getCachedDevices()
+        if (cached) {
+            console.log('📦 Using cached devices (API failed)')
+            return cached
+        }
+        throw error
     }
-
-    // Fetch from Firestore
-    const q = query(collection(db, 'devices'), orderBy('created_at', 'desc'))
-    const querySnapshot = await getDocs(q)
-    const data = querySnapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data() 
-    })) as Device[]
-
-    // Cache the result
-    if (data) {
-        await cacheDevices(data)
-    }
-
-    return data || []
 }
 
 /**
@@ -62,6 +62,7 @@ export function useDevices() {
         queryFn: fetchDevices,
         staleTime: 5 * 60 * 1000,
         gcTime: 10 * 60 * 1000,
+        refetchInterval: 60 * 1000,
     })
 }
 
