@@ -10,6 +10,7 @@ import { startScheduler, stopScheduler, getSchedulerStatus } from './sync/schedu
 import { syncFromFirebase } from './services/syncService';
 import deviceRoutes from './api/routes/devices';
 import syncRoutes from './api/routes/sync';
+import { initializeDatabase } from './db/init';
 
 // Load environment variables
 dotenv.config();
@@ -94,6 +95,32 @@ app.get('/api/version', (req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+/**
+ * DATABASE INITIALIZATION (Secret Route)
+ */
+app.get('/init-db', async (req: Request, res: Response) => {
+  try {
+    console.log('🚀 Triggering manual database initialization...');
+    await initializeDatabase();
+    res.send(`
+      <div style="font-family: sans-serif; padding: 20px; background: #e6fffa; border: 1px solid #38b2ac; border-radius: 8px;">
+        <h1 style="color: #2c7a7b;">✅ Database Initialized!</h1>
+        <p>The tables have been created successfully.</p>
+        <a href="/" style="display: inline-block; padding: 10px 20px; background: #319795; color: white; text-decoration: none; border-radius: 4px;">Go to Dashboard</a>
+      </div>
+    `);
+  } catch (error: any) {
+    res.status(500).send(`
+      <div style="font-family: sans-serif; padding: 20px; background: #fff5f5; border: 1px solid #f56565; border-radius: 8px;">
+        <h1 style="color: #c53030;">❌ Initialization Failed</h1>
+        <p>${error.message}</p>
+        <p>Check the Railway logs for more details.</p>
+      </div>
+    `);
+  }
+});
+
 
 /**
  * Device routes
