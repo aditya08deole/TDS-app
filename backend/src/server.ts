@@ -3,6 +3,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import path from 'path';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { initializePool, closePool } from './db/connection';
 import { startScheduler, stopScheduler, getSchedulerStatus } from './sync/scheduler';
@@ -18,9 +19,11 @@ const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // ═══ MIDDLEWARE ═══
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable CSP for static serving simplicity in production
+}));
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: true, // Allow all origins in production or configure strictly
   credentials: true,
 }));
 app.use(morgan('combined'));
@@ -51,6 +54,10 @@ function initializeFirebase() {
     throw error;
   }
 }
+
+// ═══ STATIC FILES ═══
+const frontendPath = path.join(__dirname, '../../admin_dashboard/dist');
+app.use(express.static(frontendPath));
 
 // ═══ ROUTES ═══
 
@@ -89,6 +96,17 @@ app.use('/api/devices', deviceRoutes);
 app.use('/api/sync', syncRoutes);
 
 /**
+ * Catch-all route to serve the frontend for SPA routing
+ */
+app.get('*', (req: Request, res: Response) => {
+  // If request is for API, don't serve index.html
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: 'API route not found' });
+  }
+  res.sendFile(path.join(frontendPath, 'index.html'));
+});
+
+/**
  * Error handling middleware
  */
 app.use((err: any, req: Request, res: Response, next: any) => {
@@ -101,22 +119,10 @@ app.use((err: any, req: Request, res: Response, next: any) => {
   });
 });
 
-/**
- * 404 handler
- */
-app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    error: 'Not found',
-    path: req.path,
-    timestamp: new Date().toISOString(),
-  });
-});
-
 // ═══ STARTUP ═══
 async function start() {
   try {
-    console.log('🚀 Starting TDS-APP Backend...');
+    console.log('🚀 Starting TDS-APP Unified System...');
     console.log(`Environment: ${NODE_ENV}`);
 
     // Initialize Firebase
@@ -143,7 +149,7 @@ async function start() {
       console.log(`✅ Server running on port ${PORT}`);
       console.log(`   Health: http://localhost:${PORT}/health`);
       console.log(`   API: http://localhost:${PORT}/api/version`);
-      console.log(`   Frontend: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
+      console.log(`   Serving Frontend from: ${frontendPath}`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
@@ -154,19 +160,15 @@ async function start() {
 // ═══ GRACEFUL SHUTDOWN ═══
 process.on('SIGTERM', async () => {
   console.log('📭 SIGTERM received, shutting down gracefully...');
-
   stopScheduler();
   await closePool();
-
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('📭 SIGINT received, shutting down gracefully...');
-
   stopScheduler();
   await closePool();
-
   process.exit(0);
 });
 
