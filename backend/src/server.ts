@@ -31,6 +31,61 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+/**
+ * 🛠️ EMERGENCY DATABASE INITIALIZATION
+ * This is at the top to ensure it's hit before any static serving or SPA routing.
+ */
+app.get('/init-db', async (req: Request, res: Response) => {
+  try {
+    console.log('🚀 MANUALLY TRIGGERING DB INIT...');
+    
+    // Check multiple potential paths for schema.sql on Railway
+    const pathsToTry = [
+      path.join(__dirname, '../../src/db/schema.sql'),
+      path.join(__dirname, '../db/schema.sql'),
+      path.join(__dirname, './db/schema.sql'),
+      path.join(process.cwd(), 'backend/src/db/schema.sql'),
+      path.join(process.cwd(), 'src/db/schema.sql')
+    ];
+
+    let schemaContent = '';
+    let foundPath = '';
+
+    for (const p of pathsToTry) {
+      if (require('fs').existsSync(p)) {
+        schemaContent = require('fs').readFileSync(p, 'utf8');
+        foundPath = p;
+        break;
+      }
+    }
+
+    if (!schemaContent) {
+      throw new Error('Could not find schema.sql in any expected location: ' + pathsToTry.join(', '));
+    }
+
+    console.log(`✅ Found schema at: ${foundPath}`);
+    await initializeDatabase();
+    
+    res.send(`
+      <div style="font-family: sans-serif; padding: 40px; text-align: center; background: #f0fff4;">
+        <h1 style="color: #2f855a;">✅ DATABASE INITIALIZED SUCCESSFULLY!</h1>
+        <p>Tables have been created. You can now check the Railway Postgres tab.</p>
+        <a href="/" style="padding: 10px 20px; background: #38a169; color: white; text-decoration: none; border-radius: 5px;">Return to Dashboard</a>
+      </div>
+    `);
+  } catch (err: any) {
+    console.error('❌ DB INIT FAILED:', err);
+    res.status(500).send(`
+      <div style="font-family: sans-serif; padding: 40px; text-align: center; background: #fff5f5;">
+        <h1 style="color: #c53030;">❌ DATABASE INIT FAILED</h1>
+        <p style="color: #742a2a;">${err.message}</p>
+        <p>Try running the SQL manually in the Railway UI.</p>
+      </div>
+    `);
+  }
+});
+
+
 // ═══ FIREBASE SETUP ═══
 function initializeFirebase() {
   try {
@@ -97,34 +152,9 @@ app.get('/api/version', (req: Request, res: Response) => {
 });
 
 /**
- * DATABASE INITIALIZATION (Secret Route)
- */
-app.get('/init-db', async (req: Request, res: Response) => {
-  try {
-    console.log('🚀 Triggering manual database initialization...');
-    await initializeDatabase();
-    res.send(`
-      <div style="font-family: sans-serif; padding: 20px; background: #e6fffa; border: 1px solid #38b2ac; border-radius: 8px;">
-        <h1 style="color: #2c7a7b;">✅ Database Initialized!</h1>
-        <p>The tables have been created successfully.</p>
-        <a href="/" style="display: inline-block; padding: 10px 20px; background: #319795; color: white; text-decoration: none; border-radius: 4px;">Go to Dashboard</a>
-      </div>
-    `);
-  } catch (error: any) {
-    res.status(500).send(`
-      <div style="font-family: sans-serif; padding: 20px; background: #fff5f5; border: 1px solid #f56565; border-radius: 8px;">
-        <h1 style="color: #c53030;">❌ Initialization Failed</h1>
-        <p>${error.message}</p>
-        <p>Check the Railway logs for more details.</p>
-      </div>
-    `);
-  }
-});
-
-
-/**
  * Device routes
  */
+
 app.use('/api/devices', deviceRoutes);
 
 /**
