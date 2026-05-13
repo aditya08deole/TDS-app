@@ -15,8 +15,9 @@ function getRedis() { return getRedisClient(); }
 // Twilio Config
 const twilioSid = process.env.TWILIO_ACCOUNT_SID;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioFrom = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
-const adminPhone = process.env.ADMIN_WHATSAPP_TO;
+// Trim all env strings to prevent CRLF-poisoned values from Windows-style .env files
+const twilioFrom = (process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886').trim();
+const adminPhone = process.env.ADMIN_WHATSAPP_TO?.trim();
 
 let twilioClient: any = null;
 if (twilioSid && twilioAuthToken) {
@@ -174,7 +175,42 @@ async function sendPushNotification(alertId: string, alertData: any) {
         };
 
         const response = await messaging.sendEachForMulticast(message);
-        console.log(`✅ Sent ${response.successCount} push notifications.`);
+        console.log(`✅ Sent ${response.successCount} push notifications (${response.failureCount} failed).`);
+
+        // ── Auto-cleanup stale / invalid FCM tokens ────────────────────────
+        if (response.failureCount > 0) {
+            const staleCleanups: Promise<void>[] = [];
+            response.responses.forEach((resp, idx) => {
+                if (!resp.success) {
+                    const code = resp.error?.code ?? '';
+                    const isStale = (
+                        code === 'messaging/registration-token-not-registered' ||
+                        code === 'messaging/invalid-registration-token' ||
+                        code === 'messaging/invalid-argument'
+                    );
+                    if (isStale) {
+                        const staleToken = tokens[idx];
+                        console.warn(`🗑️ Removing stale FCM token (${code}): ${staleToken.substring(0, 20)}...`);
+                        const cleanup = db.collection('notification_subscriptions')
+                            .where('token', '==', staleToken)
+                            .get()
+                            .then(snap => {
+                                const batch = db.batch();
+                                snap.docs.forEach(d => batch.delete(d.ref));
+                                return snap.empty ? Promise.resolve() : batch.commit().then(() => {});
+                            })
+                            .catch(e => { console.error('Failed to remove stale token:', e); });
+                        staleCleanups.push(cleanup as Promise<void>);
+                    }
+                }
+            });
+            if (staleCleanups.length > 0) {
+                // Non-blocking — run cleanup in background
+                Promise.all(staleCleanups).then(() =>
+                    console.log(`🗑️ Cleaned ${staleCleanups.length} stale FCM subscription(s).`)
+                );
+            }
+        }
     } catch (error) {
         console.error('❌ Error sending push notification:', error);
     }
@@ -203,7 +239,7 @@ async function sendWhatsAppNotification(alertData: any) {
  * To receive these: Download 'ntfy' app on phone and subscribe to topic set in .env
  */
 async function sendNTFYNotification(alertData: any) {
-    const topic = process.env.NTFY_TOPIC;
+    const topic = process.env.NTFY_TOPIC?.trim();
     if (!topic) return;
 
     try {

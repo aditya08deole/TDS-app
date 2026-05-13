@@ -19,6 +19,7 @@ import { Toaster } from './components/ui/sonner'
 import { initOfflineSync } from './lib/syncQueue'
 import { initWebVitals } from './lib/webVitals'
 import { initErrorTracking } from './lib/errorTracking'
+import { useNotifications } from './hooks/useNotifications'
 
 // Lazy Load Pages
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -80,6 +81,9 @@ function AppWrapper({ children }: { children: React.ReactNode }) {
             console.error('AppWrapper init error:', err)
         }
     }, [])
+
+    // Initialize FCM Web Push
+    useNotifications()
 
     return <>{children}</>
 }

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { db, messaging } from '../lib/firebase'
-import { collection, addDoc, serverTimestamp, query, where, getDocs, limit } from 'firebase/firestore'
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { useAuth } from './AuthContext'
 import { onMessage, getToken } from 'firebase/messaging'
 import { toast } from 'sonner'
@@ -181,37 +181,32 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         setLoading(true)
         try {
-            // 1. Get FCM Token (Industry Grade)
+            // 1. Get FCM Token
             const token = await getToken(messaging, { vapidKey: VAPID_PUBLIC_KEY })
-            
+
             if (!token) {
-                throw new Error('No registration token available.')
+                throw new Error('No FCM registration token available. Ensure the service worker is registered and the VAPID key is correct.')
             }
 
-            // 2. DEDUPLICATION: Check if this token already exists for this user
-            const q = query(
-                collection(db, 'notification_subscriptions'),
-                where('user_id', '==', user.uid),
-                where('token', '==', token),
-                limit(1)
-            )
-            const existing = await getDocs(q)
-            
-            if (existing.empty) {
-                await addDoc(collection(db, 'notification_subscriptions'), {
-                    user_id: user.uid,
-                    token: token,
-                    platform: 'web_pwa',
-                    userAgent: navigator.userAgent,
-                    created_at: serverTimestamp(),
-                    last_seen_at: serverTimestamp()
-                })
-                setIsSubscribed(true)
-                toast.success('Real-time alerts enabled!', { description: 'You will now receive push notifications.' })
-            } else {
-                setIsSubscribed(true)
-                toast('Already subscribed', { description: 'This device is already configured for alerts.' })
-            }
+            // 2. Idempotent upsert using a deterministic doc ID.
+            // This replaces the old query+addDoc pattern (2 reads + 1 write) with a
+            // single setDoc (0 reads, 1 write). Safe for multi-device: each device
+            // gets its own doc identified by user + token fingerprint.
+            const tokenHash = btoa(token).replace(/[^a-zA-Z0-9]/g, '').substring(0, 24)
+            const docId = `${user.uid}_${tokenHash}`
+            await setDoc(doc(db, 'notification_subscriptions', docId), {
+                user_id: user.uid,
+                token,
+                platform: 'web_pwa',
+                userAgent: navigator.userAgent,
+                updated_at: serverTimestamp(),
+                created_at: serverTimestamp(),
+            }, { merge: true })
+
+            setIsSubscribed(true)
+            toast.success('Real-time alerts enabled!', {
+                description: 'You will now receive push notifications for critical TDS events.'
+            })
         } catch (error) {
             console.error('Subscription error:', error)
             toast.error('Subscription failed', { description: 'Please check your browser notification permissions.' })

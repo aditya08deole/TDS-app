@@ -61,37 +61,53 @@ app.use(express.urlencoded({ extended: true }));
 // ═══ FIREBASE SETUP ═══
 function initializeFirebase() {
   try {
-    let serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    let serviceAccount: object | null = null;
 
-    if (!serviceAccountKey) {
-      throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY environment variable is required');
+    // Strategy 1: Parse from FIREBASE_SERVICE_ACCOUNT_KEY env var (JSON or Base64)
+    const rawKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    if (rawKey) {
+      let keyStr = rawKey.trim();
+      if (!keyStr.startsWith('{')) {
+        // Attempt Base64 decode (used by Railway / Docker secrets)
+        try {
+          console.log('📦 Decoding Base64 Firebase service account key...');
+          keyStr = Buffer.from(keyStr, 'base64').toString('utf8');
+        } catch {
+          console.warn('⚠️ Key is not Base64, attempting raw JSON parse');
+        }
+      }
+      serviceAccount = JSON.parse(keyStr);
     }
 
-    // Handle Base64 encoding (much more reliable for Railway)
-    if (!serviceAccountKey.trim().startsWith('{')) {
-      try {
-        console.log('📦 Decoding Base64 Firebase key...');
-        serviceAccountKey = Buffer.from(serviceAccountKey, 'base64').toString('utf8');
-      } catch (e) {
-        console.warn('⚠️ Key is not Base64, attempting to parse as raw JSON');
+    // Strategy 2: Load from JSON file path (FIREBASE_SERVICE_ACCOUNT_PATH or default)
+    if (!serviceAccount) {
+      const filePath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
+        || path.resolve(__dirname, '../../firebase-service-account.json');
+      if (fs.existsSync(filePath)) {
+        console.log(`📄 Loading Firebase service account from file: ${filePath}`);
+        serviceAccount = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       }
     }
 
-    const serviceAccount = typeof serviceAccountKey === 'string'
-      ? JSON.parse(serviceAccountKey)
-      : serviceAccountKey;
+    if (!serviceAccount) {
+      throw new Error(
+        'Firebase credentials not found. Set FIREBASE_SERVICE_ACCOUNT_KEY (JSON or Base64) ' +
+        'or provide firebase-service-account.json in the backend directory.'
+      );
+    }
 
     initializeApp({
-      credential: cert(serviceAccount),
+      credential: cert(serviceAccount as any),
       databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`,
     });
 
-    console.log('✅ Firebase initialized');
+    console.log('✅ Firebase Admin initialized successfully');
   } catch (error) {
     console.error('❌ Firebase initialization failed:', error);
     throw error;
   }
 }
+
 
 // ═══ STATIC FILES ═══
 const frontendPath = getFrontendPath();
