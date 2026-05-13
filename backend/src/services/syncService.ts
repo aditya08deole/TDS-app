@@ -104,11 +104,6 @@ export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event
     if (errors === 0) {
       await setLastSyncedAt(new Date(startTime));
     }
-
-    const durationMs = Date.now() - startTime;
-    const status = errors === 0 ? 'success' : errors > 2 ? 'failed' : 'partial';
-    const finalErrorMessage = errorLog.length > 0 ? errorLog.join(' | ') : undefined;
-
     // Log sync result
     await logSync({
       sync_type: syncType,

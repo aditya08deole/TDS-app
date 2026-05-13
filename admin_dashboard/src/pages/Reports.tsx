@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { 
     useUptimeStats, 
     useSystemHealthLogs 
 } from '../hooks/useDeviceQueries'
-import { type UptimeStat, type SystemHealthLog } from '../types'
+
 import {
     Activity,
     TrendingUp,
@@ -14,11 +14,11 @@ import {
     Server,
     Database
 } from 'lucide-react'
-import { useUI } from '../context/UIContext'
+// import { useUI } from '../context/UIContext'
 import { GlassCard } from '../components/GlassCard'
 
 export default function Reports() {
-    const { isOffline } = useUI()
+    // const { isOffline } = useUI()
     const [activeTab, setActiveTab] = useState<'analytics' | 'health'>('analytics')
     const [days, setDays] = useState(30)
     
@@ -254,7 +254,7 @@ export default function Reports() {
                                     <tr>
                                         <td colSpan={5} className="p-8 text-center text-muted-foreground animate-pulse">Checking system health...</td>
                                     </tr>
-                                ) : healthLogs.length === 0 ? (
+                                ) : !healthLogs || healthLogs.length === 0 ? (
                                     <tr>
                                         <td colSpan={5} className="p-8 text-center text-muted-foreground">
                                             No recent health logs. (Scheduled checks might be pending)

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import type { Device, SystemHealthLog, UptimeStat } from '../types'
+import type { Device } from '../types'
 import { queryKeys } from '../lib/queryClient'
 import { cacheDevices, getCachedDevices } from '../lib/cache'
 import { 

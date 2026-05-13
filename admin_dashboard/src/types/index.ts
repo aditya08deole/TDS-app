@@ -98,6 +98,7 @@ export type Alert = {
     resolved_by?: string
     escalation_level?: number
     device_name?: string // Added for convenience in UI
+    expiresAt?: any
 }
 
 export interface DeviceEvent {

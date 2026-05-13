@@ -23,6 +23,7 @@ import {
 
 import { useTheme } from '../context/ThemeContext'
 
+interface UserSettings {
     notifications_enabled: boolean
     email_alerts: boolean
     whatsapp_alerts: boolean

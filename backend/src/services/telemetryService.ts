@@ -66,7 +66,7 @@ export async function processTelemetry(data: {
     await redis.lTrim(key, 0, 999);
 
     // Update device metadata in Redis
-    const updatedDevice = {
+    const updatedDevice: Device = {
         ...device,
         last_reading_at: recordedAt.toISOString(),
         status: 'online', // Device just checked in

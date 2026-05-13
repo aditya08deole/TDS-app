@@ -54,7 +54,8 @@ export function startNotificationListeners() {
 
                 // Process new alerts for notification delivery
                 if (change.type === 'added') {
-                    const createdAt = alertData.created_at?.toDate ? (alertData.created_at as any).toDate() : new Date(alertData.created_at);
+                    const createdAtRaw = alertData.created_at as any;
+                    const createdAt = createdAtRaw?.toDate ? createdAtRaw.toDate() : new Date(alertData.created_at);
                     if (alertData.status === 'open' && (Date.now() - createdAt.getTime() < 60000)) {
                         console.log(`🚨 New Critical Alert detected: ${alertData.message}`);
                         await sendPushNotification(alertId, alertData);
