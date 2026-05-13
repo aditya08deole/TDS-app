@@ -1,4 +1,4 @@
-import { type Device } from '../types'
+import { type Device, type SystemHealthLog, type UptimeStat } from '../types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
@@ -108,4 +108,35 @@ export async function updateDevice(id: string, updates: Partial<Device>): Promis
   }
   const result: ApiResponse<Device> = await response.json()
   return result.data
+}
+
+export async function getDeviceSensorData(id: string, limit: number = 100): Promise<any[]> {
+  const response = await fetch(`${API_BASE_URL}/api/devices/${id}/sensor-data?limit=${limit}`)
+  if (!response.ok) throw new Error('Failed to fetch sensor data')
+  const result: ApiResponse<any[]> = await response.json()
+  return result.data || []
+}
+
+export async function getDeviceHealthEvents(id: string, limit: number = 50): Promise<any[]> {
+  const response = await fetch(`${API_BASE_URL}/api/devices/${id}/health-events?limit=${limit}`)
+  if (!response.ok) throw new Error('Failed to fetch health events')
+  const result: ApiResponse<any[]> = await response.json()
+  return result.data || []
+}
+
+export async function getSystemHealthLogs(limit: number = 100): Promise<SystemHealthLog[]> {
+  const response = await fetch(`${API_BASE_URL}/api/devices/system/health?limit=${limit}`)
+  if (!response.ok) throw new Error('Failed to fetch system health logs')
+  const result: ApiResponse<SystemHealthLog[]> = await response.json()
+  return result.data || []
+}
+
+export async function getUptimeStats(deviceId?: string): Promise<UptimeStat[]> {
+  const url = deviceId 
+    ? `${API_BASE_URL}/api/devices/system/uptime?deviceId=${deviceId}`
+    : `${API_BASE_URL}/api/devices/system/uptime`
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('Failed to fetch uptime stats')
+  const result: ApiResponse<UptimeStat[]> = await response.json()
+  return result.data || []
 }

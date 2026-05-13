@@ -84,3 +84,21 @@ export interface ApiResponse<T> {
   error?: string;
   timestamp: string;
 }
+
+export interface SystemHealthLog {
+  id: string;
+  timestamp: string;
+  status: 'healthy' | 'warning' | 'error';
+  message: string;
+  component: string;
+  metadata?: Record<string, any>;
+}
+
+export interface UptimeStat {
+  id: string;
+  device_id: string;
+  timestamp: string;
+  uptime_percentage: number;
+  total_online_minutes: number;
+  total_offline_minutes: number;
+}

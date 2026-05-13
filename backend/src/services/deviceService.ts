@@ -1,149 +1,154 @@
 import { getFirestore } from 'firebase-admin/firestore';
-import { query as dbQuery } from '../db/connection';
-import { Device } from '../types';
+import { getRedisClient, hset, hgetall } from '../db/redis';
+import { l1Cache } from '../db/cache';
+import { Device, SensorData, SystemHealthLog, UptimeStat } from '../types';
 
 function getFirestoreDb() {
   return getFirestore();
 }
 
 export async function getAllDevices(): Promise<Device[]> {
-  const sql = `
-    SELECT * FROM devices
-    ORDER BY created_at DESC
-  `;
+  const redis = getRedisClient();
+  const ids = await redis.sMembers('devices:all');
+  
+  const devices: Device[] = [];
+  for (const id of ids) {
+    const device = await getDeviceById(id);
+    if (device) devices.push(device);
+  }
 
-  const result = await dbQuery(sql);
-  return result.rows;
+  // Sort by created_at DESC (if needed)
+  return devices.sort((a, b) => {
+    const dateA = new Date(a.created_at || 0).getTime();
+    const dateB = new Date(b.created_at || 0).getTime();
+    return dateB - dateA;
+  });
 }
 
 export async function getDeviceById(id: string): Promise<Device | null> {
-  const sql = `
-    SELECT * FROM devices
-    WHERE id = $1
-  `;
+  // 1. Try L1 Cache (In-Memory)
+  const cached = l1Cache.get<Device>(`device:${id}`);
+  if (cached) return cached;
 
-  const result = await dbQuery(sql, [id]);
-  return result.rows[0] || null;
+  // 2. Try L2 Cache (Redis)
+  const device = await hgetall<Device>(`device:${id}`);
+  
+  // 3. Populate L1 if found
+  if (device) {
+    l1Cache.set(`device:${id}`, device, 30 * 1000); // Cache for 30 seconds
+  }
+  
+  return device;
 }
 
 export async function createDevice(deviceData: Partial<Device>): Promise<Device> {
   const db = getFirestoreDb();
+  const redis = getRedisClient();
   
-  // 1. Add to Firestore first to get an ID if not provided
-  let firestoreId = deviceData.id;
-  if (!firestoreId) {
-    const docRef = await db.collection('devices').add({
-      ...deviceData,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      status: deviceData.status || 'offline'
-    });
-    firestoreId = docRef.id;
+  // 1. Generate an ID if needed
+  const deviceId = deviceData.id || `local_dev_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+  // 2. Add to Redis immediately
+  const device: Device = {
+    ...deviceData,
+    id: deviceId,
+    created_at: deviceData.created_at || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    status: deviceData.status || 'offline'
+  } as Device;
+
+  await hset(`device:${deviceId}`, device);
+  await redis.sAdd('devices:all', deviceId);
+  l1Cache.set(`device:${deviceId}`, device); // Populate L1 cache
+
+  // 3. Async push to Firestore
+  if (!deviceData.id) {
+    db.collection('devices').doc(deviceId).set(device)
+      .catch(e => console.error("Firestore create device sync failed", e));
   } else {
-    await db.collection('devices').doc(firestoreId).set({
-      ...deviceData,
-      created_at: deviceData.created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      status: deviceData.status || 'offline'
-    }, { merge: true });
+    db.collection('devices').doc(deviceId).set(device, { merge: true })
+      .catch(e => console.error("Firestore create/update device sync failed", e));
   }
 
-  // 2. Add to PostgreSQL
-  const sql = `
-    INSERT INTO devices (
-      id, name, location_name, description, latitude, longitude,
-      node_number, sim_number, serial_number, status, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
-    ON CONFLICT (id) DO UPDATE SET
-      name = $2,
-      location_name = $3,
-      description = $4,
-      latitude = $5,
-      longitude = $6,
-      node_number = $7,
-      sim_number = $8,
-      serial_number = $9,
-      status = $10,
-      updated_at = NOW()
-    RETURNING *
-  `;
-
-  const params = [
-    firestoreId,
-    deviceData.name,
-    deviceData.location_name || null,
-    deviceData.description || null,
-    deviceData.latitude || null,
-    deviceData.longitude || null,
-    deviceData.node_number || null,
-    deviceData.sim_number || null,
-    deviceData.serial_number || null,
-    deviceData.status || 'offline'
-  ];
-
-  const result = await dbQuery(sql, params);
-  return result.rows[0];
+  return device;
 }
 
 export async function searchDevices(query: string): Promise<Device[]> {
-  const searchTerm = `%${query}%`;
+  const allDevices = await getAllDevices();
+  const q = query.toLowerCase();
 
-  const sql = `
-    SELECT * FROM devices
-    WHERE
-      name ILIKE $1
-      OR location_name ILIKE $1
-      OR node_number ILIKE $1
-      OR id::text ILIKE $1
-    ORDER BY created_at DESC
-    LIMIT 50
-  `;
-
-  const result = await dbQuery(sql, [searchTerm]);
-  return result.rows;
+  return allDevices.filter(d => 
+    (d.name && d.name.toLowerCase().includes(q)) ||
+    (d.location_name && d.location_name.toLowerCase().includes(q)) ||
+    (d.node_number && d.node_number.toLowerCase().includes(q)) ||
+    (d.id && d.id.toLowerCase().includes(q))
+  ).slice(0, 50);
 }
 
 export async function getDevicesByStatus(status: string): Promise<Device[]> {
-  const sql = `
-    SELECT * FROM devices
-    WHERE status = $1
-    ORDER BY created_at DESC
-  `;
-
-  const result = await dbQuery(sql, [status]);
-  return result.rows;
+  const allDevices = await getAllDevices();
+  return allDevices.filter(d => d.status === status);
 }
 
 export async function getDeviceStats(): Promise<any> {
-  const sql = `
-    SELECT
-      COUNT(*) as total_devices,
-      COUNT(CASE WHEN status = 'online' THEN 1 END) as online_count,
-      COUNT(CASE WHEN status = 'offline' THEN 1 END) as offline_count,
-      COUNT(CASE WHEN status = 'critical' THEN 1 END) as critical_count,
-      COUNT(CASE WHEN status = 'maintenance' THEN 1 END) as maintenance_count
-    FROM devices
-  `;
+  const redis = getRedisClient();
+  const cacheKey = 'stats:global';
+  
+  // 1. Try to get from Redis cache
+  const cachedStats = await redis.get(cacheKey);
+  if (cachedStats) {
+    return JSON.parse(cachedStats);
+  }
 
-  const result = await dbQuery(sql);
-  return result.rows[0];
+  // 2. Recalculate if not cached
+  const allDevices = await getAllDevices();
+  
+  const totalTds = allDevices.reduce((acc, d) => acc + (d.last_tds || 0), 0);
+  const activeDevices = allDevices.filter(d => d.last_tds !== undefined && d.last_tds !== null).length;
+  const averageTds = activeDevices > 0 ? totalTds / activeDevices : 0;
+
+  const stats = {
+    total_devices: allDevices.length,
+    online_count: allDevices.filter(d => d.status === 'online').length,
+    offline_count: allDevices.filter(d => d.status === 'offline').length,
+    critical_count: allDevices.filter(d => d.status === 'critical').length,
+    maintenance_count: allDevices.filter(d => d.status === 'maintenance').length,
+    average_tds: Math.round(averageTds * 10) / 10,
+    updated_at: new Date().toISOString()
+  };
+
+  // 3. Store in Redis for 60 seconds
+  await redis.set(cacheKey, JSON.stringify(stats), {
+    EX: 60
+  });
+  
+  return stats;
 }
 
 export async function getDeviceWithRecentData(id: string): Promise<any> {
-  const sql = `
-    SELECT
-      d.*,
-      (SELECT COUNT(*) FROM alerts WHERE device_id = d.id AND status = 'open') as open_alerts_count,
-      (SELECT COUNT(*) FROM sensor_data WHERE device_id = d.id) as total_readings,
-      (SELECT tds FROM sensor_data WHERE device_id = d.id ORDER BY recorded_at DESC LIMIT 1) as latest_tds,
-      (SELECT temperature FROM sensor_data WHERE device_id = d.id ORDER BY recorded_at DESC LIMIT 1) as latest_temperature,
-      (SELECT voltage FROM sensor_data WHERE device_id = d.id ORDER BY recorded_at DESC LIMIT 1) as latest_voltage
-    FROM devices d
-    WHERE d.id = $1
-  `;
+  const device = await getDeviceById(id);
+  if (!device) return null;
 
-  const result = await dbQuery(sql, [id]);
-  return result.rows[0] || null;
+  const redis = getRedisClient();
+  
+  // Get open alerts count
+  const openAlertsCount = await redis.sCard(`device:${id}:alerts:open`);
+  
+  // Get total readings
+  const totalReadings = await redis.lLen(`sensors:${id}`);
+  
+  // Get latest reading
+  const latestReadingStr = await redis.lIndex(`sensors:${id}`, 0);
+  let latestReading = latestReadingStr ? JSON.parse(latestReadingStr) : null;
+
+  return {
+    ...device,
+    open_alerts_count: openAlertsCount,
+    total_readings: totalReadings,
+    latest_tds: latestReading?.tds || null,
+    latest_temperature: latestReading?.temperature || null,
+    latest_voltage: latestReading?.voltage || null
+  };
 }
 
 export async function updateDeviceTdsThresholds(
@@ -151,129 +156,151 @@ export async function updateDeviceTdsThresholds(
   minTds: number,
   maxTds: number
 ): Promise<Device> {
-  const sql = `
-    UPDATE devices
-    SET safe_tds_min = $1, safe_tds_max = $2, updated_at = NOW()
-    WHERE id = $3
-    RETURNING *
-  `;
-
-  const result = await dbQuery(sql, [minTds, maxTds, deviceId]);
-
-  if (result.rows.length === 0) {
-    throw new Error(`Device ${deviceId} not found`);
-  }
-
-  return result.rows[0];
+  const updates = { safe_tds_min: minTds, safe_tds_max: maxTds };
+  return await updateDevice(deviceId, updates);
 }
 
 export async function updateDeviceStatus(
   deviceId: string,
   status: 'online' | 'offline' | 'critical' | 'maintenance'
 ): Promise<Device> {
-  const sql = `
-    UPDATE devices
-    SET status = $1, updated_at = NOW()
-    WHERE id = $2
-    RETURNING *
-  `;
-
-  const result = await dbQuery(sql, [status, deviceId]);
-
-  if (result.rows.length === 0) {
-    throw new Error(`Device ${deviceId} not found`);
-  }
-
-  return result.rows[0];
+  const updates = { status };
+  return await updateDevice(deviceId, updates);
 }
 
 export async function updateDevice(
   deviceId: string,
   updates: Partial<Device>
 ): Promise<Device> {
-  // 1. Update Firestore
-  try {
-    const db = getFirestoreDb();
-    const cleanUpdates = { ...updates };
-    delete (cleanUpdates as any).id; // ID cannot be updated
-    (cleanUpdates as any).updated_at = new Date().toISOString();
-    
-    await db.collection('devices').doc(deviceId).update(cleanUpdates);
-    console.log(`✅ Firestore updated for device ${deviceId}`);
-  } catch (error) {
-    console.warn(`⚠️ Could not update device ${deviceId} in Firestore:`, error);
-    // Continue even if Firestore update fails, as long as PostgreSQL succeeds
+  const current = await getDeviceById(deviceId);
+  if (!current) {
+    throw new Error(`Device ${deviceId} not found`);
   }
 
-  // 2. Update PostgreSQL (Partial Update)
-  const fields: string[] = [];
-  const params: any[] = [];
-  let paramCount = 1;
+  const updated: Device = {
+    ...current,
+    ...updates,
+    updated_at: new Date().toISOString()
+  };
 
-  const updatableFields = [
-    'name', 'location_name', 'description', 'latitude', 'longitude',
-    'node_number', 'sim_number', 'serial_number', 'status',
-    'thingspeak_channel_id', 'thingspeak_read_key', 'tds_field_number',
-    'temperature_field_number', 'voltage_field_number', 'safe_tds_min', 'safe_tds_max'
-  ];
+  // 1. Update Redis & Cache First
+  await hset(`device:${deviceId}`, updated);
+  l1Cache.set(`device:${deviceId}`, updated); // Update L1 cache
 
-  for (const field of updatableFields) {
-    if (updates[field as keyof Device] !== undefined) {
-      fields.push(`${field} = $${paramCount}`);
-      params.push(updates[field as keyof Device]);
-      paramCount++;
-    }
-  }
+  // 2. Background Firestore Sync
+  const db = getFirestoreDb();
+  const cleanUpdates = { ...updates };
+  delete (cleanUpdates as any).id;
+  (cleanUpdates as any).updated_at = updated.updated_at;
+  
+  db.collection('devices').doc(deviceId).update(cleanUpdates)
+    .catch(error => console.error(`⚠️ Could not update device ${deviceId} in Firestore:`, error));
 
-  if (fields.length === 0) {
-    // No fields to update in Postgres, just fetch current
-    const result = await dbQuery('SELECT * FROM devices WHERE id = $1', [deviceId]);
-    return result.rows[0];
-  }
-
-  params.push(deviceId);
-  const sql = `
-    UPDATE devices
-    SET ${fields.join(', ')}, updated_at = NOW()
-    WHERE id = $${paramCount}
-    RETURNING *
-  `;
-
-  const result = await dbQuery(sql, params);
-
-  if (result.rows.length === 0) {
-    throw new Error(`Device ${deviceId} not found in PostgreSQL`);
-  }
-
-  return result.rows[0];
+  return updated;
 }
 
 export async function deleteDevice(deviceId: string): Promise<void> {
-  // 1. Delete from Firestore
-  try {
-    const db = getFirestoreDb();
-    await db.collection('devices').doc(deviceId).delete();
-  } catch (error) {
-    console.warn(`Could not delete device ${deviceId} from Firestore:`, error);
-  }
+  // 1. Delete from Redis & Cache First
+  const redis = getRedisClient();
+  await redis.del(`device:${deviceId}`);
+  await redis.sRem('devices:all', deviceId);
+  await redis.del(`device:${deviceId}:alerts`);
+  await redis.del(`device:${deviceId}:alerts:open`);
+  await redis.del(`sensors:${deviceId}`);
+  l1Cache.del(`device:${deviceId}`);
 
-  // 2. Delete from PostgreSQL
-  const sql = `
-    DELETE FROM devices
-    WHERE id = $1
-  `;
-
-  await dbQuery(sql, [deviceId]);
+  // 2. Background Firestore Sync
+  const db = getFirestoreDb();
+  db.collection('devices').doc(deviceId).delete()
+    .catch(error => console.warn(`Could not delete device ${deviceId} from Firestore:`, error));
 }
 
 export async function getStaleDevices(hoursAgo: number = 1): Promise<Device[]> {
-  const sql = `
-    SELECT * FROM devices
-    WHERE last_reading_at < NOW() - INTERVAL '${hoursAgo} hours'
-      OR last_reading_at IS NULL
-    ORDER BY last_reading_at ASC
-  `;
+  const allDevices = await getAllDevices();
+  const threshold = Date.now() - hoursAgo * 60 * 60 * 1000;
 
-  const result = await dbQuery(sql);
-  return result.rows;
+  return allDevices.filter(d => {
+    const lastReading = d.last_reading_at ? new Date(d.last_reading_at).getTime() : 0;
+    return lastReading < threshold;
+  }).sort((a, b) => {
+    const lastA = a.last_reading_at ? new Date(a.last_reading_at).getTime() : 0;
+    const lastB = b.last_reading_at ? new Date(b.last_reading_at).getTime() : 0;
+    return lastA - lastB;
+  });
+}
+
+/**
+ * Get sensor history for a device from Redis
+ */
+export async function getDeviceSensorHistory(deviceId: string, limit: number = 100): Promise<SensorData[]> {
+  const redis = getRedisClient();
+  const key = `sensors:${deviceId}`;
+  
+  const rawData = await redis.lRange(key, 0, limit - 1);
+  return rawData.map(item => JSON.parse(item));
+}
+
+/**
+ * Get health events (alerts) for a device from Redis
+ */
+export async function getDeviceHealthEvents(deviceId: string, limit: number = 50): Promise<any[]> {
+  const redis = getRedisClient();
+  
+  // Get alert IDs from the device's alert set
+  const alertIds = await redis.sMembers(`device:${deviceId}:alerts`);
+  
+  const alerts: any[] = [];
+  for (const id of alertIds) {
+    const alert = await hgetall<any>(`alert:${id}`);
+    if (alert) alerts.push(alert);
+  }
+  
+  // Sort by created_at DESC
+  return alerts.sort((a, b) => {
+    const dateA = new Date(a.created_at || 0).getTime();
+    const dateB = new Date(b.created_at || 0).getTime();
+    return dateB - dateA;
+  }).slice(0, limit);
+}
+
+/**
+ * Get all system health logs from Redis
+ */
+export async function getSystemHealthLogs(limit: number = 100): Promise<SystemHealthLog[]> {
+  const redis = getRedisClient();
+  const rawData = await redis.lRange('system:health_logs', 0, limit - 1);
+  return rawData.map(item => JSON.parse(item));
+}
+
+/**
+ * Get uptime stats for all devices or a specific device
+ */
+export async function getUptimeStats(deviceId?: string): Promise<UptimeStat[]> {
+  const redis = getRedisClient();
+  let records: string[] = [];
+
+  if (deviceId) {
+    records = await redis.sMembers(`device:${deviceId}:uptime_records`);
+  } else {
+    // This is a bit inefficient in Redis without a global index, 
+    // but for now we can scan or just return empty if deviceId is missing 
+    // for specific analytics. 
+    // For the dashboard "Total Uptime", we might want a different approach.
+    // Let's assume we want all records for now.
+    const keys = await redis.keys('uptime:*:*');
+    records = keys;
+  }
+
+  const stats: UptimeStat[] = [];
+  for (const key of records) {
+    const stat = await hgetall<UptimeStat>(key);
+    if (stat) stats.push(stat);
+  }
+
+  // Sort by timestamp DESC
+  return stats.sort((a, b) => {
+    const dateA = new Date(a.timestamp || 0).getTime();
+    const dateB = new Date(b.timestamp || 0).getTime();
+    return dateB - dateA;
+  });
 }

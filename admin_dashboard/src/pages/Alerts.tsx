@@ -84,6 +84,15 @@ export default function Alerts() {
     }, [alerts])
 
     const filteredAlerts = alerts.filter(a => {
+        // ═══ EXPIRY FILTER ═══
+        if (a.expiresAt) {
+            const expiryDate = a.expiresAt instanceof Date 
+                ? a.expiresAt 
+                : (a.expiresAt.seconds ? new Date(a.expiresAt.seconds * 1000) : new Date(a.expiresAt));
+            
+            if (expiryDate < new Date()) return false; // Filter out if expired
+        }
+
         if (filter === 'all') return true
         if (filter === 'critical') return a.severity === 'critical'
         return true

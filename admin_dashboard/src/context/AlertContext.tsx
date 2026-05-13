@@ -91,6 +91,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
                             message += ` (Check sensor - unusually high reading, temp: ${tempValue}°C)`
                         }
                         
+                        const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
                         await addDoc(collection(db, 'alerts'), {
                             device_id: device.id,
                             device_name: getDeviceDisplayName(device),
@@ -98,6 +99,7 @@ export function AlertProvider({ children }: { children: ReactNode }) {
                             severity: 'critical',
                             status: 'open',
                             created_at: new Date().toISOString(),
+                            expiresAt: expiresAt,
                             tds_value: device.latest_tds,
                             temp_value: device.latest_temperature,
                             timestamp: serverTimestamp()

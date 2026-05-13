@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
-import { db } from '../lib/firebase'
-import { collection, query, getDocs, orderBy, limit } from 'firebase/firestore'
+import { 
+    useUptimeStats, 
+    useSystemHealthLogs 
+} from '../hooks/useDeviceQueries'
+import { type UptimeStat, type SystemHealthLog } from '../types'
 import {
     Activity,
     TrendingUp,
@@ -14,72 +17,28 @@ import {
 import { useUI } from '../context/UIContext'
 import { GlassCard } from '../components/GlassCard'
 
-interface UptimeStat {
-    device_id: string
-    device_name: string
-    uptime_percent: number
-    total_online_seconds: number
-    total_tracked_seconds: number
-    outage_count: number
-}
-
-interface HealthLog {
-    id: string
-    component: string
-    status: string
-    latency_ms: number
-    error_details?: string
-    checked_at: string
-}
-
 export default function Reports() {
     const { isOffline } = useUI()
     const [activeTab, setActiveTab] = useState<'analytics' | 'health'>('analytics')
-    const [stats, setStats] = useState<UptimeStat[]>([])
-    const [healthLogs, setHealthLogs] = useState<HealthLog[]>([])
     const [days, setDays] = useState(30)
-    const [loading, setLoading] = useState(false)
+    
+    const { data: uptimeData, isLoading: loadingUptime } = useUptimeStats()
+    const { data: healthLogs, isLoading: loadingHealth } = useSystemHealthLogs(50)
 
-    useEffect(() => {
-        const fetchStats = async () => {
-            if (isOffline) return
-            setLoading(true)
-
-            try {
-                if (activeTab === 'analytics') {
-                    // NOTE: This was a Supabase RPC. For Firestore, we'd typically use a Cloud Function.
-                    // For now, we'll fetch devices and mock uptime until the migration is fully mature.
-                    const q = collection(db, 'devices')
-                    const snap = await getDocs(q)
-                    const mockStats = snap.docs.map(doc => {
-                        const d = doc.data()
-                        return {
-                            device_id: doc.id,
-                            device_name: d.name || 'Unknown',
-                            uptime_percent: 100, // Mocked
-                            total_online_seconds: 0,
-                            total_tracked_seconds: 0,
-                            outage_count: 0
-                        }
-                    })
-                    setStats(mockStats)
-                } else {
-                    const q = query(
-                        collection(db, 'system_health_logs'),
-                        orderBy('checked_at', 'desc'),
-                        limit(50)
-                    )
-                    const snap = await getDocs(q)
-                    setHealthLogs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as HealthLog[])
-                }
-            } catch (error) {
-                console.error('Error fetching stats:', error)
-            } finally {
-                setLoading(false)
-            }
-        }
-        fetchStats()
-    }, [days, isOffline, activeTab])
+    const loading = activeTab === 'analytics' ? loadingUptime : loadingHealth
+    
+    // Process uptime data
+    const stats = useMemo(() => {
+        if (!uptimeData) return []
+        return uptimeData.map(s => ({
+            device_id: s.device_id,
+            device_name: s.device_name || 'Unknown',
+            uptime_percent: s.uptime_percentage,
+            total_online_seconds: (s.uptime_percentage / 100) * 30 * 24 * 3600, // Approximate for display
+            total_tracked_seconds: 30 * 24 * 3600,
+            outage_count: Math.round(s.downtime_minutes / 10) // Rough estimate
+        }))
+    }, [uptimeData])
 
     // Aggregate Stats
     const systemHealth = useMemo(() => {
@@ -283,11 +242,11 @@ export default function Reports() {
                         <table className="w-full text-left text-sm">
                             <thead className="bg-secondary text-muted-foreground font-medium">
                                 <tr>
-                                    <th className="p-4">Component</th>
-                                    <th className="p-4">Status</th>
-                                    <th className="p-4">Latency</th>
-                                    <th className="p-4">Measured At</th>
-                                    <th className="p-4">Details</th>
+                                    <th className="p-4">Level</th>
+                                    <th className="p-4">Source</th>
+                                    <th className="p-4">Message</th>
+                                    <th className="p-4">Time</th>
+                                    <th className="p-4">Metadata</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-accent">
@@ -304,17 +263,20 @@ export default function Reports() {
                                 ) : (
                                     healthLogs.map(log => (
                                         <tr key={log.id} className="hover:bg-accent/30 transition-colors font-mono text-xs">
-                                            <td className="p-4 font-semibold text-foreground">{log.component}</td>
                                             <td className="p-4">
-                                                <span className={`inline-flex items-center px-2 py-0.5 rounded font-medium ${log.status === 'operational' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-500' : 'bg-red-500/10 text-red-500'
-                                                    }`}>
-                                                    {log.status.toUpperCase()}
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded font-medium ${
+                                                    log.level === 'info' ? 'bg-blue-500/10 text-blue-500' :
+                                                    log.level === 'warning' ? 'bg-yellow-500/10 text-yellow-500' :
+                                                    'bg-red-500/10 text-red-500'
+                                                }`}>
+                                                    {log.level.toUpperCase()}
                                                 </span>
                                             </td>
-                                            <td className="p-4 text-foreground/70">{log.latency_ms}ms</td>
-                                            <td className="p-4 text-muted-foreground">{new Date(log.checked_at).toLocaleString()}</td>
-                                            <td className="p-4 text-muted-foreground max-w-xs truncate" title={log.error_details}>
-                                                {log.error_details || '-'}
+                                            <td className="p-4 font-semibold text-foreground">{log.source}</td>
+                                            <td className="p-4 text-foreground/70">{log.message}</td>
+                                            <td className="p-4 text-muted-foreground">{new Date(log.timestamp).toLocaleString()}</td>
+                                            <td className="p-4 text-muted-foreground max-w-xs truncate">
+                                                {log.metadata ? JSON.stringify(log.metadata) : '-'}
                                             </td>
                                         </tr>
                                     ))

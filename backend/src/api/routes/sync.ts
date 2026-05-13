@@ -1,13 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { syncFromFirebase, getLastSyncStatus } from '../../services/syncService';
 import { getSchedulerStatus } from '../../sync/scheduler';
-import { query as dbQuery } from '../../db/connection';
+import { getRedisClient } from '../../db/redis';
 
 const router = Router();
 
 /**
  * POST /api/sync
- * Trigger manual sync from Firebase to PostgreSQL
+ * Trigger manual sync from Firebase to Redis Mirror
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -87,28 +87,24 @@ router.get('/status', async (req: Request, res: Response) => {
 
 /**
  * GET /api/sync/logs
- * Get sync history logs
+ * Get sync history logs from Redis
  */
 router.get('/logs', async (req: Request, res: Response) => {
   try {
+    const redis = getRedisClient();
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
     const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
 
-    const sql = `
-      SELECT * FROM sync_log
-      ORDER BY started_at DESC
-      LIMIT $1 OFFSET $2
-    `;
-
-    const result = await dbQuery(sql, [limit, offset]);
+    const logs = await redis.lRange('sync:logs', offset, offset + limit - 1);
+    const parsedLogs = logs.map(l => JSON.parse(l));
 
     res.json({
       success: true,
-      data: result.rows,
+      data: parsedLogs,
       pagination: {
         limit,
         offset,
-        count: result.rows.length,
+        count: parsedLogs.length,
       },
       timestamp: new Date().toISOString(),
     });
@@ -125,31 +121,30 @@ router.get('/logs', async (req: Request, res: Response) => {
 
 /**
  * GET /api/sync/logs/summary
- * Get sync logs summary statistics
+ * Get sync logs summary statistics from Redis
  */
 router.get('/logs/summary', async (req: Request, res: Response) => {
   try {
-    const sql = `
-      SELECT
-        COUNT(*) as total_syncs,
-        COUNT(CASE WHEN status = 'success' THEN 1 END) as successful_syncs,
-        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed_syncs,
-        COUNT(CASE WHEN status = 'partial' THEN 1 END) as partial_syncs,
-        AVG(duration_ms) as avg_duration_ms,
-        MAX(duration_ms) as max_duration_ms,
-        MIN(duration_ms) as min_duration_ms,
-        SUM(devices_synced) as total_devices_synced,
-        SUM(alerts_synced) as total_alerts_synced,
-        SUM(errors) as total_errors
-      FROM sync_log
-      WHERE started_at > NOW() - INTERVAL '7 days'
-    `;
+    const redis = getRedisClient();
+    const logs = await redis.lRange('sync:logs', 0, -1);
+    const parsedLogs = logs.map(l => JSON.parse(l));
 
-    const result = await dbQuery(sql);
+    const summary = {
+      total_syncs: parsedLogs.length,
+      successful_syncs: parsedLogs.filter(l => l.status === 'success').length,
+      failed_syncs: parsedLogs.filter(l => l.status === 'failed').length,
+      partial_syncs: parsedLogs.filter(l => l.status === 'partial').length,
+      avg_duration_ms: parsedLogs.reduce((sum, l) => sum + (l.duration_ms || 0), 0) / (parsedLogs.length || 1),
+      max_duration_ms: Math.max(...parsedLogs.map(l => l.duration_ms || 0), 0),
+      min_duration_ms: Math.min(...parsedLogs.map(l => l.duration_ms || 0), 100000),
+      total_devices_synced: parsedLogs.reduce((sum, l) => sum + (l.devices_synced || 0), 0),
+      total_alerts_synced: parsedLogs.reduce((sum, l) => sum + (l.alerts_synced || 0), 0),
+      total_errors: parsedLogs.reduce((sum, l) => sum + (l.errors || 0), 0),
+    };
 
     res.json({
       success: true,
-      data: result.rows[0],
+      data: summary,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

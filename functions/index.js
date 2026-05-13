@@ -54,7 +54,29 @@ exports.onAlertCreated = functions.firestore
 
       // 4. Send Multicast
       const response = await admin.messaging().sendEachForMulticast(message);
-      console.log(`✅ Successfully sent ${response.successCount} notifications.`);
+      console.log(`✅ Successfully sent ${response.successCount} push notifications.`);
+
+      // ═══ WHATSAPP INTEGRATION ═══
+      try {
+        const twilioSid = process.env.TWILIO_ACCOUNT_SID || functions.config().twilio.sid;
+        const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN || functions.config().twilio.token;
+        const twilioFrom = process.env.TWILIO_WHATSAPP_FROM || functions.config().twilio.from || "whatsapp:+14155238886";
+        const adminPhone = process.env.ADMIN_WHATSAPP_TO || functions.config().twilio.admin_phone;
+
+        if (twilioSid && twilioAuthToken && adminPhone) {
+          const client = require("twilio")(twilioSid, twilioAuthToken);
+          await client.messages.create({
+            from: twilioFrom,
+            body: `🚨 *EvaraTDS Alert*\n\n*Device:* ${alertData.device_name || alertData.device_id}\n*Severity:* ${alertData.severity.toUpperCase()}\n*Message:* ${alertData.message}\n\n_Reply STATUS for real-time update._`,
+            to: `whatsapp:${adminPhone}`
+          });
+          console.log(`📱 WhatsApp alert sent to ${adminPhone}`);
+        } else {
+          console.log("ℹ️ WhatsApp integration skipped: Missing credentials or admin phone.");
+        }
+      } catch (waError) {
+        console.error("❌ WhatsApp delivery failed:", waError.message);
+      }
 
       // 5. Cleanup invalid tokens
       if (response.failureCount > 0) {
@@ -90,12 +112,6 @@ exports.checkSensorData = functions.firestore
     const { deviceId, payload } = data;
     const tds = payload?.tds;
 
-    // ═══ VALIDATION: Skip invalid readings (null, undefined, or unrealistic values)
-    // Use per-device config for max threshold (allows brackish/saline water monitoring)
-    const maxValidTds = device?.max_tds_threshold || 2000; // Default to 2000 PPM (realistic max)
-    const minValidTds = device?.min_tds_threshold || 5;
-    if (tds === undefined || tds === null || tds > maxValidTds || tds < minValidTds) return null;
-
     let device;
     const now = Date.now();
 
@@ -107,6 +123,12 @@ exports.checkSensorData = functions.firestore
       device = deviceSnap.data();
       deviceCache[deviceId] = { data: device, timestamp: now };
     }
+
+    // ═══ VALIDATION: Skip invalid readings (null, undefined, or unrealistic values)
+    // Use per-device config for max threshold (allows brackish/saline water monitoring)
+    const maxValidTds = device?.max_tds_threshold || 2000; // Default to 2000 PPM (realistic max)
+    const minValidTds = device?.min_tds_threshold || 5;
+    if (tds === undefined || tds === null || tds > maxValidTds || tds < minValidTds) return null;
     
     const thresholdMin = device.safe_tds_min ? Number(device.safe_tds_min) : 35;
     const thresholdMax = device.safe_tds_max ? Number(device.safe_tds_max) : 175;
@@ -135,6 +157,7 @@ exports.checkSensorData = functions.firestore
       }
 
       // No existing open alert — create a new one (this WILL trigger onAlertCreated)
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
       return db.collection("alerts").add({
         device_id: deviceId,
         device_name: deviceName,
@@ -144,6 +167,7 @@ exports.checkSensorData = functions.firestore
         value_at_time: tds,
         status: "open",
         created_at: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: expiresAt, // For Firestore TTL automatic deletion
       });
     } else {
       // ═══ AUTO-RESOLVE: TDS is now in safe range, resolve any open alerts ═══
@@ -238,3 +262,50 @@ exports.scheduledHealthCheck = functions.pubsub
 
     return batch.commit();
   });
+
+/**
+ * WhatsApp Bot Webhook
+ * Responds to incoming WhatsApp messages from Twilio.
+ */
+exports.whatsappWebhook = functions.https.onRequest(async (req, res) => {
+  const body = req.body.Body ? req.body.Body.trim().toUpperCase() : "";
+  const from = req.body.From;
+
+  console.log(`📩 Received WhatsApp from ${from}: ${body}`);
+
+  let reply = "Hello! I am the EvaraTDS Monitor Bot. \n\nCommands:\n- STATUS: Get latest readings\n- HELP: List commands";
+
+  if (body === "STATUS") {
+    try {
+      const devicesSnap = await db.collection("devices").limit(5).get();
+      if (devicesSnap.empty) {
+        reply = "No devices found in the system.";
+      } else {
+        reply = "📊 *Latest TDS Readings:*\n";
+        devicesSnap.forEach(doc => {
+          const d = doc.data();
+          const lastReading = d.last_reading_at ? 
+            (d.last_reading_at._seconds ? new Date(d.last_reading_at._seconds * 1000).toLocaleTimeString() : new Date(d.last_reading_at).toLocaleTimeString()) 
+            : "N/A";
+          
+          reply += `\n📍 *${d.location_name || d.name}*\n`;
+          reply += `TDS: ${d.last_tds || "N/A"} PPM\n`;
+          reply += `Temp: ${d.last_temperature || "N/A"}°C\n`;
+          reply += `Status: ${d.status === "online" ? "🟢" : "🔴"} ${d.status.toUpperCase()}\n`;
+          reply += `🕒 _Last Updated: ${lastReading}_\n`;
+        });
+      }
+    } catch (err) {
+      console.error("❌ Error fetching status for WhatsApp:", err);
+      reply = "Sorry, I had trouble fetching the status. Please try again later.";
+    }
+  }
+
+  // Twilio Messaging Response (TwiML)
+  const twilio = require("twilio");
+  const twiml = new twilio.twiml.MessagingResponse();
+  twiml.message(reply);
+
+  res.set("Content-Type", "text/xml");
+  res.send(twiml.toString());
+});

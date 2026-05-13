@@ -1,25 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import {
-    collection,
-    query,
-    where,
-    getDocs,
-    getDoc,
-    doc,
-    onSnapshot,
-    orderBy,
-    limit as firestoreLimit
-} from 'firebase/firestore'
-import { db } from '../lib/firebase'
-import type { Device, DeviceEvent } from '../types'
+import type { Device, SystemHealthLog, UptimeStat } from '../types'
 import { queryKeys } from '../lib/queryClient'
 import { cacheDevices, getCachedDevices } from '../lib/cache'
 import { 
     fetchDevices as fetchDevicesFromApi,
     createDevice as createDeviceApi,
     deleteDevice as deleteDeviceApi,
-    updateDevice as updateDeviceApi
+    updateDevice as updateDeviceApi,
+    getDeviceSensorData as fetchSensorDataApi,
+    getDeviceHealthEvents as fetchHealthEventsApi,
+    getSystemHealthLogs as fetchSystemHealthLogsApi,
+    getUptimeStats as fetchUptimeStatsApi
 } from '../lib/api'
 
 // Typed interface for raw Firestore sensor data records
@@ -61,9 +53,9 @@ export function useDevices() {
     return useQuery({
         queryKey: queryKeys.devices,
         queryFn: fetchDevices,
-        staleTime: 5 * 60 * 1000,
+        staleTime: 10 * 1000, // 10 seconds stale time for more frequent updates
         gcTime: 10 * 60 * 1000,
-        refetchInterval: 60 * 1000,
+        refetchInterval: 15 * 1000, // Poll every 15 seconds
     })
 }
 
@@ -75,15 +67,7 @@ export function useDevice(deviceId: string | undefined) {
         queryKey: queryKeys.device(deviceId!),
         queryFn: async () => {
             if (!deviceId) return null
-
-            const docRef = doc(db, 'devices', deviceId)
-            const docSnap = await getDoc(docRef)
-
-            if (!docSnap.exists()) {
-                throw new Error('Device not found')
-            }
-
-            return { id: docSnap.id, ...docSnap.data() } as Device
+            return await fetchDevicesFromApi().then(devices => devices.find(d => d.id === deviceId) || null)
         },
         enabled: !!deviceId,
         staleTime: 5 * 60 * 1000,
@@ -140,55 +124,13 @@ export function useDeleteDevice() {
 }
 
 /**
- * Subscribe to real-time device changes
+ * Hook to subscribe to real-time device changes (DEPRECATED: Use polling in useDevices instead)
  */
 export function useDeviceSubscription() {
-    const queryClient = useQueryClient()
-
+    // This hook is now a no-op as we use polling in useDevices
     useEffect(() => {
-        console.log('🔥 Setting up Firestore realtime subscription for devices')
-
-        const q = collection(db, 'devices')
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            snapshot.docChanges().forEach((change) => {
-                const deviceData = { id: change.doc.id, ...change.doc.data() } as Device
-                console.log(`🔄 Device ${change.type}:`, deviceData.name)
-
-                queryClient.setQueryData<Device[]>(queryKeys.devices, (oldDevices) => {
-                    if (!oldDevices) return oldDevices
-
-                    switch (change.type) {
-                        case 'added':
-                            // If it's already in the cache, ignore (TanStack Query might have it)
-                            if (oldDevices.find(d => d.id === deviceData.id)) return oldDevices
-                            return [deviceData, ...oldDevices]
-
-                        case 'modified':
-                            return oldDevices.map(device =>
-                                device.id === deviceData.id ? deviceData : device
-                            )
-
-                        case 'removed':
-                            return oldDevices.filter(device => device.id !== deviceData.id)
-
-                        default:
-                            return oldDevices
-                    }
-                })
-            })
-
-            // Update IndexedDB cache
-            const currentDevices = queryClient.getQueryData<Device[]>(queryKeys.devices)
-            if (currentDevices) {
-                cacheDevices(currentDevices).catch(console.error)
-            }
-        })
-
-        return () => {
-            console.log('🔥 Cleaning up Firestore subscription')
-            unsubscribe()
-        }
-    }, [queryClient])
+        console.log('ℹ️ useDeviceSubscription is now using polling via useDevices')
+    }, [])
 }
 
 /**
@@ -199,23 +141,12 @@ export function useDeviceSensorData(deviceId: string | undefined, limitCount: nu
         queryKey: ['sensor_data', deviceId, limitCount],
         queryFn: async () => {
             if (!deviceId) return []
-
-            const q = query(
-                collection(db, 'sensor_data'),
-                where('device_id', '==', deviceId),
-                orderBy('recorded_at', 'desc'),
-                firestoreLimit(limitCount)
-            )
-
-            const querySnapshot = await getDocs(q)
-            return querySnapshot.docs.map(doc => ({ 
-                id: doc.id, 
-                ...doc.data() 
-            })) as SensorDataRecord[]
+            return await fetchSensorDataApi(deviceId, limitCount)
         },
         enabled: !!deviceId,
         staleTime: 30 * 1000,
-        gcTime: 5 * 60 * 1000
+        gcTime: 5 * 60 * 1000,
+        refetchInterval: 30 * 1000 // Poll every 30 seconds
     })
 }
 
@@ -227,21 +158,34 @@ export function useDeviceHealthEvents(deviceId: string | undefined, limitCount: 
         queryKey: queryKeys.healthEvents(deviceId!),
         queryFn: async () => {
             if (!deviceId) return []
-
-            const q = query(
-                collection(db, 'device_state_events'),
-                where('device_id', '==', deviceId),
-                orderBy('started_at', 'desc'),
-                firestoreLimit(limitCount)
-            )
-
-            const querySnapshot = await getDocs(q)
-            return querySnapshot.docs.map(doc => ({ 
-                id: doc.id, 
-                ...doc.data() 
-            })) as DeviceEvent[]
+            return await fetchHealthEventsApi(deviceId, limitCount)
         },
         enabled: !!deviceId,
-        staleTime: 60 * 1000,
+        staleTime: 30 * 1000,
+        refetchInterval: 30 * 1000 // Poll every 30 seconds
+    })
+}
+
+/**
+ * Hook to fetch system health logs
+ */
+export function useSystemHealthLogs(limitCount: number = 100) {
+    return useQuery({
+        queryKey: ['system_health_logs', limitCount],
+        queryFn: () => fetchSystemHealthLogsApi(limitCount),
+        staleTime: 30 * 1000,
+        refetchInterval: 30 * 1000 // Poll every 30 seconds
+    })
+}
+
+/**
+ * Hook to fetch uptime statistics
+ */
+export function useUptimeStats(deviceId?: string) {
+    return useQuery({
+        queryKey: ['uptime_stats', deviceId],
+        queryFn: () => fetchUptimeStatsApi(deviceId),
+        staleTime: 5 * 60 * 1000,
+        refetchInterval: 5 * 60 * 1000 // Poll every 5 minutes
     })
 }

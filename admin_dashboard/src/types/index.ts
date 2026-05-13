@@ -176,3 +176,22 @@ export interface EChartsParams {
     data: any;
 }
 
+export interface SystemHealthLog {
+    id: string;
+    level: 'info' | 'warning' | 'error' | 'critical';
+    message: string;
+    source: string;
+    timestamp: string;
+    metadata?: Record<string, any>;
+}
+
+export interface UptimeStat {
+    id: string;
+    device_id: string;
+    device_name?: string;
+    timestamp: string;
+    uptime_percentage: number;
+    downtime_minutes: number;
+    period: '24h' | '7d' | '30d';
+}
+

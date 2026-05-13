@@ -5,7 +5,8 @@ import { db } from '../lib/firebase'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import {
     User, Bell, Shield, LogOut, Moon, Mail, ChevronRight, Save, Loader2, CheckCircle,
-    Globe, Lock, Layout, BellRing, UserCircle, Volume2, VolumeX
+    Globe, Lock, Layout, BellRing, UserCircle, Volume2, VolumeX,
+    MessageSquare, Zap, Smartphone, ExternalLink, Info, Copy
 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
 import { Button } from '@/components/ui/button'
@@ -22,9 +23,11 @@ import {
 
 import { useTheme } from '../context/ThemeContext'
 
-interface UserSettings {
     notifications_enabled: boolean
     email_alerts: boolean
+    whatsapp_alerts: boolean
+    ntfy_alerts: boolean
+    ifttt_alerts: boolean
     dark_mode: boolean
 }
 
@@ -56,6 +59,9 @@ export default function Settings() {
     const [settings, setSettings] = useState<UserSettings>({
         notifications_enabled: true,
         email_alerts: false,
+        whatsapp_alerts: true,
+        ntfy_alerts: true,
+        ifttt_alerts: false,
         dark_mode: theme === 'dark'
     })
 
@@ -73,6 +79,9 @@ export default function Settings() {
                     setSettings({
                         notifications_enabled: data.notifications_enabled ?? true,
                         email_alerts: data.email_alerts ?? false,
+                        whatsapp_alerts: data.whatsapp_alerts ?? true,
+                        ntfy_alerts: data.ntfy_alerts ?? true,
+                        ifttt_alerts: data.ifttt_alerts ?? false,
                         dark_mode: isDark
                     })
                     // Sync global theme with Firestore preference on load
@@ -353,6 +362,100 @@ export default function Settings() {
                                         checked={settings.email_alerts}
                                         onCheckedChange={() => toggleSetting('email_alerts')}
                                     />
+                                </div>
+
+                                {/* WhatsApp Alerts */}
+                                <div className="p-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg bg-green-500/10 text-green-500"><MessageSquare className="w-5 h-5" /></div>
+                                        <div>
+                                            <p className="text-foreground font-medium">WhatsApp Alerts</p>
+                                            <p className="text-xs text-muted-foreground text-slate-400">Direct critical alerts to your phone</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-green-500/10 text-green-500 border-green-500/20">
+                                            ACTIVE
+                                        </span>
+                                        <Switch
+                                            checked={settings.whatsapp_alerts}
+                                            onCheckedChange={() => toggleSetting('whatsapp_alerts')}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* NTFY Alerts */}
+                                <div className="p-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500"><Smartphone className="w-5 h-5" /></div>
+                                        <div>
+                                            <p className="text-foreground font-medium">NTFY System Alerts</p>
+                                            <p className="text-xs text-muted-foreground text-slate-400">High-priority system-level notifications</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-orange-500/10 text-orange-500 border-orange-500/20">
+                                            ACTIVE
+                                        </span>
+                                        <Switch
+                                            checked={settings.ntfy_alerts}
+                                            onCheckedChange={() => toggleSetting('ntfy_alerts')}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* IFTTT Integration */}
+                                <div className="p-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 rounded-lg bg-black/10 text-foreground dark:bg-white/10"><Zap className="w-5 h-5" /></div>
+                                        <div>
+                                            <p className="text-foreground font-medium">IFTTT Webhooks</p>
+                                            <p className="text-xs text-muted-foreground text-slate-400">Trigger smart home automation</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-slate-500/10 text-slate-400 border-slate-500/20">
+                                            READY
+                                        </span>
+                                        <Switch
+                                            checked={settings.ifttt_alerts}
+                                            onCheckedChange={() => toggleSetting('ifttt_alerts')}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Webhook Configuration Info */}
+                                <div className="p-6 bg-blue-500/5 rounded-2xl border border-blue-500/10 mt-4">
+                                    <div className="flex items-start gap-3">
+                                        <Info className="w-5 h-5 text-blue-400 mt-0.5" />
+                                        <div className="space-y-3">
+                                            <div>
+                                                <h4 className="text-sm font-bold text-blue-400">Webhook Integration</h4>
+                                                <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                                                    To receive WhatsApp messages or trigger webhooks from your local system, you must expose your backend to the internet.
+                                                </p>
+                                            </div>
+                                            
+                                            <div className="flex flex-col gap-2">
+                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Twilio Webhook URL</p>
+                                                <div className="flex items-center gap-2 p-2 rounded-lg bg-black/20 border border-white/5">
+                                                    <code className="text-[10px] text-blue-300 font-mono truncate flex-1">
+                                                        https://your-tunnel.ngrok-free.app/api/notifications/whatsapp
+                                                    </code>
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
+                                                        navigator.clipboard.writeText('https://your-tunnel.ngrok-free.app/api/notifications/whatsapp');
+                                                        toast.info('Copied to clipboard');
+                                                    }}>
+                                                        <Copy className="h-3 w-3" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                            
+                                            <Button variant="link" className="p-0 h-auto text-blue-400 text-xs font-bold hover:text-blue-300" onClick={() => window.open('https://ngrok.com', '_blank')}>
+                                                Setup ngrok tunnel <ExternalLink className="w-3 h-3 ml-1" />
+                                            </Button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

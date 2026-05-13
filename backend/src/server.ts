@@ -6,14 +6,16 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
 import { initializeApp, cert } from 'firebase-admin/app';
-import { initializePool, closePool, query as dbQuery } from './db/connection';
+import { initializeRedis, closeRedis, getRedisClient } from './db/redis';
 import { startScheduler, stopScheduler, getSchedulerStatus } from './sync/scheduler';
 import { syncFromFirebase } from './services/syncService';
 import deviceRoutes from './api/routes/devices';
 import syncRoutes from './api/routes/sync';
+import notificationRoutes from './api/routes/notifications';
+import telemetryRoutes from './api/routes/telemetry';
 import { TDS_CONFIG } from './config/tdsConfig';
-import { initializeDatabase } from './db/init';
-import { findSchemaPath, getFrontendPath } from './utils/pathUtils';
+import { getFrontendPath } from './utils/pathUtils';
+import { startNotificationListeners } from './services/notificationService';
 
 // Load environment variables
 dotenv.config();
@@ -26,6 +28,7 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 app.use(helmet({
   contentSecurityPolicy: false, // Disable CSP for static serving simplicity in production
 }));
+
 // CORS Configuration - Restrict to allowed origins in production
 const allowedOrigins = process.env.CORS_ORIGINS 
   ? process.env.CORS_ORIGINS.split(',') 
@@ -50,41 +53,10 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-db-init-key']
 }));
+
 app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-/**
- * 🛠️ EMERGENCY DATABASE INITIALIZATION
- * Only accessible via a secure key to prevent unauthorized destructive operations.
- */
-app.get('/init-db', async (req: Request, res: Response) => {
-  try {
-    const authKey = req.query.key || req.headers['x-db-init-key'];
-    const requiredKey = process.env.DB_INIT_KEY;
-
-    if (!requiredKey || authKey !== requiredKey) {
-      console.warn(`⚠️ Unauthorized attempt to initialize database from IP: ${req.ip}`);
-      return res.status(401).json({ error: 'Unauthorized: Valid DB_INIT_KEY required' });
-    }
-
-    const schemaPath = findSchemaPath();
-    
-    await initializeDatabase();
-    
-    res.send(`
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px; text-align: center; background: #f0fff4; border-radius: 12px; max-width: 600px; margin: 40px auto; border: 1px solid #c6f6d5; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-        <h1 style="color: #2f855a; margin-bottom: 16px;">✅ Database Initialized</h1>
-        <p style="color: #4a5568; line-height: 1.6;">Tables have been synchronized with the latest schema. The system is ready.</p>
-        <a href="/" style="display: inline-block; margin-top: 24px; padding: 12px 24px; background: #38a169; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; transition: background 0.2s;">Go to Dashboard</a>
-      </div>
-    `);
-  } catch (err: any) {
-    console.error('❌ DB INIT FAILED:', err);
-    res.status(500).json({ success: false, error: 'Database initialization failed. Check server logs.' });
-  }
-});
-
 
 // ═══ FIREBASE SETUP ═══
 function initializeFirebase() {
@@ -128,17 +100,12 @@ app.use(express.static(frontendPath));
 // ═══ ROUTES ═══
 
 /**
- * Health check endpoint
- */
-
-
-/**
  * API version endpoint
  */
 app.get('/api/version', (req: Request, res: Response) => {
   res.json({
     version: '1.0.0',
-    name: 'TDS-APP Backend API',
+    name: 'TDS-APP Backend API (Redis Cached)',
     environment: NODE_ENV,
     timestamp: new Date().toISOString(),
   });
@@ -157,20 +124,20 @@ app.get('/api/system/config', (req: Request, res: Response) => {
 
 /**
  * GET /health
- * Consolidated health check for API and Database
+ * Consolidated health check for API and Redis
  */
 app.get('/health', async (req, res) => {
   try {
-    // Check DB connectivity
-    const dbCheck = await dbQuery('SELECT 1 as connected');
-    const dbStatus = dbCheck.rows[0]?.connected === 1 ? 'up' : 'down';
+    const redis = getRedisClient();
+    const ping = await redis.ping();
+    const redisStatus = ping === 'PONG' ? 'up' : 'down';
 
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
       services: {
         api: 'up',
-        database: dbStatus,
+        redis: redisStatus,
         scheduler: 'active'
       },
       environment: process.env.NODE_ENV || 'development'
@@ -187,13 +154,22 @@ app.get('/health', async (req, res) => {
 /**
  * Device routes
  */
-
 app.use('/api/devices', deviceRoutes);
 
 /**
  * Sync routes
  */
 app.use('/api/sync', syncRoutes);
+
+/**
+ * Notification routes
+ */
+app.use('/api/notifications', notificationRoutes);
+
+/**
+ * Telemetry routes (Device sensor data submission)
+ */
+app.use('/api/telemetry', telemetryRoutes);
 
 /**
  * Catch-all route to serve the frontend for SPA routing
@@ -222,35 +198,30 @@ app.use((err: any, req: Request, res: Response, next: any) => {
 // ═══ STARTUP ═══
 async function start() {
   try {
-    console.log('🚀 Starting TDS-APP Unified System...');
+    console.log('🚀 Starting TDS-APP Unified System (Redis Mode)...');
     console.log(`Environment: ${NODE_ENV}`);
 
     // Initialize Firebase
     initializeFirebase();
 
-    // Initialize database connection
-    initializePool();
-    console.log('✅ Database connection initialized');
-    console.log(`📡 Database URL (host): ${process.env.DATABASE_URL?.split('@')[1] || 'NOT SET'}`);
-
-    // 🚀 AUTO-INITIALIZE TABLES (If missing)
-    try {
-      await initializeDatabase();
-    } catch (dbErr) {
-      console.warn('⚠️ Auto-init check finished with status:', dbErr);
-    }
+    // Initialize Redis connection
+    await initializeRedis();
+    console.log('✅ Redis initialized');
 
     // Start scheduler
     startScheduler();
 
-    // Perform initial sync
+    // Perform initial sync (Incremental)
     console.log('📡 Running initial sync...');
     try {
-      const syncResult = await syncFromFirebase('scheduled');
+      const syncResult = await syncFromFirebase('event');
       console.log(`✅ Initial sync complete: ${syncResult.devicesSynced} devices, ${syncResult.alertsSynced} alerts`);
     } catch (syncError) {
       console.warn('⚠️ Initial sync failed, continuing anyway:', syncError);
     }
+
+    // Start real-time notification listeners
+    startNotificationListeners();
 
     // Start server
     app.listen(PORT, () => {
@@ -273,14 +244,14 @@ async function start() {
 process.on('SIGTERM', async () => {
   console.log('📭 SIGTERM received, shutting down gracefully...');
   stopScheduler();
-  await closePool();
+  await closeRedis();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('📭 SIGINT received, shutting down gracefully...');
   stopScheduler();
-  await closePool();
+  await closeRedis();
   process.exit(0);
 });
 

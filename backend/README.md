@@ -1,19 +1,19 @@
 # TDS-APP Backend API
 
-Express.js + PostgreSQL backend for caching Firestore data locally to reduce Firebase costs by 99%.
+Express.js + Redis backend for mirroring Firestore data locally to reduce Firebase costs and latency.
 
 ## Architecture
 
-- **Frontend** → **Express API** → **PostgreSQL Cache** ← **Firebase (sync)**
-- Frontend reads from fast local API
-- PostgreSQL mirrors Firestore data
-- Automatic sync every 1 hour + manual trigger
+- **Frontend** → **Express API** → **Redis Mirror** ← **Firebase (sync)**
+- Frontend reads from high-performance Redis cache
+- Redis mirrors critical Firestore collections
+- Automatic sync every 1 hour + manual trigger via API
 
 ## Setup
 
 ### Prerequisites
 - Node.js 20+
-- PostgreSQL 12+
+- Redis 6.2+
 - Firebase service account
 
 ### Installation
@@ -27,8 +27,8 @@ npm install
 Create `.env` file:
 
 ```env
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/tds_app
+# Redis
+REDIS_URL=redis://localhost:6379
 
 # Firebase
 FIREBASE_PROJECT_ID=your-project-id
@@ -45,14 +45,6 @@ ENABLE_EVENT_SYNC=true
 # API
 FRONTEND_URL=http://localhost:5173
 ```
-
-### Database Setup
-
-```bash
-npm run db:init
-```
-
-This creates all tables defined in `src/db/schema.sql`.
 
 ## Development
 
@@ -103,7 +95,7 @@ npm start
 - **Sensor Data**: Last 7 days of readings (optional)
 
 ### Sync Log
-All syncs are logged in `sync_log` table with:
+All syncs are logged in Redis (`sync:logs` list) with:
 - Sync type (manual/scheduled/event)
 - Devices synced count
 - Alerts synced count
@@ -111,15 +103,15 @@ All syncs are logged in `sync_log` table with:
 - Any errors encountered
 
 ## Deployment (Railway)
-
-### Step 1: Setup PostgreSQL
+ 
+### Step 1: Setup Redis
 ```bash
 # On Railway.app:
 1. Create new project
-2. Add PostgreSQL plugin
-3. Copy DATABASE_URL from variables
+2. Add Redis plugin
+3. Copy REDIS_URL from variables
 ```
-
+ 
 ### Step 2: Setup Backend Service
 ```bash
 # Add to Railway
@@ -127,10 +119,10 @@ All syncs are logged in `sync_log` table with:
 2. Set environment variables
 3. Deploy
 ```
-
+ 
 ### Environment Variables on Railway
 ```
-DATABASE_URL=postgresql://...
+REDIS_URL=redis://...
 FIREBASE_PROJECT_ID=evaratds
 FIREBASE_SERVICE_ACCOUNT_KEY={"type":"service_account",...}
 PORT=5000
@@ -161,19 +153,19 @@ curl http://localhost:5000/api/devices/stats/all
 - Cost: $6.98/month
 - Load time: 2-3 seconds
 
-### After (PostgreSQL Cache)
+### After (Redis Mirror)
 - Firestore reads/day: ~150 (99.9% reduction)
-- Cost: $0.01/month + $5/month DB = $5.01/month
-- Load time: 200ms
-- Savings: $1.97/month (28% reduction)
+- Cost: $0.01/month + Redis cost = Minimal
+- Load time: < 50ms
+- Savings: Significant reduction in both cost and latency
 
 ## Troubleshooting
 
-### Database Connection Error
+### Redis Connection Error
 ```
-Error: database pool not initialized
+Error: Redis connection failed
 ```
-Make sure `DATABASE_URL` is set and PostgreSQL is running.
+Make sure `REDIS_URL` is set and Redis server is running.
 
 ### Firebase Initialization Failed
 ```
@@ -211,7 +203,7 @@ Error responses:
 
 ## Next Steps
 
-1. Set up PostgreSQL on Railway
+1. Set up Redis on Railway
 2. Deploy backend service
 3. Update frontend to use `/api/devices` instead of Firestore SDK
 4. Test sync with `POST /api/sync`
@@ -219,4 +211,4 @@ Error responses:
 
 ---
 
-**Built with Express.js, TypeScript, PostgreSQL, and Firebase**
+**Built with Express.js, TypeScript, Redis, and Firebase**
