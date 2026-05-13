@@ -7,9 +7,10 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const db = getFirestore();
-const messaging = getMessaging();
-const redis = getRedisClient();
+// Lazy getters — called only after Firebase is initialized, never at import time
+function getDb() { return getFirestore(); }
+function getMsg() { return getMessaging(); }
+function getRedis() { return getRedisClient(); }
 
 // Twilio Config
 const twilioSid = process.env.TWILIO_ACCOUNT_SID;
@@ -29,6 +30,8 @@ if (twilioSid && twilioAuthToken) {
  */
 export function startNotificationListeners() {
     console.log('📡 Starting real-time Firestore listeners...');
+    const db = getDb();
+    const redis = getRedis();
 
     // 1. Listen for Alerts Changes
     db.collection('alerts').onSnapshot(async (snapshot) => {
@@ -99,6 +102,8 @@ export function startNotificationListeners() {
 
 async function sendPushNotification(alertId: string, alertData: any) {
     try {
+        const db = getDb();
+        const messaging = getMsg();
         const subscriptionsSnap = await db.collection('notification_subscriptions').get();
         if (subscriptionsSnap.empty) return;
 
@@ -214,6 +219,7 @@ export async function handleWhatsAppWebhook(reqBody: any) {
 
     if (body === "STATUS") {
         try {
+            const db = getDb();
             const devicesSnap = await db.collection("devices").limit(5).get();
             if (devicesSnap.empty) {
                 reply = "No devices found in the system.";

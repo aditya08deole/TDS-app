@@ -4,8 +4,9 @@ import { l1Cache } from '../db/cache';
 import { Device, SensorData } from '../types';
 import { TDS_CONFIG } from '../config/tdsConfig';
 
-const db = getFirestore();
-const redis = getRedisClient();
+// Lazy getters — only called after Firebase/Redis are initialized, never at import time
+function getDb() { return getFirestore(); }
+function getRedis() { return getRedisClient(); }
 
 // Local buffer for batching Firestore writes
 let sensorDataBuffer: any[] = [];
@@ -39,11 +40,11 @@ export async function processTelemetry(data: {
     
     // 3. If still not found, fetch from Firestore and cache
     if (!device) {
-        const deviceDoc = await db.collection('devices').doc(deviceId).get();
+        const deviceDoc = await getDb().collection('devices').doc(deviceId).get();
         if (deviceDoc.exists) {
             device = { ...deviceDoc.data(), id: deviceId } as Device;
             await hset(`device:${deviceId}`, device);
-            await redis.sAdd('devices:all', deviceId);
+            await getRedis().sAdd('devices:all', deviceId);
             l1Cache.set(`device:${deviceId}`, device, 60 * 1000);
         } else {
             throw new Error(`Device ${deviceId} not found`);
@@ -62,8 +63,8 @@ export async function processTelemetry(data: {
 
     // Add to history list
     const key = `sensors:${deviceId}`;
-    await redis.lPush(key, JSON.stringify(reading));
-    await redis.lTrim(key, 0, 999);
+    await getRedis().lPush(key, JSON.stringify(reading));
+    await getRedis().lTrim(key, 0, 999);
 
     // Update device metadata in Redis
     const updatedDevice: Device = {
@@ -104,7 +105,7 @@ async function checkThresholds(device: Device, reading: any) {
         console.log(`🚨 Threshold breach for ${device.name}: ${reading.tds} PPM (Range: ${min}-${max})`);
         
         // Check if we already have an open alert for this device to avoid spamming
-        const openAlertId = await redis.sMembers(`device:${device.id}:alerts:open`);
+        const openAlertId = await getRedis().sMembers(`device:${device.id}:alerts:open`);
         
         if (openAlertId.length === 0) {
             const alertData = {
@@ -123,23 +124,23 @@ async function checkThresholds(device: Device, reading: any) {
             const alertId = `local_alert_${Date.now()}_${Math.random().toString(36).substring(7)}`;
             const fullAlert = { ...alertData, id: alertId };
             await hset(`alert:${alertId}`, fullAlert);
-            await redis.sAdd('alerts:all', alertId);
-            await redis.sAdd(`device:${device.id}:alerts`, alertId);
-            await redis.sAdd(`device:${device.id}:alerts:open`, alertId);
+            await getRedis().sAdd('alerts:all', alertId);
+            await getRedis().sAdd(`device:${device.id}:alerts`, alertId);
+            await getRedis().sAdd(`device:${device.id}:alerts:open`, alertId);
 
             // Update device status in Redis immediately
             await hset(`device:${device.id}`, { ...device, status: 'critical' });
             
             // Background / Async Firestore sync (minimize blocking write latency)
-            db.collection('alerts').add(alertData).then(alertRef => {
+            getDb().collection('alerts').add(alertData).then(alertRef => {
                 // Update the temporary ID with real Firestore ID later if needed, or just let sync handle it
-                redis.sAdd('alerts:all', alertRef.id);
+                getRedis().sAdd('alerts:all', alertRef.id);
                 hset(`alert:${alertRef.id}`, { ...alertData, id: alertRef.id });
-                redis.sAdd(`device:${device.id}:alerts`, alertRef.id);
-                redis.sAdd(`device:${device.id}:alerts:open`, alertRef.id);
+                getRedis().sAdd(`device:${device.id}:alerts`, alertRef.id);
+                getRedis().sAdd(`device:${device.id}:alerts:open`, alertRef.id);
             }).catch(e => console.error("Firestore alert sync failed", e));
             
-            db.collection('devices').doc(device.id).update({ status: 'critical', updated_at: new Date().toISOString() })
+            getDb().collection('devices').doc(device.id).update({ status: 'critical', updated_at: new Date().toISOString() })
                 .catch(e => console.error("Firestore status sync failed", e));
         }
     } else if (device.status === 'critical') {
@@ -148,7 +149,7 @@ async function checkThresholds(device: Device, reading: any) {
         await hset(`device:${device.id}`, { ...device, status: 'online' });
         
         // Async Firestore sync
-        db.collection('devices').doc(device.id).update({ status: 'online', updated_at: new Date().toISOString() })
+        getDb().collection('devices').doc(device.id).update({ status: 'online', updated_at: new Date().toISOString() })
             .catch(e => console.error("Firestore status sync failed", e));
     }
 }
@@ -163,10 +164,10 @@ export async function flushSensorData() {
     const dataToFlush = [...sensorDataBuffer];
     sensorDataBuffer = [];
 
-    const batch: WriteBatch = db.batch();
+    const batch: WriteBatch = getDb().batch();
     
     dataToFlush.forEach(reading => {
-        const docRef = db.collection('sensor_data').doc();
+        const docRef = getDb().collection('sensor_data').doc();
         batch.set(docRef, reading);
     });
 
