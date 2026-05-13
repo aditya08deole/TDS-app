@@ -1,6 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
-import { getRedisClient, hset } from '../db/redis';
+import { getRedisClient, hset, hgetall } from '../db/redis';
 import { Device, Alert } from '../types';
 import twilio from 'twilio';
 import dotenv from 'dotenv';
@@ -24,6 +24,27 @@ if (twilioSid && twilioAuthToken) {
     console.log('✅ Twilio initialized in Notification Service');
 }
 
+// ─── Rate Limiting (1 notification per device per hour) ──────────────────────
+
+const RATE_LIMIT_TTL = 3600; // 1 hour in seconds
+const RATE_LIMIT_KEY = (deviceId: string) => `notif:sent:${deviceId}`;
+
+async function isRateLimited(deviceId: string): Promise<boolean> {
+    const exists = await getRedis().exists(RATE_LIMIT_KEY(deviceId));
+    return exists === 1;
+}
+
+async function setRateLimitKey(deviceId: string): Promise<void> {
+    await getRedis().set(RATE_LIMIT_KEY(deviceId), '1', { EX: RATE_LIMIT_TTL });
+}
+
+// ─── Device Existence Guard (anti-phantom alerts) ─────────────────────────────
+
+async function deviceExists(deviceId: string): Promise<boolean> {
+    const device = await hgetall<Device>(`device:${deviceId}`);
+    return device !== null && device.name !== undefined;
+}
+
 /**
  * Starts real-time listeners for Firestore collections
  * This handles synchronization between Firestore and Redis for metadata and alerts.
@@ -38,8 +59,8 @@ export function startNotificationListeners() {
         snapshot.docChanges().forEach(async (change) => {
             const alertData = change.doc.data() as Alert;
             const alertId = change.doc.id;
-            const deviceId = typeof alertData.device_id === 'object' && alertData.device_id !== null 
-                ? (alertData.device_id as any).id 
+            const deviceId = typeof alertData.device_id === 'object' && alertData.device_id !== null
+                ? (alertData.device_id as any).id
                 : String(alertData.device_id);
 
             if (change.type === 'added' || change.type === 'modified') {
@@ -59,12 +80,33 @@ export function startNotificationListeners() {
                 if (change.type === 'added') {
                     const createdAtRaw = alertData.created_at as any;
                     const createdAt = createdAtRaw?.toDate ? createdAtRaw.toDate() : new Date(alertData.created_at);
-                    if (alertData.status === 'open' && (Date.now() - createdAt.getTime() < 60000)) {
-                        console.log(`🚨 New Critical Alert detected: ${alertData.message}`);
+                    const isRecent = (Date.now() - createdAt.getTime()) < 60000; // < 60 seconds old
+
+                    if (alertData.status === 'open' && isRecent) {
+                        // ── Guard 1: Verify device actually exists (anti-phantom) ──
+                        const exists = await deviceExists(deviceId);
+                        if (!exists) {
+                            console.warn(`⚠️ [PHANTOM GUARD] Alert ${alertId} references non-existent device ${deviceId} — skipping notifications.`);
+                            return;
+                        }
+
+                        // ── Guard 2: Rate limit — 1 notification per device per hour ──
+                        const limited = await isRateLimited(deviceId);
+                        if (limited) {
+                            console.log(`⏱️ [RATE LIMITED] Skipping notifications for device ${deviceId} — already notified within the last hour.`);
+                            return;
+                        }
+
+                        // ── All guards passed — fire notifications ──
+                        console.log(`🚨 [ALERT] New critical alert for device ${deviceId}: ${alertData.message}`);
                         await sendPushNotification(alertId, alertData);
                         await sendWhatsAppNotification(alertData);
                         await sendNTFYNotification(alertData);
                         await triggerIFTTTWebhook(alertData);
+
+                        // Stamp the rate limit key AFTER successful dispatch
+                        await setRateLimitKey(deviceId);
+                        console.log(`✅ [RATE LIMIT SET] Device ${deviceId} will not receive another notification for 1 hour.`);
                     }
                 }
             } else if (change.type === 'removed') {
@@ -99,6 +141,8 @@ export function startNotificationListeners() {
         console.error('❌ Firestore Device Listener Error:', error);
     });
 }
+
+// ─── Notification Channels ────────────────────────────────────────────────────
 
 async function sendPushNotification(alertId: string, alertData: any) {
     try {
@@ -181,12 +225,15 @@ async function sendNTFYNotification(alertData: any) {
 }
 
 /**
- * IFTTT Webhook Trigger
+ * IFTTT Webhook Trigger — fires only when rate limit allows
  */
 async function triggerIFTTTWebhook(alertData: any) {
     const key = process.env.IFTTT_WEBHOOK_KEY;
     const event = process.env.IFTTT_EVENT_NAME || 'tds_alert';
-    if (!key) return;
+    if (!key) {
+        console.log('ℹ️ IFTTT skipped: IFTTT_WEBHOOK_KEY not set.');
+        return;
+    }
 
     try {
         const response = await fetch(`https://maker.ifttt.com/trigger/${event}/with/key/${key}`, {
@@ -199,11 +246,35 @@ async function triggerIFTTTWebhook(alertData: any) {
             })
         });
         if (response.ok) {
-            console.log(`🔗 IFTTT Webhook triggered: ${event}`);
+            console.log(`🔗 IFTTT Webhook triggered: event="${event}" device="${alertData.device_name || alertData.device_id}"`);
+        } else {
+            console.warn(`⚠️ IFTTT responded with status ${response.status}`);
         }
     } catch (error) {
         console.error('❌ IFTTT trigger failed:', error);
     }
+}
+
+/**
+ * Manual test notification — triggered via POST /api/notifications/test
+ * Bypasses rate limiting (it's a manual test)
+ */
+export async function triggerManualTestNotification(deviceId: string, deviceName: string, message: string) {
+    const alertData = {
+        device_id: deviceId,
+        device_name: deviceName,
+        severity: 'critical',
+        message,
+        type: 'TEST',
+        status: 'open',
+    };
+
+    console.log(`🧪 [TEST] Firing manual test notification for device ${deviceId}`);
+    await sendPushNotification('test-' + Date.now(), alertData);
+    await sendWhatsAppNotification(alertData);
+    await sendNTFYNotification(alertData);
+    await triggerIFTTTWebhook(alertData);
+    console.log(`✅ [TEST] Manual test notification dispatched.`);
 }
 
 /**

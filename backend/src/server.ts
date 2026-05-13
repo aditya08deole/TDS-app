@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { initializeRedis, closeRedis, getRedisClient } from './db/redis';
-import { startScheduler, stopScheduler, getSchedulerStatus } from './sync/scheduler';
+import { startScheduler, startAlertCleanupJob, stopScheduler, getSchedulerStatus } from './sync/scheduler';
 import { syncFromFirebase } from './services/syncService';
 import deviceRoutes from './api/routes/devices';
 import syncRoutes from './api/routes/sync';
@@ -210,6 +210,9 @@ async function start() {
 
     // Start scheduler
     startScheduler();
+
+    // Start alert auto-cleanup (deletes alerts older than 10 min every minute)
+    startAlertCleanupJob();
 
     // Perform initial sync (Incremental)
     console.log('📡 Running initial sync...');
