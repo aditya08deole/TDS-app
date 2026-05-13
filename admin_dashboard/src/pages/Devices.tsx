@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/sheet"
 import {
     Plus,
+    Pencil,
     Trash2,
     Smartphone,
     Search,
@@ -305,7 +306,7 @@ export default function Devices() {
     }
 
     const handleDelete = (id: string) => {
-        if (!isAdmin || !confirm('Are you sure you want to delete this device?')) return
+        if (!confirm('Are you sure you want to delete this device?')) return
         deleteDevice(id)
     }
 
@@ -338,7 +339,7 @@ export default function Devices() {
     }
 
     const handleBulkDelete = () => {
-        if (!isAdmin || selectedDevices.size === 0) return
+        if (selectedDevices.size === 0) return
         if (!confirm(`Delete ${selectedDevices.size} devices?`)) return
 
         selectedDevices.forEach(id => deleteDevice(id))
@@ -348,7 +349,7 @@ export default function Devices() {
     }
 
     const handleBulkMaintenanceMode = () => {
-        if (!isAdmin || selectedDevices.size === 0) return
+        if (selectedDevices.size === 0) return
 
         selectedDevices.forEach(id => {
             updateDevice({ id, updates: { status: 'maintenance' } })
@@ -427,7 +428,6 @@ export default function Devices() {
                     >
                         <Download className="h-5 w-5" />
                     </button>
-                    {isAdmin && (
                         <>
                             <button
                                 onClick={() => setIsFormOpen(!isFormOpen)}
@@ -452,7 +452,6 @@ export default function Devices() {
                                 <CheckSquare className="h-5 w-5" />
                             </button>
                         </>
-                    )}
                 </div>
             </div>
 
@@ -526,8 +525,8 @@ export default function Devices() {
                 </div>
             )}
 
-            {/* Add Device Form (Admin Only) */}
-            {isAdmin && !selectionMode && (isFormOpen || editingDeviceId) && (
+            {/* Add/Edit Device Form */}
+            {!selectionMode && (isFormOpen || editingDeviceId) && (
                 <GlassCard size="lg" className="p-4 lg:p-6 mb-6">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -1114,7 +1113,7 @@ export default function Devices() {
                                     <Smartphone className="h-5 w-5 lg:h-6 lg:w-6 text-primary drop-shadow-[0_0_8px_rgba(59,130,246,0.3)]" />
                                 )}
                             </div>
-                            {isAdmin && !selectionMode && (
+                            {!selectionMode && (
                                 <div className="flex gap-1">
                                     <button
                                         onClick={(e) => {
@@ -1140,7 +1139,8 @@ export default function Devices() {
                                         className="p-2 hover:bg-primary/10 rounded-lg text-muted-foreground hover:text-primary transition-colors"
                                         title="Edit Device"
                                     >
-                                        <Plus className="h-4 w-4 rotate-45" /> {/* Using Plus rotated for edit or just another icon */}
+                                        <Pencil className="h-4 w-4" />
+
                                     </button>
                                     <button
                                         onClick={(e) => {

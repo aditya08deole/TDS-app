@@ -10,12 +10,14 @@ export function initializePool(): Pool {
     throw new Error('DATABASE_URL environment variable is required');
   }
 
+  const isLocal = databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1');
+
   pool = new Pool({
     connectionString: databaseUrl,
     max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000, // Slightly longer for stability
-    ssl: {
+    connectionTimeoutMillis: 5000,
+    ssl: isLocal ? false : {
       rejectUnauthorized: false
     }
   });

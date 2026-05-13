@@ -225,4 +225,86 @@ router.put('/:id/status', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/devices
+ * Create a new device
+ */
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const deviceData = req.body;
+    
+    if (!deviceData.name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Device name is required',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const device = await deviceService.createDevice(deviceData);
+
+    res.status(201).json({
+      success: true,
+      data: device,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error creating device:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create device',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * PATCH /api/devices/:id
+ * Update an existing device
+ */
+router.patch('/:id', async (req: Request, res: Response) => {
+  try {
+    const deviceId = req.params.id;
+    const updates = req.body;
+
+    const device = await deviceService.updateDevice(deviceId, updates);
+
+    res.json({
+      success: true,
+      data: device,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error(`Error updating device ${req.params.id}:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to update device',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * DELETE /api/devices/:id
+ * Delete a device
+ */
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    await deviceService.deleteDevice(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Device deleted successfully',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error deleting device:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete device',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
 export default router;

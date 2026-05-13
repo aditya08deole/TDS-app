@@ -18,9 +18,11 @@ const UIContext = createContext<UIContextType | undefined>(undefined)
 
 export function UIProvider({ children }: { children: React.ReactNode }) {
     const [inspectorDeviceId, setInspectorDeviceId] = useState<string | null>(null)
-    const [isPWA, setIsPWA] = useState(false)
+    const [isPWA, setIsPWA] = useState(() => 
+        typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches
+    )
     const [isOffline, setIsOffline] = useState(!navigator.onLine)
-    const [sidebarOpen, setSidebarOpen] = useState(true)
+    const [sidebarOpen, setSidebarOpen] = useState(true) // Initialized to true, effect will sync if needed
     
     // Use unified viewport hook for consistent device detection
     const { isMobile, isTablet, isDesktop } = useViewport()
@@ -29,10 +31,11 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
         const handleOffline = () => setIsOffline(true)
         const handleOnline = () => setIsOffline(false)
 
-        // PWA Check
-        if (window.matchMedia('(display-mode: standalone)').matches) {
-            setIsPWA(true)
-        }
+        // PWA Check - already handled in state initializer, but we can keep the listener if display-mode can change
+        // (usually it doesn't change without reload, but for safety:)
+        const pwaMedia = window.matchMedia('(display-mode: standalone)')
+        const handlePWAMatch = (e: MediaQueryListEvent) => setIsPWA(e.matches)
+        pwaMedia.addEventListener('change', handlePWAMatch)
 
         window.addEventListener('offline', handleOffline)
         window.addEventListener('online', handleOnline)
@@ -40,17 +43,15 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
         return () => {
             window.removeEventListener('offline', handleOffline)
             window.removeEventListener('online', handleOnline)
+            pwaMedia.removeEventListener('change', handlePWAMatch)
         }
     }, [])
     
-    // Auto-close sidebar on mobile/tablet when device type changes
-    useEffect(() => {
-        if (!isDesktop) {
-            setSidebarOpen(false)
-        } else {
-            setSidebarOpen(true)
-        }
-    }, [isDesktop])
+    const [prevIsDesktop, setPrevIsDesktop] = useState(isDesktop)
+    if (isDesktop !== prevIsDesktop) {
+        setPrevIsDesktop(isDesktop)
+        setSidebarOpen(isDesktop)
+    }
 
     const toggleSidebar = React.useCallback(() => setSidebarOpen(prev => !prev), [])
 

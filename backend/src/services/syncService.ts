@@ -1,6 +1,7 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { query as dbQuery } from '../db/connection';
 import { Device, Alert, SyncLog } from '../types';
+import { TDS_CONFIG } from '../config/tdsConfig';
 
 function getDb() {
   return getFirestore();
@@ -22,7 +23,7 @@ export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event
   let alertsSynced = 0;
   let sensorEntriesSynced = 0;
   let errors = 0;
-  let errorMessage: string | undefined;
+  let errorLog: string[] = [];
 
   try {
     console.log(`🔄 Starting ${syncType} sync from Firebase...`);
@@ -32,9 +33,10 @@ export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event
       const devicesResult = await syncDevices();
       devicesSynced = devicesResult;
       console.log(`✅ Synced ${devicesSynced} devices`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error syncing devices:', err);
       errors++;
+      errorLog.push(`Devices error: ${err.message}`);
     }
 
     // Sync alerts
@@ -42,9 +44,10 @@ export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event
       const alertsResult = await syncAlerts();
       alertsSynced = alertsResult;
       console.log(`✅ Synced ${alertsSynced} alerts`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error syncing alerts:', err);
       errors++;
+      errorLog.push(`Alerts error: ${err.message}`);
     }
 
     // Sync sensor data (optional - can be skipped to reduce sync time)
@@ -52,13 +55,15 @@ export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event
       const sensorResult = await syncSensorData();
       sensorEntriesSynced = sensorResult;
       console.log(`✅ Synced ${sensorEntriesSynced} sensor entries`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error syncing sensor data:', err);
       errors++;
+      errorLog.push(`Sensor error: ${err.message}`);
     }
 
     const durationMs = Date.now() - startTime;
     const status = errors === 0 ? 'success' : errors > 2 ? 'failed' : 'partial';
+    const finalErrorMessage = errorLog.length > 0 ? errorLog.join(' | ') : undefined;
 
     // Log sync result
     await logSync({
@@ -67,7 +72,7 @@ export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event
       alerts_synced: alertsSynced,
       sensor_entries_synced: sensorEntriesSynced,
       errors,
-      error_message: errorMessage,
+      error_message: finalErrorMessage,
       status,
       duration_ms: durationMs,
     });
@@ -80,12 +85,12 @@ export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event
       alertsSynced,
       sensorEntriesSynced,
       errors,
-      errorMessage,
+      errorMessage: finalErrorMessage,
       durationMs,
     };
   } catch (error) {
     const durationMs = Date.now() - startTime;
-    errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
 
     await logSync({
       sync_type: syncType,
@@ -111,6 +116,12 @@ async function syncDevices(): Promise<number> {
 
   for (const doc of devicesSnapshot.docs) {
     const firebaseData = doc.data() as Device;
+    
+    // Basic validation
+    if (!firebaseData.name) {
+      console.warn(`⚠️ Skipping device ${doc.id}: Missing name`);
+      continue;
+    }
 
     const sql = `
       INSERT INTO devices (
@@ -152,34 +163,34 @@ async function syncDevices(): Promise<number> {
     `;
 
     const params = [
-      doc.id,
-      firebaseData.name,
-      firebaseData.location_name || null,
-      firebaseData.description || null,
-      firebaseData.latitude || null,
-      firebaseData.longitude || null,
-      firebaseData.thingspeak_channel_id || null,
-      firebaseData.thingspeak_read_key || null,
-      firebaseData.thingspeak_write_key || null,
-      firebaseData.node_number || null,
-      firebaseData.sim_number || null,
-      firebaseData.serial_number || null,
-      firebaseData.tds_field_number || 1,
-      firebaseData.temperature_field_number || 2,
-      firebaseData.voltage_field_number || 3,
-      firebaseData.status || 'offline',
-      firebaseData.last_seen_at || null,
-      firebaseData.deployment_date || null,
-      firebaseData.last_reading_at || null,
-      firebaseData.safe_tds_min || 35,
-      firebaseData.safe_tds_max || 175,
-      firebaseData.min_tds_threshold || 5,
-      firebaseData.max_tds_threshold || 2000,
-      firebaseData.metadata ? JSON.stringify(firebaseData.metadata) : null,
-      firebaseData.confidence_score || 100,
-      firebaseData.created_at || new Date().toISOString(),
-      firebaseData.updated_at || new Date().toISOString(),
-      doc.id,
+      String(doc.id), // 1: id
+      firebaseData.name, // 2: name
+      firebaseData.location_name || null, // 3
+      firebaseData.description || null, // 4
+      firebaseData.latitude || null, // 5
+      firebaseData.longitude || null, // 6
+      firebaseData.thingspeak_channel_id || null, // 7
+      firebaseData.thingspeak_read_key || null, // 8
+      firebaseData.thingspeak_write_key || null, // 9
+      firebaseData.node_number || null, // 10
+      firebaseData.sim_number || null, // 11
+      firebaseData.serial_number || null, // 12
+      firebaseData.tds_field_number || 1, // 13
+      firebaseData.temperature_field_number || 2, // 14
+      firebaseData.voltage_field_number || 3, // 15
+      firebaseData.status || 'offline', // 16
+      firebaseData.last_seen_at || null, // 17
+      firebaseData.deployment_date || null, // 18
+      firebaseData.last_reading_at || null, // 19
+      firebaseData.safe_tds_min || TDS_CONFIG.RANGES.SAFE_MIN, // 20
+      firebaseData.safe_tds_max || TDS_CONFIG.RANGES.SAFE_MAX, // 21
+      firebaseData.min_tds_threshold || TDS_CONFIG.THRESHOLDS.DEFAULT_MIN, // 22
+      firebaseData.max_tds_threshold || TDS_CONFIG.THRESHOLDS.DEFAULT_MAX, // 23
+      firebaseData.metadata ? JSON.stringify(firebaseData.metadata) : null, // 24
+      firebaseData.confidence_score || 100, // 25
+      firebaseData.created_at || new Date().toISOString(), // 26
+      firebaseData.updated_at || new Date().toISOString(), // 27
+      String(doc.id), // 28: firestore_id
     ];
 
     await dbQuery(sql, params);
@@ -198,6 +209,12 @@ async function syncAlerts(): Promise<number> {
 
   for (const doc of alertsSnapshot.docs) {
     const firebaseData = doc.data() as Alert;
+
+    // Basic validation
+    if (!firebaseData.type || !firebaseData.severity) {
+      console.warn(`⚠️ Skipping alert ${doc.id}: Missing required fields (type/severity)`);
+      continue;
+    }
 
     const sql = `
       INSERT INTO alerts (
@@ -224,27 +241,41 @@ async function syncAlerts(): Promise<number> {
         synced_at = NOW()
     `;
 
+    // Ensure device_id is a string, even if it's a Firestore DocumentReference
+    const deviceId = typeof firebaseData.device_id === 'object' && firebaseData.device_id !== null 
+      ? (firebaseData.device_id as any).id 
+      : String(firebaseData.device_id);
+
     const params = [
-      doc.id,
-      firebaseData.device_id,
-      firebaseData.device_name || null,
-      firebaseData.type,
-      firebaseData.severity,
-      firebaseData.message,
-      firebaseData.value_at_time,
-      firebaseData.threshold_snapshot ? JSON.stringify(firebaseData.threshold_snapshot) : null,
-      firebaseData.status,
-      firebaseData.created_at,
-      firebaseData.acknowledged_at || null,
-      firebaseData.resolved_at || null,
-      firebaseData.resolved_by || null,
-      firebaseData.created_by || null,
-      firebaseData.escalation_level || 0,
-      doc.id,
+      String(doc.id), // 1: id
+      deviceId, // 2: device_id
+      firebaseData.device_name || null, // 3
+      firebaseData.type, // 4
+      firebaseData.severity, // 5
+      firebaseData.message, // 6
+      firebaseData.value_at_time, // 7
+      firebaseData.threshold_snapshot ? JSON.stringify(firebaseData.threshold_snapshot) : null, // 8
+      firebaseData.status, // 9
+      firebaseData.created_at, // 10
+      firebaseData.acknowledged_at || null, // 11
+      firebaseData.resolved_at || null, // 12
+      firebaseData.resolved_by || null, // 13
+      firebaseData.created_by || null, // 14
+      firebaseData.escalation_level || 0, // 15
+      String(doc.id), // 16: firestore_id
     ];
 
-    await dbQuery(sql, params);
-    synced++;
+    try {
+      await dbQuery(sql, params);
+      synced++;
+    } catch (err: any) {
+      if (err.code === '23503') { // Foreign key violation
+        console.warn(`⚠️ Skipping orphaned alert ${doc.id}: Device ${deviceId} not found in database.`);
+      } else {
+        console.error(`❌ Error syncing alert ${doc.id}:`, err);
+        throw err;
+      }
+    }
   }
 
   return synced;
@@ -272,18 +303,32 @@ async function syncSensorData(): Promise<number> {
         synced_at = NOW()
     `;
 
+    // Ensure device_id is a string
+    const deviceId = typeof firebaseData.device_id === 'object' && firebaseData.device_id !== null 
+      ? (firebaseData.device_id as any).id 
+      : String(firebaseData.device_id);
+
     const params = [
-      doc.id,
-      firebaseData.device_id,
-      firebaseData.payload?.tds || null,
-      firebaseData.payload?.temperature || null,
-      firebaseData.payload?.voltage || null,
-      firebaseData.recorded_at || new Date().toISOString(),
-      doc.id,
+      String(doc.id), // 1: id
+      deviceId, // 2: device_id
+      firebaseData.payload?.tds || null, // 3
+      firebaseData.payload?.temperature || null, // 4
+      firebaseData.payload?.voltage || null, // 5
+      firebaseData.recorded_at || new Date().toISOString(), // 6
+      String(doc.id), // 7: firestore_id
     ];
 
-    await dbQuery(sql, params);
-    synced++;
+    try {
+      await dbQuery(sql, params);
+      synced++;
+    } catch (err: any) {
+      if (err.code === '23503') { // Foreign key violation
+        console.warn(`⚠️ Skipping sensor data ${doc.id}: Device ${deviceId} not found in database.`);
+      } else {
+        console.error(`❌ Error syncing sensor data ${doc.id}:`, err);
+        throw err;
+      }
+    }
   }
 
   return synced;

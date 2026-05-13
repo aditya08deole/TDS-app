@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { type Device } from '../types'
+import { type EnrichedDevice as Device } from '../types'
 import ConfidenceRing from './ConfidenceRing'
 
 interface DeviceTableProps {
@@ -142,10 +142,10 @@ export default function DeviceTable({ devices, loading, onDeviceClick }: DeviceT
                                     <td className="p-4 text-muted-foreground">{device.location_name}</td>
                                     <td className="p-4 text-right font-mono text-foreground">
                                         {/* Real TDS from device props */}
-                                        {(device as any).latest_tds?.toFixed(0) || '--'}
+                                        {device.latest_tds?.toFixed(0) || '--'}
                                     </td>
                                     <td className="p-4 text-right font-mono text-muted-foreground">
-                                        {(device as any).latest_temp?.toFixed(1) || '--'}
+                                        {device.latest_temperature?.toFixed(1) || '--'}
                                     </td>
                                     <td className="p-4 flex justify-center">
                                         <div onClick={(e) => e.stopPropagation()}>

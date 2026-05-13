@@ -1,16 +1,19 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import fs from 'fs';
 import morgan from 'morgan';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
 import { initializeApp, cert } from 'firebase-admin/app';
-import { initializePool, closePool } from './db/connection';
+import { initializePool, closePool, query as dbQuery } from './db/connection';
 import { startScheduler, stopScheduler, getSchedulerStatus } from './sync/scheduler';
 import { syncFromFirebase } from './services/syncService';
 import deviceRoutes from './api/routes/devices';
 import syncRoutes from './api/routes/sync';
+import { TDS_CONFIG } from './config/tdsConfig';
 import { initializeDatabase } from './db/init';
+import { findSchemaPath, getFrontendPath } from './utils/pathUtils';
 
 // Load environment variables
 dotenv.config();
@@ -23,9 +26,29 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 app.use(helmet({
   contentSecurityPolicy: false, // Disable CSP for static serving simplicity in production
 }));
+// CORS Configuration - Restrict to allowed origins in production
+const allowedOrigins = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(',') 
+  : ['http://localhost:3000', 'http://localhost:5173'];
+
 app.use(cors({
-  origin: true, // Allow all origins in production or configure strictly
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is in the allowed list
+    const isAllowed = allowedOrigins.some(allowed => origin === allowed || origin.startsWith(`${allowed}/`));
+    
+    if (isAllowed || NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      console.warn(`⚠️ CORS blocked request from unauthorized origin: ${origin}`);
+      callback(new Error('Origin not allowed by CORS'));
+    }
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-db-init-key']
 }));
 app.use(morgan('combined'));
 app.use(express.json());
@@ -33,55 +56,32 @@ app.use(express.urlencoded({ extended: true }));
 
 /**
  * 🛠️ EMERGENCY DATABASE INITIALIZATION
- * This is at the top to ensure it's hit before any static serving or SPA routing.
+ * Only accessible via a secure key to prevent unauthorized destructive operations.
  */
 app.get('/init-db', async (req: Request, res: Response) => {
   try {
-    console.log('🚀 MANUALLY TRIGGERING DB INIT...');
+    const authKey = req.query.key || req.headers['x-db-init-key'];
+    const requiredKey = process.env.DB_INIT_KEY;
+
+    if (!requiredKey || authKey !== requiredKey) {
+      console.warn(`⚠️ Unauthorized attempt to initialize database from IP: ${req.ip}`);
+      return res.status(401).json({ error: 'Unauthorized: Valid DB_INIT_KEY required' });
+    }
+
+    const schemaPath = findSchemaPath();
     
-    // Check multiple potential paths for schema.sql on Railway
-    const pathsToTry = [
-      path.join(__dirname, '../../src/db/schema.sql'),
-      path.join(__dirname, '../db/schema.sql'),
-      path.join(__dirname, './db/schema.sql'),
-      path.join(process.cwd(), 'backend/src/db/schema.sql'),
-      path.join(process.cwd(), 'src/db/schema.sql')
-    ];
-
-    let schemaContent = '';
-    let foundPath = '';
-
-    for (const p of pathsToTry) {
-      if (require('fs').existsSync(p)) {
-        schemaContent = require('fs').readFileSync(p, 'utf8');
-        foundPath = p;
-        break;
-      }
-    }
-
-    if (!schemaContent) {
-      throw new Error('Could not find schema.sql in any expected location: ' + pathsToTry.join(', '));
-    }
-
-    console.log(`✅ Found schema at: ${foundPath}`);
     await initializeDatabase();
     
     res.send(`
-      <div style="font-family: sans-serif; padding: 40px; text-align: center; background: #f0fff4;">
-        <h1 style="color: #2f855a;">✅ DATABASE INITIALIZED SUCCESSFULLY!</h1>
-        <p>Tables have been created. You can now check the Railway Postgres tab.</p>
-        <a href="/" style="padding: 10px 20px; background: #38a169; color: white; text-decoration: none; border-radius: 5px;">Return to Dashboard</a>
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px; text-align: center; background: #f0fff4; border-radius: 12px; max-width: 600px; margin: 40px auto; border: 1px solid #c6f6d5; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+        <h1 style="color: #2f855a; margin-bottom: 16px;">✅ Database Initialized</h1>
+        <p style="color: #4a5568; line-height: 1.6;">Tables have been synchronized with the latest schema. The system is ready.</p>
+        <a href="/" style="display: inline-block; margin-top: 24px; padding: 12px 24px; background: #38a169; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; transition: background 0.2s;">Go to Dashboard</a>
       </div>
     `);
   } catch (err: any) {
     console.error('❌ DB INIT FAILED:', err);
-    res.status(500).send(`
-      <div style="font-family: sans-serif; padding: 40px; text-align: center; background: #fff5f5;">
-        <h1 style="color: #c53030;">❌ DATABASE INIT FAILED</h1>
-        <p style="color: #742a2a;">${err.message}</p>
-        <p>Try running the SQL manually in the Railway UI.</p>
-      </div>
-    `);
+    res.status(500).json({ success: false, error: 'Database initialization failed. Check server logs.' });
   }
 });
 
@@ -122,7 +122,7 @@ function initializeFirebase() {
 }
 
 // ═══ STATIC FILES ═══
-const frontendPath = path.join(__dirname, '../../admin_dashboard/dist');
+const frontendPath = getFrontendPath();
 app.use(express.static(frontendPath));
 
 // ═══ ROUTES ═══
@@ -130,14 +130,7 @@ app.use(express.static(frontendPath));
 /**
  * Health check endpoint
  */
-app.get('/health', (req: Request, res: Response) => {
-  res.json({
-    status: 'healthy',
-    uptime: process.uptime(),
-    environment: NODE_ENV,
-    timestamp: new Date().toISOString(),
-  });
-});
+
 
 /**
  * API version endpoint
@@ -149,6 +142,46 @@ app.get('/api/version', (req: Request, res: Response) => {
     environment: NODE_ENV,
     timestamp: new Date().toISOString(),
   });
+});
+
+/**
+ * System configuration endpoint
+ */
+app.get('/api/system/config', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: TDS_CONFIG,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/**
+ * GET /health
+ * Consolidated health check for API and Database
+ */
+app.get('/health', async (req, res) => {
+  try {
+    // Check DB connectivity
+    const dbCheck = await dbQuery('SELECT 1 as connected');
+    const dbStatus = dbCheck.rows[0]?.connected === 1 ? 'up' : 'down';
+
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      services: {
+        api: 'up',
+        database: dbStatus,
+        scheduler: 'active'
+      },
+      environment: process.env.NODE_ENV || 'development'
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Health check failed',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 /**
@@ -198,6 +231,7 @@ async function start() {
     // Initialize database connection
     initializePool();
     console.log('✅ Database connection initialized');
+    console.log(`📡 Database URL (host): ${process.env.DATABASE_URL?.split('@')[1] || 'NOT SET'}`);
 
     // 🚀 AUTO-INITIALIZE TABLES (If missing)
     try {
@@ -220,10 +254,14 @@ async function start() {
 
     // Start server
     app.listen(PORT, () => {
-      console.log(`✅ Server running on port ${PORT}`);
-      console.log(`   Health: http://localhost:${PORT}/health`);
-      console.log(`   API: http://localhost:${PORT}/api/version`);
-      console.log(`   Serving Frontend from: ${frontendPath}`);
+      if (NODE_ENV !== 'production') {
+        console.log(`✅ Server running on port ${PORT}`);
+        console.log(`   Health: http://localhost:${PORT}/health`);
+        console.log(`   API: http://localhost:${PORT}/api/version`);
+        console.log(`   Frontend: ${frontendPath}`);
+      } else {
+        console.log(`✅ TDS-APP Backend started on port ${PORT} [${NODE_ENV}]`);
+      }
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

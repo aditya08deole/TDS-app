@@ -13,7 +13,16 @@ import { useAuth } from '../context/AuthContext'
 import { useUI } from '../context/UIContext'
 import { useRole } from '../context/RoleContext'
 
-const navItems = [
+import type { Permission } from '../context/RoleContext'
+
+interface NavItem {
+    label: string
+    path: string
+    icon: React.ComponentType<{ className?: string, strokeWidth?: number }>
+    permission: Permission
+}
+
+const navItems: NavItem[] = [
     { label: 'Map View', path: '/map', icon: MapIcon, permission: 'view_map' },
     { label: 'Dashboard', path: '/', icon: LayoutDashboard, permission: 'view_dashboard' },
     { label: 'Reports', path: '/reports', icon: FileText, permission: 'view_dashboard' }, // Assuming dashboard permission covers reports
@@ -46,7 +55,7 @@ export default function Sidebar() {
             {/* Navigation - macOS Control Panel Style */}
             <nav className="flex-1 px-4 space-y-1">
                 {navItems.map((item) => {
-                    if (item.permission && !hasPermission(item.permission as any)) return null
+                    if (item.permission && !hasPermission(item.permission)) return null
 
                     const Icon = item.icon
                     const isActive = item.path === '/'

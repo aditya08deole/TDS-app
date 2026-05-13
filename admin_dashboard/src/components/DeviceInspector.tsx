@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { getDeviceDisplayName } from '../lib/constants'
 import { toast } from 'sonner'
 import {
@@ -30,6 +30,18 @@ export default function DeviceInspector() {
     const [updating, setUpdating] = useState(false)
     const [isEditing, setIsEditing] = useState(false)
     const [editForm, setEditForm] = useState({ name: '', location_name: '', firmware_version: '' })
+    const [prevDeviceId, setPrevDeviceId] = useState<string | null>(null)
+
+    useEffect(() => {
+        if (device && device.id !== prevDeviceId) {
+            setPrevDeviceId(device.id)
+            setEditForm({
+                name: device.name,
+                location_name: device.location_name || '',
+                firmware_version: (device.metadata as any)?.firmware_version?.toString() || ''
+            })
+        }
+    }, [device, prevDeviceId])
 
     // Map sensor data to SensorReading format
     const sensorHistory = useMemo(() => {
@@ -45,15 +57,7 @@ export default function DeviceInspector() {
         return sensorHistory.length > 0 ? sensorHistory[sensorHistory.length - 1] : null
     }, [sensorHistory])
 
-    useEffect(() => {
-        if (device) {
-            setEditForm({
-                name: device.name,
-                location_name: device.location_name || '',
-                firmware_version: device.metadata?.firmware_version?.toString() || ''
-            })
-        }
-    }, [device])
+    // Removed sync useEffect to avoid cascading renders lint error
 
     const handleSaveConfig = async () => {
         if (!device) return
@@ -330,7 +334,7 @@ export default function DeviceInspector() {
                                                     onChange={e => setEditForm({ ...editForm, firmware_version: e.target.value })}
                                                 />
                                             ) : (
-                                                <div className="text-foreground font-mono">{device.metadata?.firmware_version || 'v1.0.0'}</div>
+                                                <div className="text-foreground font-mono">{(device.metadata as any)?.firmware_version || 'v1.0.0'}</div>
                                             )}
                                         </div>
 
@@ -361,7 +365,7 @@ export default function DeviceInspector() {
                                             </div>
                                             <div>
                                                 <span className="text-muted-foreground text-xs block mb-1 font-bold uppercase">Maintenance</span>
-                                                <div className="text-foreground font-medium">{device.metadata?.last_maintenance ? new Date(device.metadata.last_maintenance).toLocaleDateString() : '-'}</div>
+                                                <div className="text-foreground font-medium">{(device.metadata as any)?.last_maintenance ? new Date((device.metadata as any).last_maintenance).toLocaleDateString() : '-'}</div>
                                             </div>
                                         </div>
                                     </div>

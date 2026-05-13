@@ -52,16 +52,12 @@ export default function Settings() {
         loading: notificationLoading 
     } = useNotification()
 
+    // Initial state setup (only once or when user loads)
     const [settings, setSettings] = useState<UserSettings>({
         notifications_enabled: true,
         email_alerts: false,
         dark_mode: theme === 'dark'
     })
-
-    // Sync local settings state when global theme changes (e.g. from header toggle)
-    useEffect(() => {
-        setSettings(prev => ({ ...prev, dark_mode: theme === 'dark' }))
-    }, [theme])
 
     // Load user settings
     useEffect(() => {
@@ -80,23 +76,29 @@ export default function Settings() {
                         dark_mode: isDark
                     })
                     // Sync global theme with Firestore preference on load
-                    setTheme(isDark ? 'dark' : 'light')
+                    if (isDark !== (theme === 'dark')) {
+                        setTheme(isDark ? 'dark' : 'light')
+                    }
                 }
             } catch (err) {
-                console.log('No settings found, using defaults')
+                console.log('No settings found, using defaults', err)
             }
             setLoading(false)
         }
         loadSettings()
-    }, [user])
+    }, [user, theme, setTheme])
 
     const saveSettings = async () => {
         if (!user) return
         setSaving(true)
         try {
             const docRef = doc(db, 'user_settings', user.uid)
-            await setDoc(docRef, {
+            const finalSettings = {
                 ...settings,
+                dark_mode: theme === 'dark' // Ensure we save the current active theme
+            }
+            await setDoc(docRef, {
+                ...finalSettings,
                 user_id: user.uid,
                 updated_at: new Date().toISOString()
             }, { merge: true })
@@ -118,13 +120,11 @@ export default function Settings() {
     }
 
     const toggleSetting = (key: keyof UserSettings) => {
-        const newValue = !settings[key]
-        setSettings(prev => ({ ...prev, [key]: newValue }))
-        
-        // Immediate theme application if dark_mode toggled
         if (key === 'dark_mode') {
-            setTheme(newValue ? 'dark' : 'light')
+            setTheme(theme === 'dark' ? 'light' : 'dark')
+            return
         }
+        setSettings(prev => ({ ...prev, [key]: !prev[key] }))
     }
 
     const menuItems = [
@@ -208,7 +208,7 @@ export default function Settings() {
                                         </div>
                                     </div>
                                     <Switch
-                                        checked={settings.dark_mode}
+                                        checked={theme === 'dark'}
                                         onCheckedChange={() => toggleSetting('dark_mode')}
                                     />
                                 </div>

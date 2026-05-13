@@ -3,11 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import { useTheme } from '../context/ThemeContext'
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
-import { type EnrichedDevice } from '../types'
 import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
 import { useAllDevicesThingSpeakData, useDeviceThingSpeakChartData } from '../hooks/useThingSpeakQueries'
 import { getTDSStatus, getDeviceDisplayName, getConnectivityStatus } from '../lib/constants'
-import { getPpmStatus, createWhiteTransparentMarker, type DeviceLocation } from '../components/MapMarkers'
+import { getPpmStatus, createWhiteTransparentMarker } from '../components/MapMarkers'
 import { GlassCard } from '../components/GlassCard'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -26,9 +25,7 @@ import {
     TrendingUp, TrendingDown
 } from 'lucide-react'
 import type { ParsedSensorData } from '../lib/thingspeak'
-
-// Derived type for map theme to avoid `any` casts
-type MapTheme = ReturnType<typeof getMapTheme>
+import { type EnrichedDevice, type MapTheme, type MapStyle, type FilterType, type DeviceLocation } from '../types'
 
 // Default icon fix
 import icon from 'leaflet/dist/images/marker-icon.png'
@@ -117,11 +114,7 @@ const CustomChartTooltip = ({ active, payload, label, type, theme }: ChartToolti
     return null
 }
 
-type MapStyle = 'street' | 'satellite'
-type FilterType = 'all' | 'online' | 'critical' | 'offline'
-
-
-const getMapTheme = (isDark: boolean) => ({
+export const getMapTheme = (isDark: boolean): MapTheme => ({
     bg: {
         primary: isDark ? '#000000' : '#f8fafc',
         secondary: isDark ? '#0a0a0a' : '#ffffff',
@@ -493,8 +486,8 @@ export default function MapPage() {
     // Enrich devices with status based on TDS and offline detection
     const devices: DeviceLocation[] = useMemo(() => {
         return devicesWithData.map(device => {
-            const customMin = device.safe_tds_min ? Number(device.safe_tds_min) : undefined
-            const customMax = device.safe_tds_max ? Number(device.safe_tds_max) : undefined
+            const customMin = device.safe_tds_min != null ? Number(device.safe_tds_min) : undefined
+            const customMax = device.safe_tds_max != null ? Number(device.safe_tds_max) : undefined
             
             // Use the unified connectivity status (1 hour threshold)
             const connectivity = getConnectivityStatus(device.last_reading_at || device.last_seen_at)

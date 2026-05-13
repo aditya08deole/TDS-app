@@ -15,12 +15,29 @@ interface DualPieChartProps {
  * - Percentage labels
  * - Responsive sizing
  */
+interface ChartDataItem {
+    name: string;
+    value: number;
+    fill: string;
+}
+
+interface CustomTooltipProps {
+    active?: boolean;
+    payload?: Array<{
+        name: string;
+        value: number;
+        payload: ChartDataItem;
+    }>;
+    connectivityData: ChartDataItem[];
+    tdsData: ChartDataItem[];
+}
+
 // Custom tooltip (moved outside to prevent unmounts on re-render)
-const CustomTooltip = ({ active, payload, connectivityData, tdsData }: any) => {
+const CustomTooltip = ({ active, payload, connectivityData, tdsData }: CustomTooltipProps) => {
     if (active && payload && payload.length) {
         const data = payload[0]
-        const total = connectivityData.reduce((sum: any, item: any) => sum + item.value, 0) +
-            tdsData.reduce((sum: any, item: any) => sum + item.value, 0)
+        const total = connectivityData.reduce((sum, item) => sum + item.value, 0) +
+            tdsData.reduce((sum, item) => sum + item.value, 0)
         const percentage = ((data.value / total) * 100).toFixed(1)
 
         return (

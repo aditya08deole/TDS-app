@@ -1,17 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { collection, query as firestoreQuery, where, getDocs, limit } from 'firebase/firestore'
 import { Search, Command, ArrowRight, Monitor, AlertTriangle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { db } from '../lib/firebase'
 import { useUI } from '../context/UIContext'
 import { cn } from '../lib/utils'
+import { type Device } from '../types'
 
 interface SearchResult {
     id: string
     type: 'device' | 'alert' | 'nav'
     title: string
     subtitle?: string
-    metadata?: any
+    metadata?: Record<string, unknown>
     url?: string
 }
 
@@ -21,6 +22,17 @@ export default function CommandPalette() {
     const [results, setResults] = useState<SearchResult[]>([])
     const [selectedIndex, setSelectedIndex] = useState(0)
     const navigate = useNavigate()
+
+    const { openInspector } = useUI()
+
+    const handleSelect = useCallback((result: SearchResult) => {
+        if (result.type === 'nav' && result.url) {
+            navigate(result.url)
+        } else if (result.type === 'device') {
+            openInspector(result.id)
+        }
+        setIsOpen(false)
+    }, [navigate, openInspector])
 
     // Shortcuts
     useEffect(() => {
@@ -51,7 +63,7 @@ export default function CommandPalette() {
         }
         document.addEventListener('keydown', handleDown)
         return () => document.removeEventListener('keydown', handleDown)
-    }, [isOpen, results, selectedIndex])
+    }, [isOpen, results, selectedIndex, handleSelect])
 
     // Search Logic
     useEffect(() => {
@@ -81,7 +93,7 @@ export default function CommandPalette() {
                 const deviceResults: SearchResult[] = []
                 
                 querySnapshot.forEach((doc) => {
-                    const d = doc.data() as any
+                    const d = doc.data() as Device
                     deviceResults.push({
                         id: doc.id,
                         type: 'device',
@@ -104,17 +116,6 @@ export default function CommandPalette() {
         const timeout = setTimeout(search, 300)
         return () => clearTimeout(timeout)
     }, [query, isOpen])
-
-    const { openInspector } = useUI()
-
-    const handleSelect = (result: SearchResult) => {
-        if (result.type === 'nav' && result.url) {
-            navigate(result.url)
-        } else if (result.type === 'device') {
-            openInspector(result.id)
-        }
-        setIsOpen(false)
-    }
 
     if (!isOpen) return null
 

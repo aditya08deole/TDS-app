@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useAuth } from "../context/AuthContext"
-import { useRole } from "@/context/RoleContext"
+import { useRole, type Permission } from "@/context/RoleContext"
 import { useAlerts } from "../context/AlertContext"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 
@@ -161,7 +161,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <SidebarGroup className="group-data-[collapsible=icon]:hidden">
                     <SidebarMenu>
                         {navAdmin.map((item) => (
-                            (!item.permission || hasPermission(item.permission as any)) && (
+                            (!item.permission || hasPermission(item.permission as Permission)) && (
                                 <SidebarMenuItem key={item.title}>
                                     <SidebarMenuButton 
                                         asChild 

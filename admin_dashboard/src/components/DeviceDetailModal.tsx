@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { db } from '../lib/firebase'
 import { collection, query, where, orderBy, limit, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { type Device } from '../types'
@@ -29,7 +29,7 @@ type ModalDevice = Device & {
     signal_strength?: number
     firmware_version?: string
     installed_at?: string
-    [key: string]: any
+    last_seen?: string
 }
 
 interface SensorReading {
@@ -66,14 +66,8 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
     const [editTdsMax, setEditTdsMax] = useState<number>(device?.safe_tds_max ?? 175)
     const [isEditingTds, setIsEditingTds] = useState(false)
 
-    useEffect(() => {
-        if (device && isOpen) {
-            fetchSensorHistory()
-            fetchMaintenanceLogs()
-        }
-    }, [device, isOpen])
 
-    const fetchSensorHistory = async () => {
+    const fetchSensorHistory = useCallback(async () => {
         if (!device) return
         setLoading(true)
         try {
@@ -93,9 +87,9 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
             console.error('Error fetching sensor history:', err)
         }
         setLoading(false)
-    }
+    }, [device])
 
-    const fetchMaintenanceLogs = async () => {
+    const fetchMaintenanceLogs = useCallback(async () => {
         if (!device) return
         try {
             const q = query(
@@ -113,7 +107,14 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
         } catch (err) {
             console.error('Error fetching maintenance logs:', err)
         }
-    }
+    }, [device])
+
+    useEffect(() => {
+        if (device && isOpen) {
+            fetchSensorHistory()
+            fetchMaintenanceLogs()
+        }
+    }, [device, isOpen, fetchSensorHistory, fetchMaintenanceLogs])
 
     const toggleMaintenanceMode = async () => {
         if (!device) return
@@ -159,9 +160,10 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
 
             setIsEditingTds(false)
             onRefresh?.()
-        } catch (err: any) {
+        } catch (err) {
             console.error('Error updating TDS thresholds:', err)
-            alert('Failed to update thresholds: ' + (err.message || 'Unknown error'))
+            const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+            alert('Failed to update thresholds: ' + errorMessage)
         } finally {
             setUpdating(false)
         }
@@ -419,7 +421,7 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                 </div>
                                 <div className="flex items-center justify-between p-3">
                                     <span className="text-sm text-slate-400">Firmware</span>
-                                    <span className="text-sm text-white">{device.metadata?.firmware_version || device.firmware_version || 'v1.0.0'}</span>
+                                    <span className="text-sm text-white">{(device.metadata as any)?.firmware_version || (device as any).firmware_version || 'v1.0.0'}</span>
                                 </div>
                                 <div className="flex items-center justify-between p-3">
                                     <span className="text-sm text-slate-400">Installed</span>

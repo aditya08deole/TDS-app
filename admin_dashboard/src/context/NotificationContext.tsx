@@ -47,7 +47,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const playSound = useCallback((type: 'success' | 'warning' | 'error' = 'success') => {
         if (!soundEnabled) return
         try {
-            const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+            interface WindowWithAudio extends Window {
+                webkitAudioContext?: typeof AudioContext;
+            }
+            const AudioContextClass = (window.AudioContext || (window as WindowWithAudio).webkitAudioContext);
             if (!AudioContextClass) return;
             const audioContext = new AudioContextClass();
             const oscillator = audioContext.createOscillator()

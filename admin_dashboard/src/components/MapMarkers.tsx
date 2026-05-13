@@ -1,15 +1,15 @@
 import L from 'leaflet'
 import { getTDSStatus, getDeviceDisplayName } from '../lib/constants'
-import { type EnrichedDevice } from '../types'
+import { type EnrichedDevice, type MapTheme } from '../types'
 
 export type DeviceLocation = EnrichedDevice
 
 /**
  * PPM Status Helper for consistent styling
  */
-export const getPpmStatus = (ppm: number | undefined, status: string, theme: any, customMin?: number, customMax?: number) => {
+export const getPpmStatus = (ppm: number | undefined, status: string, theme: MapTheme, customMin?: number, customMax?: number) => {
     if (status === 'offline' || ppm === undefined) return {
-        status: 'offline',
+        status: 'offline' as const,
         label: 'Offline',
         ...theme.status.offline
     }
@@ -18,12 +18,12 @@ export const getPpmStatus = (ppm: number | undefined, status: string, theme: any
     const tdsStatus = getTDSStatus(ppm, customMin, customMax)
     
     if (tdsStatus === 'online') return {
-        status: 'online',
+        status: 'online' as const,
         label: 'Safe to Drink',
         ...theme.status.online
     }
     return {
-        status: 'critical',
+        status: 'critical' as const,
         label: 'Critical',
         ...theme.status.critical
     }
@@ -32,8 +32,10 @@ export const getPpmStatus = (ppm: number | undefined, status: string, theme: any
 /**
  * Creates a premium "Neon Glass" Leaflet marker
  */
-export const createWhiteTransparentMarker = (device: DeviceLocation, theme: any, zoom: number) => {
-    const ppmStatus = getPpmStatus(device.latest_tds, device.status || 'offline', theme)
+export const createWhiteTransparentMarker = (device: DeviceLocation, theme: MapTheme, zoom: number) => {
+    const customMin = device.safe_tds_min != null ? Number(device.safe_tds_min) : undefined
+    const customMax = device.safe_tds_max != null ? Number(device.safe_tds_max) : undefined
+    const ppmStatus = getPpmStatus(device.latest_tds, device.status || 'offline', theme, customMin, customMax)
     const ppmValue = device.latest_tds || '--'
     const displayName = getDeviceDisplayName(device)
     

@@ -1,14 +1,17 @@
 import fs from 'fs';
-import path from 'path';
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
+import { findSchemaPath } from '../utils/pathUtils';
 
 dotenv.config();
 
 export async function initializeDatabase() {
+  const databaseUrl = process.env.DATABASE_URL || '';
+  const isLocal = databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1');
+
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: {
+    connectionString: databaseUrl,
+    ssl: isLocal ? false : {
       rejectUnauthorized: false
     }
   });
@@ -16,31 +19,10 @@ export async function initializeDatabase() {
   try {
     console.log('🔄 Initializing database...');
     
-    // Check multiple potential paths for schema.sql
-    const pathsToTry = [
-      path.join(__dirname, '../../src/db/schema.sql'), // Prod: backend/dist/db -> backend/src/db
-      path.join(__dirname, '../db/schema.sql'),      // Prod alternative
-      path.join(__dirname, './schema.sql'),          // Same dir
-      path.join(process.cwd(), 'backend/src/db/schema.sql'),
-      path.join(process.cwd(), 'src/db/schema.sql')
-    ];
+    const schemaPath = findSchemaPath();
+    const schemaContent = fs.readFileSync(schemaPath, 'utf8');
 
-    let schemaContent = '';
-    let foundPath = '';
-
-    for (const p of pathsToTry) {
-      if (fs.existsSync(p)) {
-        schemaContent = fs.readFileSync(p, 'utf8');
-        foundPath = p;
-        break;
-      }
-    }
-
-    if (!schemaContent) {
-      throw new Error('Could not find schema.sql in any expected location: ' + pathsToTry.join(', '));
-    }
-
-    console.log(`✅ Found schema at: ${foundPath}`);
+    console.log(`✅ Found schema at: ${schemaPath}`);
     await pool.query(schemaContent);
     console.log('✅ Database initialized successfully!');
     return { success: true };

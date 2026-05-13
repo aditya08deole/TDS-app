@@ -7,19 +7,20 @@ import {
     getDocs,
     getDoc,
     doc,
-    addDoc,
-    updateDoc,
-    deleteDoc,
     onSnapshot,
     orderBy,
-    limit as firestoreLimit,
-    serverTimestamp
+    limit as firestoreLimit
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import type { Device, DeviceEvent } from '../types'
 import { queryKeys } from '../lib/queryClient'
 import { cacheDevices, getCachedDevices } from '../lib/cache'
-import { fetchDevices as fetchDevicesFromApi } from '../lib/api'
+import { 
+    fetchDevices as fetchDevicesFromApi,
+    createDevice as createDeviceApi,
+    deleteDevice as deleteDeviceApi,
+    updateDevice as updateDeviceApi
+} from '../lib/api'
 
 // Typed interface for raw Firestore sensor data records
 export interface SensorDataRecord {
@@ -97,14 +98,7 @@ export function useAddDevice() {
 
     return useMutation({
         mutationFn: async (newDevice: Partial<Device>) => {
-            const docRef = await addDoc(collection(db, 'devices'), {
-                ...newDevice,
-                created_at: serverTimestamp(),
-                status: newDevice.status || 'offline'
-            })
-            
-            const docSnap = await getDoc(docRef)
-            return { id: docSnap.id, ...docSnap.data() } as Device
+            return await createDeviceApi(newDevice)
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.devices })
@@ -120,11 +114,7 @@ export function useUpdateDevice() {
 
     return useMutation({
         mutationFn: async ({ id, updates }: { id: string; updates: Partial<Device> }) => {
-            const docRef = doc(db, 'devices', id)
-            await updateDoc(docRef, updates)
-            
-            const docSnap = await getDoc(docRef)
-            return { id: docSnap.id, ...docSnap.data() } as Device
+            return await updateDeviceApi(id, updates)
         },
         onSuccess: (data) => {
             queryClient.setQueryData(queryKeys.device(data.id), data)
@@ -141,8 +131,7 @@ export function useDeleteDevice() {
 
     return useMutation({
         mutationFn: async (deviceId: string) => {
-            const docRef = doc(db, 'devices', deviceId)
-            await deleteDoc(docRef)
+            await deleteDeviceApi(deviceId)
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.devices })

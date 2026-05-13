@@ -2,15 +2,19 @@ import { Search, MapPin, Droplets } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getDeviceDisplayName } from '../lib/constants'
 import { getPpmStatus } from '../components/MapMarkers'
-import { type DeviceLocation } from '../components/MapMarkers'
+import { type DeviceLocation, type MapTheme, type FilterType } from '../types'
 
 interface MapSidebarContentProps {
-    theme: any;
+    theme: MapTheme;
     searchQuery: string;
     setSearchQuery: (query: string) => void;
-    statusFilter: string;
-    setStatusFilter: (filter: any) => void;
-    finalStats: any;
+    statusFilter: FilterType;
+    setStatusFilter: (filter: FilterType) => void;
+    finalStats: {
+        online: number;
+        critical: number;
+        offline: number;
+    };
     filteredDevices: DeviceLocation[];
     selectedDevice: DeviceLocation | null;
     setSelectedDevice: (device: DeviceLocation) => void;
@@ -65,7 +69,7 @@ export function MapSidebarContent({
                     ].map(s => (
                         <button
                             key={s.key}
-                            onClick={() => setStatusFilter(statusFilter === s.key ? 'all' : s.key)}
+                            onClick={() => setStatusFilter((statusFilter === s.key ? 'all' : s.key) as FilterType)}
                             className={cn(
                                 "group flex flex-col items-center p-2 rounded-xl transition-all duration-300 relative border border-transparent",
                                 statusFilter === s.key ? "glass-system-child border-white/20 shadow-lg scale-105" : "hover:bg-white/5"

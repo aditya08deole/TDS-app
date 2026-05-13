@@ -1,6 +1,7 @@
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
 import { useTheme } from '../context/ThemeContext'
+import type { EChartsParams } from '../types'
 
 interface PieChartData {
     name: string
@@ -38,7 +39,8 @@ export function EChartsNestedPieChart({ connectivityData, tdsData }: EChartsNest
         tooltip: {
             trigger: 'item',
             formatter: (params: any) => {
-                const { name, value, percent } = params
+                const p = params as EChartsParams
+                const { name, value, percent } = p
                 const bgColor = isDark ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.7)'
                 const textColor = isDark ? '#fff' : '#0f172a'
                 const mutedColor = isDark ? '#94a3b8' : '#64748b'
@@ -46,7 +48,7 @@ export function EChartsNestedPieChart({ connectivityData, tdsData }: EChartsNest
 
                 return `<div style="padding: 10px 16px; border-radius: 12px; background: ${bgColor}; backdrop-filter: blur(16px); border: 1px solid ${borderColor}; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
                     <div style="font-weight: 700; color: ${textColor}; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
-                        <span style="width: 8px; height: 8px; border-radius: 50%; background: ${params.color};"></span>
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background: ${p.color};"></span>
                         ${name}
                     </div>
                     <div style="font-size: 13px; color: ${mutedColor};">

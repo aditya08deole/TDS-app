@@ -3,20 +3,15 @@ import { cn } from '@/lib/utils'
 interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
     hover?: boolean;
     size?: "sm" | "md" | "lg";
+    variant?: "default" | "liquid";
     children?: React.ReactNode;
-    // Legacy props for compatibility, ignored in rendering
-    variant?: any;
-    depth?: any;
-    ripple?: any;
 }
 
 export function GlassCard({ 
     className, 
     hover = true,
     size = "md",
-    variant,
-    depth,
-    ripple,
+    variant = "default",
     children, 
     ...props 
 }: GlassCardProps) {

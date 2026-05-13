@@ -11,6 +11,19 @@ const router = Router();
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
+    // 🛡️ SECURITY: Require a secret key for manual sync
+    const authKey = req.query.key || req.headers['x-sync-key'] || req.headers['x-db-init-key'];
+    const requiredKey = process.env.DB_INIT_KEY;
+
+    if (!requiredKey || authKey !== requiredKey) {
+      console.warn(`⚠️ Unauthorized manual sync attempt from IP: ${req.ip}`);
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Manual sync requires a valid DB_INIT_KEY',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     console.log('🚀 Manual sync triggered from API');
 
     const result = await syncFromFirebase('manual');

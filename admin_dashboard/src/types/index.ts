@@ -36,7 +36,7 @@ export type Device = {
     status: 'online' | 'offline' | 'critical' | 'maintenance'
     last_seen_at?: string
     deployment_date?: string
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
     confidence_score?: number
     last_reading_at?: string
 
@@ -56,7 +56,7 @@ export interface AuditLogEntry {
     created_at: string;
     actor_id: string;
     action: string;
-    details: any;
+    details: unknown;
     entity_type: string;
     entity_id: string;
     target_resource?: string; // Legacy support
@@ -78,7 +78,7 @@ export type SensorData = {
         tds: number
         temperature: number
         voltage: number
-        [key: string]: any // Flexible for future sensors
+        [key: string]: unknown // Flexible for future sensors
     }
     recorded_at: string
 }
@@ -90,7 +90,7 @@ export type Alert = {
     severity: 'info' | 'critical'
     message: string
     value_at_time: number
-    threshold_snapshot?: Record<string, any>
+    threshold_snapshot?: Record<string, unknown>
     status: 'open' | 'acknowledged' | 'resolved'
     created_at: string
     acknowledged_at?: string
@@ -110,3 +110,69 @@ export interface DeviceEvent {
     ended_at: string | null
     duration_seconds: number | null
 }
+
+// Map & UI Types
+export type MapStyle = 'street' | 'satellite'
+export type FilterType = 'all' | 'online' | 'critical' | 'offline'
+
+export interface MapTheme {
+    bg: {
+        primary: string
+        secondary: string
+        tertiary: string
+        card: string
+        glass: string
+    }
+    border: {
+        subtle: string
+        light: string
+        accent: string
+    }
+    text: {
+        primary: string
+        secondary: string
+        muted: string
+        accent: string
+    }
+    status: {
+        online: StatusStyle
+        critical: StatusStyle
+        offline: StatusStyle
+    }
+    chart: {
+        tds: ChartStyle
+        temp: ChartStyle
+    }
+}
+
+export interface StatusStyle {
+    color: string
+    glow: string
+    bg: string
+}
+
+export interface ChartStyle {
+    stroke: string
+    fill: string
+    glow: string
+}
+
+export type DeviceLocation = EnrichedDevice
+
+export interface NotificationAlert {
+    severity?: 'info' | 'warning' | 'high' | 'critical' | 'success';
+    message?: string;
+    type?: string;
+    created_at?: any; // Consider using firebase.firestore.Timestamp if possible
+    tds_value?: number;
+    device_name?: string;
+}
+
+export interface EChartsParams {
+    name: string;
+    value: number | string;
+    percent: number;
+    color: string;
+    data: any;
+}
+

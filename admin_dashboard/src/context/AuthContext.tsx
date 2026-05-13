@@ -34,25 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         'aditya@evaratech.com'
     ])
 
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-            setUser(firebaseUser)
-            
-            if (firebaseUser) {
-                await Promise.all([
-                    fetchProfile(firebaseUser.uid, firebaseUser.email),
-                    fetchAdminConfig()
-                ])
-            } else {
-                setProfile(null)
-                setLoading(false)
-            }
-        })
-
-        return () => unsubscribe()
-    }, [])
-
-    async function fetchAdminConfig() {
+    const fetchAdminConfig = React.useCallback(async () => {
         try {
             const configRef = doc(db, 'app_config', 'admin_emails')
             const configSnap = await getDoc(configRef)
@@ -66,9 +48,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (err) {
             console.warn('⚠️ Failed to fetch admin config, using code fallbacks', err)
         }
-    }
+    }, [])
 
-    async function fetchProfile(userId: string, email?: string | null) {
+    const fetchProfile = React.useCallback(async (userId: string, email?: string | null) => {
         try {
             const docRef = doc(db, 'users', userId)
             const docSnap = await getDoc(docRef)
@@ -86,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     id: userId,
                     email: email,
                     name: email.split('@')[0],
-                    role: role as any,
+                    role: role as Profile['role'],
                     created_at: new Date().toISOString()
                 }
                 
@@ -107,7 +89,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } finally {
             setLoading(false)
         }
-    }
+    }, [adminEmails])
+
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+            setUser(firebaseUser)
+            
+            if (firebaseUser) {
+                await Promise.all([
+                    fetchProfile(firebaseUser.uid, firebaseUser.email),
+                    fetchAdminConfig()
+                ])
+            } else {
+                setProfile(null)
+                setLoading(false)
+            }
+        })
+
+        return () => unsubscribe()
+    }, [fetchProfile, fetchAdminConfig])
 
     const signOut = React.useCallback(async () => {
         await firebaseSignOut(auth)

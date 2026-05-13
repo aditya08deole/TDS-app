@@ -1,11 +1,13 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
+import { type Device } from '../types'
+import { type ParsedSensorData } from './thingspeak'
 
 interface EvaraTDSDB extends DBSchema {
     devices: {
         key: string
         value: {
             id: string
-            data: any
+            data: Device
             timestamp: number
         }
     }
@@ -13,7 +15,7 @@ interface EvaraTDSDB extends DBSchema {
         key: string
         value: {
             deviceId: string
-            data: any[]
+            data: ParsedSensorData[]
             timestamp: number
         }
     }
@@ -21,7 +23,7 @@ interface EvaraTDSDB extends DBSchema {
         key: string
         value: {
             key: string
-            value: any
+            value: unknown
             timestamp: number
         }
     }
@@ -60,7 +62,7 @@ export async function initDB(): Promise<IDBPDatabase<EvaraTDSDB>> {
 /**
  * Store devices in IndexedDB
  */
-export async function cacheDevices(devices: any[]): Promise<void> {
+export async function cacheDevices(devices: Device[]): Promise<void> {
     const db = await initDB()
     const tx = db.transaction('devices', 'readwrite')
 
@@ -79,7 +81,7 @@ export async function cacheDevices(devices: any[]): Promise<void> {
 /**
  * Get cached devices from IndexedDB
  */
-export async function getCachedDevices(): Promise<any[] | null> {
+export async function getCachedDevices(): Promise<Device[] | null> {
     try {
         const db = await initDB()
         const allDevices = await db.getAll('devices')
@@ -102,7 +104,7 @@ export async function getCachedDevices(): Promise<any[] | null> {
 /**
  * Store sensor data in IndexedDB
  */
-export async function cacheSensorData(deviceId: string, data: any[]): Promise<void> {
+export async function cacheSensorData(deviceId: string, data: ParsedSensorData[]): Promise<void> {
     const db = await initDB()
     await db.put('sensorData', {
         deviceId,
@@ -114,7 +116,7 @@ export async function cacheSensorData(deviceId: string, data: any[]): Promise<vo
 /**
  * Get cached sensor data from IndexedDB
  */
-export async function getCachedSensorData(deviceId: string): Promise<any[] | null> {
+export async function getCachedSensorData(deviceId: string): Promise<ParsedSensorData[] | null> {
     try {
         const db = await initDB()
         const cached = await db.get('sensorData', deviceId)

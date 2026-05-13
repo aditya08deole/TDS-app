@@ -148,7 +148,7 @@ export function getConnectivityStatus(lastReadingTime: string | null | undefined
 
         // Online if data received within the last 1 hour
         return msSinceLastReading < HEARTBEAT_CONFIG.OFFLINE_THRESHOLD_MS ? 'online' : 'offline'
-    } catch (error) {
+    } catch {
         return 'offline'
     }
 }

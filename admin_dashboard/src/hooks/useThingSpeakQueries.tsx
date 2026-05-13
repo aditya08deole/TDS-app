@@ -59,7 +59,7 @@ async function fetchDeviceThingSpeakData(
         }
 
         return data
-    } catch (error) {
+    } catch {
         console.warn(`Network fetch failed for ${device.id}, falling back to cache`)
         return cachedData
     }
