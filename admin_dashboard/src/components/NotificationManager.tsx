@@ -13,7 +13,7 @@ export default function NotificationManager() {
     const processedAlerts = useRef<Set<string>>(new Set())
 
     const showDesktopNotification = useCallback((title: string, body: string, icon?: string) => {
-        if (permission === 'granted' && document.hidden) {
+        if (permission === 'granted' && document.hidden && typeof Notification !== 'undefined') {
             try {
                 new Notification(title, {
                     body,

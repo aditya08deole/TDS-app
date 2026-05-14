@@ -21,7 +21,7 @@ const VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
 export const useNotifications = () => {
   useEffect(() => {
     if (typeof window === 'undefined' || !messaging) return;
-    if (Notification.permission !== 'granted') return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
 
     const refreshToken = async () => {
       try {
