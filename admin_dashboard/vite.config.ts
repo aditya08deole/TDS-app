@@ -48,6 +48,11 @@ export default defineConfig(({ mode }) => {
                 registerType: 'autoUpdate',
                 includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'Ev-Logo.png'],
                 workbox: {
+                    // Force new service workers to activate immediately on all tabs.
+                    // Without these, the old cached version keeps serving until ALL tabs are closed.
+                    // With these, a new Railway deployment is reflected to users within seconds.
+                    skipWaiting: true,
+                    clientsClaim: true,
                     // Increase cache limit to handle large Dashboard bundle
                     maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MB
                     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],

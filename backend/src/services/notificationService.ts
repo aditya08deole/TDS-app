@@ -456,13 +456,17 @@ async function sendNTFYNotification(alertId: string, alertData: any) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'skipped', reason: 'dedupe' });
             return;
         }
+        const { location, ppm, time } = formatAlertContext(alertData);
+        // NOTE: HTTP headers are Latin-1 only (code points 0-255).
+        // Emojis (e.g. U+1F6A8) are multi-byte and will crash undici fetch with a ByteString error.
+        // All emojis must stay in the body, never in headers.
         const response = await fetch(`https://ntfy.sh/${topic}`, {
             method: 'POST',
-            body: `ALERT: ${alertData.message}`,
+            body: `[CRITICAL ALERT] Location: ${location} | TDS: ${ppm} ppm | Time: ${time} | Severity: ${String(alertData.severity || 'critical').toUpperCase()}\n\nMessage: ${alertData.message}`,
             headers: {
-                'Title': `🚨 TDS Critical Alert: ${alertData.device_name || 'System'}`,
-                'Priority': '5', // Urgent
-                'Tags': 'warning,skull'
+                'Title': `TDS ALERT: ${String(location).replace(/[^\x00-\xFF]/g, '')}`,
+                'Priority': 'urgent',
+                'Tags': 'rotating_light,skull'
             }
         });
         if (response.ok) {
