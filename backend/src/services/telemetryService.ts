@@ -8,9 +8,9 @@ import { TDS_CONFIG } from '../config/tdsConfig';
 function getDb() { return getFirestore(); }
 function getRedis() { return getRedisClient(); }
 
-// Local buffer for batching Firestore writes
-let sensorDataBuffer: any[] = [];
-const BATCH_SIZE = 400; // Leave room for other operations
+// Redis key for telemetry buffer
+const REDIS_BUFFER_KEY = 'telemetry:buffer';
+const BATCH_SIZE = 450; // Firestore limit is 500, keeping buffer room
 const FLUSH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 /**
@@ -77,18 +77,21 @@ export async function processTelemetry(data: {
     await hset(`device:${deviceId}`, updatedDevice);
     l1Cache.set(`device:${deviceId}`, updatedDevice, 60 * 1000); // Update L1 cache
 
-    // 4. Queue for Firestore Batching
-    sensorDataBuffer.push({
+    // 4. Queue for Firestore Batching via Redis (Persistent Buffer)
+    const firestoreEntry = {
         ...reading,
         created_at: FieldValue.serverTimestamp()
-    });
+    };
+    await getRedis().rPush(REDIS_BUFFER_KEY, JSON.stringify(firestoreEntry));
 
     // 5. Threshold Checking & Alerting
     await checkThresholds(updatedDevice, reading, recordedAt);
 
-    // 6. Check if buffer needs flushing
-    if (sensorDataBuffer.length >= BATCH_SIZE) {
-        await flushSensorData();
+    // 6. Check if buffer needs flushing (Active check for high traffic)
+    const bufferSize = await getRedis().lLen(REDIS_BUFFER_KEY);
+    if (bufferSize >= BATCH_SIZE) {
+        // Trigger async flush, don't wait to avoid blocking telemetry ingestion
+        flushSensorData().catch(e => console.error("Auto-flush failed", e));
     }
 
     return updatedDevice;
@@ -100,8 +103,15 @@ export async function processTelemetry(data: {
 async function checkThresholds(device: Device, reading: any, recordedAt: Date) {
     const min = device.safe_tds_min || TDS_CONFIG.RANGES.SAFE_MIN;
     const max = device.safe_tds_max || TDS_CONFIG.RANGES.SAFE_MAX;
+    const RECOVERY_THRESHOLD = 3;
+    const recoveryKey = `device:${device.id}:recovery_count`;
 
-    if (reading.tds < min || reading.tds > max) {
+    const isBreached = reading.tds < min || reading.tds > max;
+
+    if (isBreached) {
+        // 1. Reset recovery counter if we are still in breach
+        await getRedis().del(recoveryKey);
+
         console.log(`🚨 Threshold breach for ${device.name}: ${reading.tds} PPM (Range: ${min}-${max})`);
         
         // Check if we already have an open alert for this device to avoid spamming
@@ -135,9 +145,8 @@ async function checkThresholds(device: Device, reading: any, recordedAt: Date) {
             // Update device status in Redis immediately
             await hset(`device:${device.id}`, { ...device, status: 'critical' });
             
-            // Background / Async Firestore sync (minimize blocking write latency)
+            // Background / Async Firestore sync
             getDb().collection('alerts').add(alertData).then(alertRef => {
-                // Update the temporary ID with real Firestore ID later if needed, or just let sync handle it
                 getRedis().sAdd('alerts:all', alertRef.id);
                 hset(`alert:${alertRef.id}`, { ...alertData, id: alertRef.id });
                 getRedis().sAdd(`device:${device.id}:alerts`, alertRef.id);
@@ -147,40 +156,80 @@ async function checkThresholds(device: Device, reading: any, recordedAt: Date) {
             getDb().collection('devices').doc(device.id).update({ status: 'critical', updated_at: new Date().toISOString() })
                 .catch(e => console.error("Firestore status sync failed", e));
         }
-    } else if (device.status === 'critical') {
-        // Automatically resolve if back in range? 
-        // For now, just mark online.
-        await hset(`device:${device.id}`, { ...device, status: 'online' });
-        
-        // Async Firestore sync
-        getDb().collection('devices').doc(device.id).update({ status: 'online', updated_at: new Date().toISOString() })
-            .catch(e => console.error("Firestore status sync failed", e));
+    } else {
+        // 2. Reading is safe. Check if we need to recover.
+        if (device.status === 'critical') {
+            const currentCount = await getRedis().incr(recoveryKey);
+            await getRedis().expire(recoveryKey, 300); // 5 min TTL for recovery counter
+
+            if (currentCount >= RECOVERY_THRESHOLD) {
+                console.log(`✅ Device ${device.name} recovered after ${currentCount} safe readings.`);
+                await getRedis().del(recoveryKey);
+                
+                // Update state to online
+                await hset(`device:${device.id}`, { ...device, status: 'online' });
+                
+                // Async Firestore sync
+                getDb().collection('devices').doc(device.id).update({ status: 'online', updated_at: new Date().toISOString() })
+                    .catch(e => console.error("Firestore recovery sync failed", e));
+                
+                // Note: Auto-resolving alerts can be added here if desired.
+            } else {
+                console.log(`ℹ️ Device ${device.name} reading safe (${reading.tds} PPM), recovery count: ${currentCount}/${RECOVERY_THRESHOLD}`);
+            }
+        } else {
+            // Already online, just ensure counter is clean
+            await getRedis().del(recoveryKey);
+        }
     }
 }
 
 /**
- * Flush buffered sensor data to Firestore in batches
+ * Flush buffered sensor data from Redis to Firestore in batches.
+ * Uses a "read-then-trim" strategy to ensure zero data loss on failures.
  */
 export async function flushSensorData() {
-    if (sensorDataBuffer.length === 0) return;
-
-    console.log(`💾 Flushing ${sensorDataBuffer.length} sensor readings to Firestore...`);
-    const dataToFlush = [...sensorDataBuffer];
-    sensorDataBuffer = [];
-
-    const batch: WriteBatch = getDb().batch();
-    
-    dataToFlush.forEach(reading => {
-        const docRef = getDb().collection('sensor_data').doc();
-        batch.set(docRef, reading);
-    });
-
     try {
+        const redis = getRedis();
+        const bufferSize = await redis.lLen(REDIS_BUFFER_KEY);
+        
+        if (bufferSize === 0) return;
+
+        // Limit the number of items to process in one batch
+        const count = Math.min(bufferSize, BATCH_SIZE);
+        console.log(`💾 Flushing ${count} sensor readings from Redis to Firestore...`);
+
+        // 1. Get items from Redis
+        const rawData = await redis.lRange(REDIS_BUFFER_KEY, 0, count - 1);
+        if (!rawData || rawData.length === 0) return;
+
+        const batch: WriteBatch = getDb().batch();
+        
+        rawData.forEach((json: string) => {
+            try {
+                const reading = JSON.parse(json);
+                const docRef = getDb().collection('sensor_data').doc();
+                batch.set(docRef, reading);
+            } catch (pError) {
+                console.error("Failed to parse buffered telemetry JSON", pError);
+            }
+        });
+
+        // 2. Commit to Firestore
         await batch.commit();
-        console.log('✅ Firestore batch write successful');
+        
+        // 3. ONLY trim from Redis after successful Firestore commit
+        await redis.lTrim(REDIS_BUFFER_KEY, count, -1);
+        
+        console.log(`✅ Successfully flushed ${count} readings to Firestore.`);
+        
+        // If there's still a lot of data, trigger another flush immediately
+        const remaining = await redis.lLen(REDIS_BUFFER_KEY);
+        if (remaining >= BATCH_SIZE) {
+            setImmediate(() => flushSensorData().catch(e => console.error("Recursive flush failed", e)));
+        }
     } catch (error) {
-        console.error('❌ Firestore batch write failed:', error);
-        // Put back in buffer? Or just log. For now, we rely on Redis for history.
+        console.error('❌ Firestore batch flush failed. Data remains in Redis for retry:', error);
     }
 }
 

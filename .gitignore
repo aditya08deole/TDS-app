@@ -86,3 +86,9 @@ ui-debug.log
 # Project specific
 admin_dashboard/node_modules/
 functions/node_modules/
+backend/node_modules/
+backend/firebase-service-account.json
+admin_dashboard/android/app/google-services.json
+*-service-account.json
+*.keystore
+*.jks

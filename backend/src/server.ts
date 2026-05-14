@@ -7,8 +7,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { initializeRedis, closeRedis, getRedisClient } from './db/redis';
-import { startScheduler, startAlertCleanupJob, stopScheduler, getSchedulerStatus } from './sync/scheduler';
-import { syncFromFirebase } from './services/syncService';
+import { startScheduler, startAlertCleanupJob, startDeviceHeartbeatJob, stopScheduler, getSchedulerStatus } from './sync/scheduler';
+import { syncFromFirebase, flushSensorData } from './services/syncService';
 import deviceRoutes from './api/routes/devices';
 import syncRoutes from './api/routes/sync';
 import notificationRoutes from './api/routes/notifications';
@@ -235,6 +235,9 @@ async function start() {
 
     // Start alert auto-cleanup (deletes alerts older than 10 min every minute)
     startAlertCleanupJob();
+    
+    // Start device heartbeat monitoring (every 5 min)
+    startDeviceHeartbeatJob();
 
     try {
       const syncResult = await syncFromFirebase('startup');
@@ -267,6 +270,12 @@ async function start() {
 process.on('SIGTERM', async () => {
   console.log('📭 SIGTERM received, shutting down gracefully...');
   stopScheduler();
+  try {
+    console.log('💾 Flushing telemetry buffer to Firestore...');
+    await flushSensorData();
+  } catch (e) {
+    console.error('❌ Failed to flush data during shutdown:', e);
+  }
   await closeRedis();
   process.exit(0);
 });
@@ -274,6 +283,12 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   console.log('📭 SIGINT received, shutting down gracefully...');
   stopScheduler();
+  try {
+    console.log('💾 Flushing telemetry buffer to Firestore...');
+    await flushSensorData();
+  } catch (e) {
+    console.error('❌ Failed to flush data during shutdown:', e);
+  }
   await closeRedis();
   process.exit(0);
 });

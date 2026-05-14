@@ -154,6 +154,7 @@ if (twilioSid && twilioAuthToken) {
 const RATE_LIMIT_TTL = 3600; // 1 hour in seconds
 const RATE_LIMIT_KEY = (deviceId: string) => `notif:sent:${deviceId}`;
 const DELIVERY_DEDUPE_TTL_SEC = 10 * 60;
+const FCM_TOKEN_CACHE_KEY = 'cache:fcm_tokens';
 
 async function writeDeliveryLog(entry: Record<string, any>) {
     try {
@@ -298,6 +299,34 @@ export function startNotificationListeners() {
     }, (error) => {
         console.error('❌ Firestore Device Listener Error:', error);
     });
+    
+    // 3. Listen for Notification Subscriptions (FCM Token Caching)
+    db.collection('notification_subscriptions').onSnapshot(async (snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+            const data = change.doc.data();
+            const token = data.token;
+            
+            if (!token) return;
+
+            if (change.type === 'added' || change.type === 'modified') {
+                await redis.sAdd(FCM_TOKEN_CACHE_KEY, token);
+            } else if (change.type === 'removed') {
+                await redis.sRem(FCM_TOKEN_CACHE_KEY, token);
+            }
+        });
+        
+        // Initial load if Redis is empty
+        const count = await redis.sCard(FCM_TOKEN_CACHE_KEY);
+        if (count === 0 && !snapshot.empty) {
+            const tokens = snapshot.docs.map(doc => doc.data().token).filter(Boolean);
+            if (tokens.length > 0) {
+                await redis.sAdd(FCM_TOKEN_CACHE_KEY, tokens);
+                console.log(`🚀 Cached ${tokens.length} FCM tokens in Redis.`);
+            }
+        }
+    }, (error) => {
+        console.error('❌ Firestore Subscription Listener Error:', error);
+    });
 }
 
 // ─── Notification Channels ────────────────────────────────────────────────────
@@ -309,19 +338,27 @@ async function sendPushNotification(alertId: string, alertData: any) {
             return;
         }
 
-        const db = getDb();
         const messaging = getMsg();
-        const subscriptionsSnap = await db.collection('notification_subscriptions').get();
-        if (subscriptionsSnap.empty) {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'no_tokens' });
-            return;
-        }
+        const redis = getRedis();
 
-        const tokens: string[] = [];
-        subscriptionsSnap.forEach(doc => {
-            const sub = doc.data();
-            if (sub.token) tokens.push(sub.token);
-        });
+        // 1. Try fetching from Redis Cache first
+        let tokens = await redis.sMembers(FCM_TOKEN_CACHE_KEY);
+
+        // 2. Fallback to Firestore if cache is empty
+        if (!tokens || tokens.length === 0) {
+            console.log('ℹ️ FCM token cache empty, falling back to Firestore...');
+            const subscriptionsSnap = await getDb().collection('notification_subscriptions').get();
+            if (subscriptionsSnap.empty) {
+                await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'no_tokens' });
+                return;
+            }
+            tokens = subscriptionsSnap.docs.map(doc => doc.data().token).filter(Boolean);
+            
+            // Repopulate cache
+            if (tokens.length > 0) {
+                await redis.sAdd(FCM_TOKEN_CACHE_KEY, tokens);
+            }
+        }
 
         if (tokens.length === 0) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'empty_tokens' });
@@ -371,15 +408,17 @@ async function sendPushNotification(alertId: string, alertData: any) {
                     if (isStale) {
                         const staleToken = tokens[idx];
                         console.warn(`🗑️ Removing stale FCM token (${code}): ${staleToken.substring(0, 20)}...`);
-                        const cleanup = db.collection('notification_subscriptions')
+                        const cleanup = getDb().collection('notification_subscriptions')
                             .where('token', '==', staleToken)
                             .get()
-                            .then(snap => {
-                                const batch = db.batch();
-                                snap.docs.forEach(d => batch.delete(d.ref));
+                            .then((snap: any) => {
+                                const batch = getDb().batch();
+                                snap.docs.forEach((d: any) => batch.delete(d.ref));
+                                // Also remove from Redis cache
+                                getRedis().sRem(FCM_TOKEN_CACHE_KEY, staleToken).catch(() => {});
                                 return snap.empty ? Promise.resolve() : batch.commit().then(() => {});
                             })
-                            .catch(e => { console.error('Failed to remove stale token:', e); });
+                            .catch((e: any) => { console.error('Failed to remove stale token:', e); });
                         staleCleanups.push(cleanup as Promise<void>);
                     }
                 }

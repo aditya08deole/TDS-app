@@ -8,6 +8,7 @@ function getRedis() { return getRedisClient(); }
 
 let scheduledTask: any = null;
 let cleanupTask: any = null;
+let heartbeatTask: any = null;
 
 export function startScheduler(): void {
   const syncInterval = process.env.SYNC_INTERVAL_HOURS || '1';
@@ -94,6 +95,58 @@ export function startAlertCleanupJob(): void {
   console.log('✅ Alert cleanup job started — running every minute (10-min TTL on alerts).');
 }
 
+/**
+ * Device Heartbeat Job — runs every 5 minutes.
+ * Checks all devices for inactivity. If a device hasn't sent telemetry in 1 hour,
+ * it is marked as 'offline'.
+ */
+export function startDeviceHeartbeatJob(): void {
+  heartbeatTask = cron.schedule('*/5 * * * *', async () => {
+    try {
+      const redis = getRedis();
+      const db = getDb();
+      
+      // 1. Get all device IDs from Redis
+      const deviceIds = await redis.sMembers('devices:all');
+      if (deviceIds.length === 0) return;
+
+      const now = Date.now();
+      const ONE_HOUR_MS = 60 * 60 * 1000;
+
+      console.log(`💓 [HEARTBEAT] Checking connectivity for ${deviceIds.length} devices...`);
+
+      for (const id of deviceIds) {
+        const deviceJson = await redis.hGetAll(`device:${id}`);
+        if (!deviceJson || Object.keys(deviceJson).length === 0) continue;
+
+        const lastReadingAt = deviceJson.last_reading_at;
+        const currentStatus = deviceJson.status;
+
+        if (lastReadingAt && currentStatus !== 'offline') {
+          const lastTime = new Date(lastReadingAt).getTime();
+          if (now - lastTime > ONE_HOUR_MS) {
+            console.log(`⚠️ Device ${deviceJson.name || id} is inactive for >1hr. Marking OFFLINE.`);
+            
+            // Update Redis
+            await redis.hSet(`device:${id}`, 'status', 'offline');
+            await redis.hSet(`device:${id}`, 'updated_at', new Date().toISOString());
+
+            // Update Firestore (non-blocking)
+            db.collection('devices').doc(id).update({
+              status: 'offline',
+              updated_at: new Date().toISOString()
+            }).catch(e => console.error(`❌ Failed to sync offline status for ${id}:`, e));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Device heartbeat job failed:', error);
+    }
+  });
+
+  console.log('✅ Device heartbeat job started — checking every 5 minutes (1-hr inactivity threshold).');
+}
+
 export function stopScheduler(): void {
   if (scheduledTask) {
     scheduledTask.stop();
@@ -105,12 +158,18 @@ export function stopScheduler(): void {
     cleanupTask = null;
     console.log('⏹️ Alert cleanup job stopped');
   }
+  if (heartbeatTask) {
+    heartbeatTask.stop();
+    heartbeatTask = null;
+    console.log('⏹️ Device heartbeat job stopped');
+  }
 }
 
 export function getSchedulerStatus(): any {
   return {
     isRunning: scheduledTask ? true : false,
     cleanupRunning: cleanupTask ? true : false,
+    heartbeatRunning: heartbeatTask ? true : false,
     nextRun: scheduledTask ? 'Check logs' : 'Not running',
     interval: process.env.SYNC_INTERVAL_HOURS || '1 hour',
     alertCleanupTtlMinutes: 10,

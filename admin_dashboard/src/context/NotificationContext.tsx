@@ -4,14 +4,18 @@ import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { useAuth } from './AuthContext'
 import { onMessage, getToken } from 'firebase/messaging'
 import { toast } from 'sonner'
+import { storage } from '../lib/storage'
+import { initPushNotifications, getFCMToken } from '../lib/pushNotifications'
+import { Capacitor } from '@capacitor/core'
 
 const VAPID_PUBLIC_KEY = (import.meta.env['VITE_VAPID_PUBLIC_KEY'] as string) || "";
+const isNative = Capacitor.isNativePlatform();
 
 interface NotificationContextType {
     soundEnabled: boolean
     toggleSound: () => void
     isSubscribed: boolean
-    permission: NotificationPermission
+    permission: string
     loading: boolean
     soundProfile: string
     setSoundProfile: (profile: string) => void
@@ -31,17 +35,36 @@ export const useNotification = () => {
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user } = useAuth()
-    const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('alert-sound') !== 'false')
-    const [soundProfile, setSoundProfileState] = useState(() => localStorage.getItem('alert-sound-profile') || 'classic')
+    const [soundEnabled, setSoundEnabled] = useState(true)
+    const [soundProfile, setSoundProfileState] = useState('classic')
     const [isSubscribed, setIsSubscribed] = useState(false)
     const [loading, setLoading] = useState(false)
-    const [permission, setPermission] = useState<NotificationPermission>(
-        typeof Notification !== 'undefined' ? Notification.permission : 'default'
-    )
+    const [permission, setPermission] = useState('default')
 
-    const setSoundProfile = useCallback((profile: string) => {
+    // Load persistent state from storage
+    useEffect(() => {
+        const loadSettings = async () => {
+            const savedSound = await storage.get<boolean>('alert-sound');
+            if (savedSound !== null) setSoundEnabled(savedSound);
+
+            const savedProfile = await storage.get<string>('alert-sound-profile');
+            if (savedProfile) setSoundProfileState(savedProfile);
+            
+            if (isNative) {
+                // Check native token to see if we're subscribed
+                const token = await getFCMToken();
+                if (token) setIsSubscribed(true);
+                setPermission('granted'); // Usually handled by initPushNotifications
+            } else if (typeof Notification !== 'undefined') {
+                setPermission(Notification.permission);
+            }
+        };
+        loadSettings();
+    }, []);
+
+    const setSoundProfile = useCallback(async (profile: string) => {
         setSoundProfileState(profile)
-        localStorage.setItem('alert-sound-profile', profile)
+        await storage.set('alert-sound-profile', profile)
     }, [])
 
     const playSound = useCallback((type: 'success' | 'warning' | 'error' = 'success') => {
@@ -106,8 +129,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         toast.success('Sound Diagnostic', { description: `Profile "${soundProfile}" is playing correctly.` })
     }, [playSound, soundProfile])
 
+    // Initialize native push if applicable
     useEffect(() => {
-        if (!messaging) return
+        if (isNative) {
+            initPushNotifications();
+        }
+    }, []);
+
+    // Handle incoming messages
+    useEffect(() => {
+        if (!messaging || isNative) return // Native has its own listeners in pushNotifications.ts
         const unsubscribe = onMessage(messaging, (payload) => {
             console.log('🔔 Foreground Message:', payload)
             toast.error(payload.notification?.title || 'System Alert', {
@@ -127,6 +158,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }, [playSound])
 
     const testNotification = useCallback(() => {
+        if (isNative) {
+            toast.info('Test Alert', { description: 'Native push test is handled via Firebase Console.' })
+            return
+        }
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
             new Notification('🔔 EvaraTDS Test Notification', {
                 body: 'Your notification system is working correctly!',
@@ -137,67 +172,55 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
     }, [])
 
-    const toggleSound = useCallback(() => {
-        setSoundEnabled(prev => {
-            const newValue = !prev
-            localStorage.setItem('alert-sound', String(newValue))
-            return newValue
-        })
-    }, [])
-
-    useEffect(() => {
-        const checkSubscription = async () => {
-            if (!user || !messaging) return
-            try {
-                if ('serviceWorker' in navigator) {
-                    const registration = await navigator.serviceWorker.ready
-                    const subscription = await registration.pushManager.getSubscription()
-                    setIsSubscribed(!!subscription)
-                }
-            } catch (err) {
-                console.warn('Check subscription failed:', err)
-            }
-        }
-        if (typeof Notification !== 'undefined') {
-            setPermission(Notification.permission)
-            checkSubscription()
-        }
-    }, [user])
+    const toggleSound = useCallback(async () => {
+        const newValue = !soundEnabled
+        setSoundEnabled(newValue)
+        await storage.set('alert-sound', newValue)
+    }, [soundEnabled])
 
     const subscribe = async () => {
-        if (!user || !messaging) return
-        if (typeof Notification === 'undefined') return
-
-        if (Notification.permission === 'default') {
-            const result = await Notification.requestPermission()
-            setPermission(result)
-            if (result !== 'granted') return
-        }
-
-        if (!VAPID_PUBLIC_KEY) {
-            toast.error('VAPID Key Missing', { description: 'Contact admin to configure push keys.' })
-            return
-        }
-
+        if (!user) return
+        
         setLoading(true)
         try {
-            // 1. Get FCM Token
-            const token = await getToken(messaging, { vapidKey: VAPID_PUBLIC_KEY })
+            let token: string | null = null;
 
-            if (!token) {
-                throw new Error('No FCM registration token available. Ensure the service worker is registered and the VAPID key is correct.')
+            if (isNative) {
+                // For native, initPushNotifications handles the initial registration
+                // We just need to make sure we have the token and save it to Firestore
+                token = await getFCMToken();
+                if (!token) {
+                    await initPushNotifications();
+                    token = await getFCMToken();
+                }
+            } else {
+                if (!messaging) return;
+                if (typeof Notification === 'undefined') return
+
+                if (Notification.permission === 'default') {
+                    const result = await Notification.requestPermission()
+                    setPermission(result)
+                    if (result !== 'granted') return
+                }
+
+                if (!VAPID_PUBLIC_KEY) {
+                    toast.error('VAPID Key Missing', { description: 'Contact admin to configure push keys.' })
+                    return
+                }
+
+                token = await getToken(messaging, { vapidKey: VAPID_PUBLIC_KEY })
             }
 
-            // 2. Idempotent upsert using a deterministic doc ID.
-            // This replaces the old query+addDoc pattern (2 reads + 1 write) with a
-            // single setDoc (0 reads, 1 write). Safe for multi-device: each device
-            // gets its own doc identified by user + token fingerprint.
+            if (!token) {
+                throw new Error('No FCM registration token available.')
+            }
+
             const tokenHash = btoa(token).replace(/[^a-zA-Z0-9]/g, '').substring(0, 24)
             const docId = `${user.uid}_${tokenHash}`
             await setDoc(doc(db, 'notification_subscriptions', docId), {
                 user_id: user.uid,
                 token,
-                platform: 'web_pwa',
+                platform: isNative ? 'android_native' : 'web_pwa',
                 userAgent: navigator.userAgent,
                 updated_at: serverTimestamp(),
                 created_at: serverTimestamp(),
@@ -209,7 +232,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             })
         } catch (error) {
             console.error('Subscription error:', error)
-            toast.error('Subscription failed', { description: 'Please check your browser notification permissions.' })
+            toast.error('Subscription failed', { description: 'Please check your connectivity and permissions.' })
         } finally {
             setLoading(false)
         }
