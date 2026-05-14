@@ -30,18 +30,18 @@ export default function DeviceInspector() {
     const [updating, setUpdating] = useState(false)
     const [isEditing, setIsEditing] = useState(false)
     const [editForm, setEditForm] = useState({ name: '', location_name: '', firmware_version: '' })
-    const [prevDeviceId, setPrevDeviceId] = useState<string | null>(null)
 
     useEffect(() => {
-        if (device && device.id !== prevDeviceId) {
-            setPrevDeviceId(device.id)
-            setEditForm({
-                name: device.name,
-                location_name: device.location_name || '',
-                firmware_version: (device.metadata as any)?.firmware_version?.toString() || ''
-            })
+        if (device) {
+            setTimeout(() => {
+                setEditForm({
+                    name: device.name,
+                    location_name: device.location_name || '',
+                    firmware_version: (device.metadata as any)?.firmware_version?.toString() || ''
+                })
+            }, 0)
         }
-    }, [device, prevDeviceId])
+    }, [device?.id])
 
     // Map sensor data to SensorReading format
     const sensorHistory = useMemo(() => {

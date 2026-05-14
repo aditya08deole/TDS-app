@@ -42,7 +42,7 @@ export async function initRemoteConfig(): Promise<void> {
       _resolvedApiUrl = fetchedUrl || DEFAULTS.api_url;
 
       console.log(`✅ Remote Config loaded. API: ${_resolvedApiUrl}`);
-    } catch (error) {
+    } catch {
       // Gracefully fall back to default — app still works
       _resolvedApiUrl = DEFAULTS.api_url;
       console.warn('⚠️ Remote Config unavailable, using fallback API URL:', _resolvedApiUrl);
