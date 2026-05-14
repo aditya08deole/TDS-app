@@ -130,9 +130,13 @@ export function QRCodeGenerator({ deviceData, isOpen, onClose }: QRCodeGenerator
     }
 
     const copyData = () => {
-        navigator.clipboard.writeText(qrData)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(qrData)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+        } else {
+            alert('Clipboard API not available')
+        }
     }
 
     return (

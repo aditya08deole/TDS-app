@@ -92,7 +92,8 @@ export default function Settings() {
                         dark_mode: isDark
                     })
                     // Sync global theme with Firestore preference on load
-                    if (isDark !== (theme === 'dark')) {
+                    // (only if it differs, and we do this once on load)
+                    if (isDark !== (document.documentElement.classList.contains('dark'))) {
                         setTheme(isDark ? 'dark' : 'light')
                     }
                 }
@@ -102,7 +103,8 @@ export default function Settings() {
             setLoading(false)
         }
         loadSettings()
-    }, [user, theme, setTheme])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user])
 
     useEffect(() => {
         const loadRecipients = async () => {
@@ -537,8 +539,12 @@ export default function Settings() {
                                                         https://your-tunnel.ngrok-free.app/api/notifications/whatsapp
                                                     </code>
                                                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
-                                                        navigator.clipboard.writeText('https://your-tunnel.ngrok-free.app/api/notifications/whatsapp');
-                                                        toast.info('Copied to clipboard');
+                                                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                                                            navigator.clipboard.writeText('https://your-tunnel.ngrok-free.app/api/notifications/whatsapp');
+                                                            toast.info('Copied to clipboard');
+                                                        } else {
+                                                            toast.error('Clipboard access denied');
+                                                        }
                                                     }}>
                                                         <Copy className="h-3 w-3" />
                                                     </Button>

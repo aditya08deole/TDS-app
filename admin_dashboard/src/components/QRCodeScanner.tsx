@@ -37,10 +37,14 @@ export function QRCodeScanner({ isOpen, onClose, onScan }: QRCodeScannerProps) {
 
     useEffect(() => {
         if (isOpen) {
-            // Check camera permission
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(() => setCameraPermission('granted'))
-                .catch(() => setCameraPermission('denied'))
+            // Check camera permission safely
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(() => setCameraPermission('granted'))
+                    .catch(() => setCameraPermission('denied'))
+            } else {
+                setCameraPermission('denied')
+            }
         }
     }, [isOpen])
 

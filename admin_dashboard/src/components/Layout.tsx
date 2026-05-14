@@ -34,12 +34,14 @@ export default function Layout() {
                 "flex-1 overflow-auto animate-fade-in relative z-10 transition-all duration-500",
                 // Map page: no top padding, bottom padding for MobileNav on mobile
                 isMapPage 
-                    ? "pt-0 pb-0 md:pb-0" 
+                    ? "pb-0 md:pb-0 pt-safe" 
                     : cn(
-                        isLandscape && !isDesktop 
-                            ? "pt-20 pb-16 px-8" 
-                            : "pt-0 pb-28 md:pt-32 lg:pt-32 md:pb-8",
-                        isPortrait && !isDesktop && "px-0 pt-0"
+                        // Desktop: use TopBar height offset
+                        isDesktop && "pt-28 pb-8",
+                        // Landscape phone: reduce vertical padding
+                        isLandscape && !isDesktop && "pt-16 pb-16 px-8",
+                        // Portrait phone: safe area top avoids notch, pb-28 avoids bottom nav
+                        isPortrait && !isDesktop && "pt-safe pb-28 px-0"
                     )
             )}>
                 <Outlet />

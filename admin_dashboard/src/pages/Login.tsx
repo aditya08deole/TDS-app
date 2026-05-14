@@ -5,7 +5,8 @@ import {
     signInWithEmailAndPassword, 
     createUserWithEmailAndPassword,
     GoogleAuthProvider, 
-    signInWithPopup 
+    signInWithRedirect,
+    getRedirectResult
 } from 'firebase/auth'
 import { Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
@@ -44,6 +45,21 @@ export default function Login() {
     const navigate = useNavigate()
     const location = useLocation()
     const from = location.state?.from?.pathname || '/'
+
+    // Handle Google Redirect Result
+    useEffect(() => {
+        const checkRedirectResult = async () => {
+            try {
+                const result = await getRedirectResult(auth)
+                if (result) {
+                    navigate(from, { replace: true })
+                }
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Google login failed')
+            }
+        }
+        checkRedirectResult()
+    }, [navigate, from])
 
     // Cursor Glow Effect
     useEffect(() => {
@@ -87,11 +103,10 @@ export default function Login() {
         setLoading(true)
         setError(null)
         try {
-            await signInWithPopup(auth, provider)
-            navigate(from, { replace: true })
+            await signInWithRedirect(auth, provider)
+            // No need to navigate or setLoading(false) here because the page redirects
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Google login failed')
-        } finally {
             setLoading(false)
         }
     }

@@ -11,6 +11,20 @@
         @apply border-border outline-ring/50;
     }
 
+    /* Safe area padding utilities for mobile devices (notch/status-bar aware) */
+    .pt-safe {
+        /* 3rem (48px) fallback covers standard Android status bars + notch zones */
+        padding-top: max(env(safe-area-inset-top, 3rem), 3rem);
+    }
+    .pb-safe {
+        /* 2rem (32px) fallback covers Android home indicator area */
+        padding-bottom: max(env(safe-area-inset-bottom, 2rem), 2rem);
+    }
+    /* Supplemental top-extra for portrait on very-notched devices */
+    .pt-safe-extra {
+        padding-top: max(env(safe-area-inset-top, 4rem), 4rem);
+    }
+
     h1, h2, h3, h4, h5, h6 {
         letter-spacing: -0.025em;
         font-weight: 600;

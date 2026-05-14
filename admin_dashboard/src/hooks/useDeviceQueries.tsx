@@ -3,11 +3,13 @@ import { useEffect } from 'react'
 import type { Device } from '../types'
 import { queryKeys } from '../lib/queryClient'
 import { cacheDevices, getCachedDevices } from '../lib/cache'
-import { 
-    fetchDevices as fetchDevicesFromApi,
-    createDevice as createDeviceApi,
-    deleteDevice as deleteDeviceApi,
-    updateDevice as updateDeviceApi,
+import {
+    fetchDevicesFromFirestore,
+    createDeviceInFirestore,
+    updateDeviceInFirestore,
+    deleteDeviceFromFirestore
+} from '../lib/firestoreDevices'
+import {
     getDeviceSensorData as fetchSensorDataApi,
     getDeviceHealthEvents as fetchHealthEventsApi,
     getSystemHealthLogs as fetchSystemHealthLogsApi,
@@ -21,28 +23,38 @@ export interface SensorDataRecord {
 }
 
 /**
- * Fetch all devices from backend API
+ * Fetch all devices — Firestore first, IndexedDB cache as fallback
+ * The backend API is no longer the primary source because it requires
+ * a running Railway/local backend. Firestore is always available.
  */
 async function fetchDevices(): Promise<Device[]> {
     try {
-        console.log('📡 Fetching devices from API...')
-        const data = await fetchDevicesFromApi()
+        // PRIMARY: Fetch directly from Firebase Firestore
+        const data = await fetchDevicesFromFirestore()
 
-        // Cache the result
-        if (data) {
+        // Cache the result in IndexedDB for offline use
+        if (data && data.length > 0) {
             await cacheDevices(data)
         }
 
-        return data || []
-    } catch (error) {
-        console.error('❌ Error fetching from API:', error)
-        // Fallback to cache
-        const cached = await getCachedDevices()
-        if (cached) {
-            console.log('📦 Using cached devices (API failed)')
-            return cached
+        return data
+    } catch (firestoreError) {
+        console.error('❌ Firestore fetch failed, trying IndexedDB cache:', firestoreError)
+
+        // FALLBACK: IndexedDB cache
+        try {
+            const cached = await getCachedDevices()
+            if (cached && cached.length > 0) {
+                console.log(`📦 Using ${cached.length} cached devices (Firestore unreachable)`)
+                return cached
+            }
+        } catch (cacheError) {
+            console.error('❌ Cache also failed:', cacheError)
         }
-        throw error
+
+        // Return empty array instead of throwing — prevents crash
+        console.warn('⚠️ No devices available from any source, returning empty list')
+        return []
     }
 }
 
@@ -67,7 +79,8 @@ export function useDevice(deviceId: string | undefined) {
         queryKey: queryKeys.device(deviceId!),
         queryFn: async () => {
             if (!deviceId) return null
-            return await fetchDevicesFromApi().then(devices => devices.find(d => d.id === deviceId) || null)
+            const devices = await fetchDevicesFromFirestore()
+            return devices.find((d: Device) => d.id === deviceId) || null
         },
         enabled: !!deviceId,
         staleTime: 5 * 60 * 1000,
@@ -82,7 +95,7 @@ export function useAddDevice() {
 
     return useMutation({
         mutationFn: async (newDevice: Partial<Device>) => {
-            return await createDeviceApi(newDevice)
+            return await createDeviceInFirestore(newDevice)
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.devices })
@@ -98,7 +111,7 @@ export function useUpdateDevice() {
 
     return useMutation({
         mutationFn: async ({ id, updates }: { id: string; updates: Partial<Device> }) => {
-            return await updateDeviceApi(id, updates)
+            return await updateDeviceInFirestore(id, updates)
         },
         onSuccess: (data) => {
             queryClient.setQueryData(queryKeys.device(data.id), data)
@@ -115,7 +128,7 @@ export function useDeleteDevice() {
 
     return useMutation({
         mutationFn: async (deviceId: string) => {
-            await deleteDeviceApi(deviceId)
+            await deleteDeviceFromFirestore(deviceId)
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.devices })
