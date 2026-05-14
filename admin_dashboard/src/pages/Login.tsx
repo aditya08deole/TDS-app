@@ -33,6 +33,10 @@ const GoogleIcon = () => (
     </svg>
 )
 
+import { Capacitor } from '@capacitor/core'
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication'
+import { signInWithCredential } from 'firebase/auth'
+
 export default function Login() {
     const [isSignUp, setIsSignUp] = useState(false)
     const [email, setEmail] = useState('')
@@ -49,6 +53,7 @@ export default function Login() {
     // Handle Google Redirect Result
     useEffect(() => {
         const checkRedirectResult = async () => {
+            if (Capacitor.isNativePlatform()) return; // Native doesn't use redirect result
             try {
                 const result = await getRedirectResult(auth)
                 if (result) {
@@ -99,12 +104,23 @@ export default function Login() {
     }
 
     const handleGoogleLogin = async () => {
-        const provider = new GoogleAuthProvider()
         setLoading(true)
         setError(null)
         try {
-            await signInWithRedirect(auth, provider)
-            // No need to navigate or setLoading(false) here because the page redirects
+            if (Capacitor.isNativePlatform()) {
+                const result = await FirebaseAuthentication.signInWithGoogle()
+                if (result.credential?.idToken) {
+                    const credential = GoogleAuthProvider.credential(result.credential.idToken)
+                    await signInWithCredential(auth, credential)
+                    navigate(from, { replace: true })
+                } else {
+                    throw new Error("Google Sign-In failed or was cancelled")
+                }
+            } else {
+                const provider = new GoogleAuthProvider()
+                await signInWithRedirect(auth, provider)
+                // No need to navigate or setLoading(false) here because the page redirects
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Google login failed')
             setLoading(false)

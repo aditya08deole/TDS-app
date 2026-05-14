@@ -4,4 +4,5 @@
     <string name="title_activity_main">EvaraTDS</string>
     <string name="package_name">com.evaratds.app</string>
     <string name="custom_url_scheme">com.evaratds.app</string>
+    <string name="default_web_client_id">138316765807-e6dq3pvds8lkoslrpue4943cvr1v99pb.apps.googleusercontent.com</string>
 </resources>
