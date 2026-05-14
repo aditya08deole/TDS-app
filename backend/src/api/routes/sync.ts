@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { syncFromFirebase, getLastSyncStatus } from '../../services/syncService';
+import { syncFromFirebase, getLastSyncStatus, forceCleanSync } from '../../services/syncService';
 import { getSchedulerStatus } from '../../sync/scheduler';
 import { getRedisClient } from '../../db/redis';
 
@@ -96,7 +96,7 @@ router.get('/logs', async (req: Request, res: Response) => {
     const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
 
     const logs = await redis.lRange('sync:logs', offset, offset + limit - 1);
-    const parsedLogs = logs.map(l => JSON.parse(l));
+    const parsedLogs = logs.map((l: string) => JSON.parse(l));
 
     res.json({
       success: true,
@@ -127,19 +127,19 @@ router.get('/logs/summary', async (req: Request, res: Response) => {
   try {
     const redis = getRedisClient();
     const logs = await redis.lRange('sync:logs', 0, -1);
-    const parsedLogs = logs.map(l => JSON.parse(l));
+    const parsedLogs = logs.map((l: string) => JSON.parse(l));
 
     const summary = {
       total_syncs: parsedLogs.length,
-      successful_syncs: parsedLogs.filter(l => l.status === 'success').length,
-      failed_syncs: parsedLogs.filter(l => l.status === 'failed').length,
-      partial_syncs: parsedLogs.filter(l => l.status === 'partial').length,
-      avg_duration_ms: parsedLogs.reduce((sum, l) => sum + (l.duration_ms || 0), 0) / (parsedLogs.length || 1),
-      max_duration_ms: Math.max(...parsedLogs.map(l => l.duration_ms || 0), 0),
-      min_duration_ms: Math.min(...parsedLogs.map(l => l.duration_ms || 0), 100000),
-      total_devices_synced: parsedLogs.reduce((sum, l) => sum + (l.devices_synced || 0), 0),
-      total_alerts_synced: parsedLogs.reduce((sum, l) => sum + (l.alerts_synced || 0), 0),
-      total_errors: parsedLogs.reduce((sum, l) => sum + (l.errors || 0), 0),
+      successful_syncs: parsedLogs.filter((l: any) => l.status === 'success').length,
+      failed_syncs: parsedLogs.filter((l: any) => l.status === 'failed').length,
+      partial_syncs: parsedLogs.filter((l: any) => l.status === 'partial').length,
+      avg_duration_ms: parsedLogs.reduce((sum: number, l: any) => sum + (l.duration_ms || 0), 0) / (parsedLogs.length || 1),
+      max_duration_ms: Math.max(...parsedLogs.map((l: any) => l.duration_ms || 0), 0),
+      min_duration_ms: Math.min(...parsedLogs.map((l: any) => l.duration_ms || 0), 100000),
+      total_devices_synced: parsedLogs.reduce((sum: number, l: any) => sum + (l.devices_synced || 0), 0),
+      total_alerts_synced: parsedLogs.reduce((sum: number, l: any) => sum + (l.alerts_synced || 0), 0),
+      total_errors: parsedLogs.reduce((sum: number, l: any) => sum + (l.errors || 0), 0),
     };
 
     res.json({

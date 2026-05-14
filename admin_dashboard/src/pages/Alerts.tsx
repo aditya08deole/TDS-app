@@ -1,11 +1,11 @@
 import { useEffect, useState, useMemo } from 'react'
-import { db } from '../lib/firebase'
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc } from 'firebase/firestore'
 import { type Alert } from '../types'
 import { AlertTriangle, CheckCircle, WifiOff, Camera, FileText, Bell, AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useUI } from '../context/UIContext'
 import { useRole } from '../context/RoleContext'
+import { queueAction } from '../lib/syncQueue'
+import { fetchAlerts, acknowledgeAlertApi, resolveAlertApi, fetchDeliveryLogs, type DeliveryLogRecord } from '../lib/api'
 import { GlassCard } from '@/components/GlassCard'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -17,44 +17,67 @@ export default function Alerts() {
     const { user } = useAuth()
     const { isOffline } = useUI()
     const { isLandscape, isDesktop } = useViewport()
-    const { hasPermission } = useRole()
+    const { hasPermission, role } = useRole()
     const [filter, setFilter] = useState<'all' | 'critical'>('all')
+    const [deliveryLogs, setDeliveryLogs] = useState<DeliveryLogRecord[]>([])
+    const [deliveryChannel, setDeliveryChannel] = useState<'all' | 'push' | 'whatsapp' | 'ntfy' | 'ifttt'>('all')
+    const [deliveryStatus, setDeliveryStatus] = useState<'all' | 'success' | 'partial' | 'failed' | 'skipped'>('all')
+    const canViewDeliveryLogs = role === 'admin' || role === 'super_admin'
 
-    // Real-time listener for alerts (replaces one-time fetch)
+    // Poll alerts from backend so lifecycle is centrally managed
     useEffect(() => {
         let mounted = true
-
-        const q = query(
-            collection(db, 'alerts'),
-            orderBy('created_at', 'desc'),
-            limit(50)
-        )
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            if (!mounted) return
-            const alertData = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Alert[]
-            setAlerts(alertData)
-            setLoading(false)
-        }, (error) => {
-            if (!mounted) return
-            console.error('Error fetching alerts in real-time:', error)
-            setLoading(false)
-        })
-
+        const load = async () => {
+            try {
+                const data = await fetchAlerts(50)
+                if (!mounted) return
+                setAlerts(data as Alert[])
+            } catch (error) {
+                if (!mounted) return
+                console.error('Error fetching alerts:', error)
+            } finally {
+                if (mounted) setLoading(false)
+            }
+        }
+        load()
+        const timer = setInterval(load, 15000)
         return () => {
             mounted = false
-            unsubscribe()
+            clearInterval(timer)
         }
     }, [])
+
+    useEffect(() => {
+        if (!canViewDeliveryLogs) return
+
+        let mounted = true
+        const loadLogs = async () => {
+            try {
+                const logs = await fetchDeliveryLogs(100, role)
+                if (!mounted) return
+                setDeliveryLogs(logs)
+            } catch (error) {
+                if (!mounted) return
+                console.error('Error fetching delivery logs:', error)
+            }
+        }
+
+        loadLogs()
+        const timer = setInterval(loadLogs, 20000)
+        return () => {
+            mounted = false
+            clearInterval(timer)
+        }
+    }, [canViewDeliveryLogs, role])
 
     const acknowledgeAlert = async (id: string) => {
         if (!user) return
         try {
-            const docRef = doc(db, 'alerts', id)
-            await updateDoc(docRef, {
-                status: 'acknowledged',
-                acknowledged_at: new Date().toISOString()
-            })
+            if (isOffline) {
+                queueAction('ACKNOWLEDGE_ALERT', { alertId: id, userId: user.uid, role })
+                return
+            }
+            await acknowledgeAlertApi(id, user.uid, role)
         } catch (error) {
             console.error('Error acknowledging alert:', error)
         }
@@ -62,14 +85,12 @@ export default function Alerts() {
 
     const resolveAlert = async (id: string) => {
         if (!user) return
-        const timestamp = new Date().toISOString()
         try {
-            const docRef = doc(db, 'alerts', id)
-            await updateDoc(docRef, {
-                status: 'resolved',
-                resolved_at: timestamp,
-                resolved_by: user.uid
-            })
+            if (isOffline) {
+                queueAction('RESOLVE_ALERT', { alertId: id, userId: user.uid, role })
+                return
+            }
+            await resolveAlertApi(id, user.uid, role)
         } catch (error) {
             console.error('Error resolving alert:', error)
         }
@@ -95,6 +116,12 @@ export default function Alerts() {
 
         if (filter === 'all') return true
         if (filter === 'critical') return a.severity === 'critical'
+        return true
+    })
+
+    const filteredDeliveryLogs = deliveryLogs.filter(log => {
+        if (deliveryChannel !== 'all' && log.channel !== deliveryChannel) return false
+        if (deliveryStatus !== 'all' && log.status !== deliveryStatus) return false
         return true
     })
 
@@ -155,6 +182,81 @@ export default function Alerts() {
                     </div>
                 </GlassCard>
             </div>
+
+            {canViewDeliveryLogs && (
+                <GlassCard className="p-4 md:p-5 space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div>
+                            <h2 className="text-sm md:text-base font-bold text-foreground">Notification Delivery Logs</h2>
+                            <p className="text-xs text-muted-foreground">Push and channel delivery health</p>
+                        </div>
+                        <div className="flex gap-2">
+                            <select
+                                value={deliveryChannel}
+                                onChange={(e) => setDeliveryChannel(e.target.value as typeof deliveryChannel)}
+                                className="bg-accent text-foreground text-xs rounded-lg px-2 py-1 border border-white/10"
+                            >
+                                <option value="all">All channels</option>
+                                <option value="push">Push</option>
+                                <option value="whatsapp">WhatsApp</option>
+                                <option value="ntfy">NTFY</option>
+                                <option value="ifttt">IFTTT</option>
+                            </select>
+                            <select
+                                value={deliveryStatus}
+                                onChange={(e) => setDeliveryStatus(e.target.value as typeof deliveryStatus)}
+                                className="bg-accent text-foreground text-xs rounded-lg px-2 py-1 border border-white/10"
+                            >
+                                <option value="all">All status</option>
+                                <option value="success">Success</option>
+                                <option value="partial">Partial</option>
+                                <option value="failed">Failed</option>
+                                <option value="skipped">Skipped</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                            <thead>
+                                <tr className="text-left text-muted-foreground border-b border-white/10">
+                                    <th className="py-2 pr-2">Time</th>
+                                    <th className="py-2 pr-2">Channel</th>
+                                    <th className="py-2 pr-2">Status</th>
+                                    <th className="py-2 pr-2">Alert</th>
+                                    <th className="py-2 pr-2">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredDeliveryLogs.slice(0, 30).map(log => (
+                                    <tr key={log.id} className="border-b border-white/5 text-foreground/90">
+                                        <td className="py-2 pr-2 whitespace-nowrap">{new Date(log.created_at).toLocaleTimeString()}</td>
+                                        <td className="py-2 pr-2 uppercase">{log.channel}</td>
+                                        <td className="py-2 pr-2">
+                                            <span className={cn(
+                                                'px-2 py-0.5 rounded border text-[10px] font-bold uppercase',
+                                                log.status === 'success' && 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
+                                                log.status === 'partial' && 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+                                                log.status === 'failed' && 'text-red-400 border-red-500/30 bg-red-500/10',
+                                                log.status === 'skipped' && 'text-slate-400 border-slate-500/30 bg-slate-500/10'
+                                            )}>
+                                                {log.status}
+                                            </span>
+                                        </td>
+                                        <td className="py-2 pr-2 truncate max-w-[180px]">{log.alert_id}</td>
+                                        <td className="py-2 pr-2 truncate max-w-[260px]">{log.reason || log.error || `${log.success_count || 0}/${(log.success_count || 0) + (log.failure_count || 0)} delivered`}</td>
+                                    </tr>
+                                ))}
+                                {filteredDeliveryLogs.length === 0 && (
+                                    <tr>
+                                        <td className="py-3 text-muted-foreground" colSpan={5}>No delivery logs for current filters.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </GlassCard>
+            )}
 
             {/* Alert List */}
             <div className="space-y-4">

@@ -1,5 +1,5 @@
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
-import { getRedisClient, hset } from '../db/redis';
+import { getRedisClient, hset, hgetall } from '../db/redis';
 import { l1Cache } from '../db/cache';
 import { Device, Alert, SyncLog, SystemHealthLog, UptimeStat } from '../types';
 import { TDS_CONFIG } from '../config/tdsConfig';
@@ -8,8 +8,8 @@ function getDb() {
   return getFirestore();
 }
 
-interface SyncResult {
-  type: 'manual' | 'scheduled' | 'event';
+export interface SyncResult {
+  type: 'manual' | 'scheduled' | 'event' | 'startup';
   devicesSynced: number;
   alertsSynced: number;
   sensorEntriesSynced: number;
@@ -33,7 +33,7 @@ async function setLastSyncedAt(date: Date): Promise<void> {
   await redis.set(SYNC_STATE_KEY, date.toISOString());
 }
 
-export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event' = 'manual'): Promise<SyncResult> {
+export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event' | 'startup' = 'manual'): Promise<SyncResult> {
   const startTime = Date.now();
   let devicesSynced = 0;
   let alertsSynced = 0;
@@ -42,10 +42,11 @@ export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event
   let uptimeStatsSynced = 0;
   let errors = 0;
   let errorLog: string[] = [];
+  const isFullSync = syncType === 'manual' || syncType === 'scheduled' || syncType === 'startup';
 
   try {
-    const lastSyncedAt = await getLastSyncedAt();
-    console.log(`🔄 Starting ${syncType} sync from Firebase... ${lastSyncedAt ? `(Incremental since ${lastSyncedAt.toISOString()})` : '(Full sync)'}`);
+    const lastSyncedAt = isFullSync ? null : await getLastSyncedAt();
+    console.log(`🔄 Starting ${syncType} sync from Firebase... ${lastSyncedAt ? `(Incremental since ${lastSyncedAt.toISOString()})` : '(Full reconciliation mode)'}`);
 
     // Sync devices
     try {
@@ -95,6 +96,20 @@ export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event
       console.error('Error syncing uptime stats:', err);
       errors++;
       errorLog.push(`Uptime stats error: ${err.message}`);
+    }
+
+    // 6. PRUNE ORPHANED KEYS (Full Sync Only)
+    // Already handled within syncDevices and syncAlerts for specific collections,
+    // but cleanupOrphanedKeys can be used for additional maintenance if needed.
+    if (isFullSync) {
+      try {
+        await cleanupOrphanedKeys();
+        console.log('🧹 Orphaned keys reconciliation complete');
+      } catch (err: any) {
+        console.error('Error during cleanup of orphaned keys:', err);
+        errors++;
+        errorLog.push(`Cleanup error: ${err.message}`);
+      }
     }
 
     const durationMs = Date.now() - startTime;
@@ -151,23 +166,47 @@ export async function syncFromFirebase(syncType: 'manual' | 'scheduled' | 'event
 async function syncDevices(since?: Date | null): Promise<number> {
   const db = getDb();
   const redis = getRedisClient();
-  let query: any = db.collection('devices');
   
+  // 1. Get ALL current devices from Firestore to handle deletions
+  const allFirebaseDevicesSnapshot = await db.collection('devices').select().get();
+  const currentFirebaseIds = new Set(allFirebaseDevicesSnapshot.docs.map(doc => doc.id));
+
+  // 2. Cleanup orphaned devices in Redis
+  const cachedIds = await redis.sMembers('devices:all');
+  let cleanedCount = 0;
+  for (const cachedId of cachedIds) {
+    if (!currentFirebaseIds.has(cachedId)) {
+      console.log(`🗑️ [RECONCILIATION] Removing ghost device from cache: ${cachedId}`);
+      await redis.del(`device:${cachedId}`);
+      await redis.sRem('devices:all', cachedId);
+      // Also clean up any associated alerts and uptime records
+      await redis.del(`device:${cachedId}:alerts`);
+      await redis.del(`device:${cachedId}:alerts:open`);
+      await redis.del(`device:${cachedId}:uptime_records`);
+      l1Cache.del(`device:${cachedId}`);
+      cleanedCount++;
+    }
+  }
+
+  if (cleanedCount > 0) {
+    console.log(`🧹 Cleaned ${cleanedCount} ghost devices from Redis.`);
+  }
+
+  // 3. Sync existing/new devices
+  let query: any = db.collection('devices');
   if (since) {
-    // We use the last sync time to filter. Since we might not have updated_at everywhere yet,
-    // we fallback to created_at or just get all if it's the first time.
-    // Actually, Firestore's updateTime is internal, so we rely on 'updated_at' field.
     query = query.where('updated_at', '>', since.toISOString());
   }
 
   const devicesSnapshot = await query.get();
   let synced = 0;
 
-  for (const doc of devicesSnapshot.docs) {
+  // Use Promise.all for parallel syncing
+  await Promise.all(devicesSnapshot.docs.map(async (doc: any) => {
     const firebaseData = doc.data() as Device;
     
     if (!firebaseData.name) {
-      continue;
+      return;
     }
 
     const deviceId = String(doc.id);
@@ -189,9 +228,9 @@ async function syncDevices(since?: Date | null): Promise<number> {
 
     await hset(`device:${deviceId}`, deviceData);
     await redis.sAdd('devices:all', deviceId);
-    l1Cache.set(`device:${deviceId}`, deviceData, 60 * 1000); // Populate L1 Cache
+    l1Cache.set(`device:${deviceId}`, deviceData, 60 * 1000);
     synced++;
-  }
+  }));
 
   return synced;
 }
@@ -199,8 +238,36 @@ async function syncDevices(since?: Date | null): Promise<number> {
 async function syncAlerts(since?: Date | null): Promise<number> {
   const db = getDb();
   const redis = getRedisClient();
-  let query: any = db.collection('alerts');
 
+  // 1. Get ALL current alerts from Firestore to handle deletions
+  const allFirebaseAlertsSnapshot = await db.collection('alerts').select().get();
+  const currentFirebaseAlertIds = new Set(allFirebaseAlertsSnapshot.docs.map(doc => doc.id));
+
+  // 2. Cleanup orphaned alerts in Redis
+  const cachedAlertIds = await redis.sMembers('alerts:all');
+  let cleanedAlerts = 0;
+  for (const alertId of cachedAlertIds) {
+    if (!currentFirebaseAlertIds.has(alertId)) {
+      console.log(`🗑️ [RECONCILIATION] Removing ghost alert from cache: ${alertId}`);
+      await redis.del(`alert:${alertId}`);
+      await redis.sRem('alerts:all', alertId);
+      
+      // Remove from all potential device associations
+      const devices = await redis.sMembers('devices:all');
+      for (const dId of devices) {
+        await redis.sRem(`device:${dId}:alerts`, alertId);
+        await redis.sRem(`device:${dId}:alerts:open`, alertId);
+      }
+      cleanedAlerts++;
+    }
+  }
+
+  if (cleanedAlerts > 0) {
+    console.log(`🧹 Cleaned ${cleanedAlerts} ghost alerts from Redis.`);
+  }
+
+  // 3. Sync existing/new alerts
+  let query: any = db.collection('alerts');
   if (since) {
     query = query.where('updated_at', '>', since.toISOString());
   }
@@ -339,10 +406,49 @@ async function syncUptimeStats(since?: Date | null): Promise<number> {
 
     await hset(`uptime:${stat.device_id}:${stat.timestamp}`, stat);
     await redis.sAdd(`device:${stat.device_id}:uptime_records`, `uptime:${stat.device_id}:${stat.timestamp}`);
+    await redis.sAdd('uptime:all', `uptime:${stat.device_id}:${stat.timestamp}`);
     synced++;
   }
 
   return synced;
+}
+
+/**
+ * Reconciliation service to ensure no ghost keys remain in Redis
+ */
+async function cleanupOrphanedKeys(): Promise<void> {
+  const redis = getRedisClient();
+  const db = getDb();
+
+  console.log('🧹 [RECONCILIATION] Running deep cleanup of orphaned keys...');
+
+  // 1. Cleanup Devices (Already handled in syncDevices, but here for completeness)
+  // 2. Cleanup Alerts (Already handled in syncAlerts)
+
+  // 3. Cleanup Uptime Records
+  const allUptimeKeys = await redis.sMembers('uptime:all');
+  const allFirebaseUptimeSnapshot = await db.collection('uptime_stats').select().get();
+  const firebaseUptimeIds = new Set(allFirebaseUptimeSnapshot.docs.map(doc => doc.id));
+  
+  let uptimeCleaned = 0;
+  for (const key of allUptimeKeys) {
+    const stat = await hgetall<UptimeStat>(key);
+    if (!stat || !stat.id || !firebaseUptimeIds.has(stat.id)) {
+      console.log(`🗑️ [RECONCILIATION] Removing orphaned uptime record: ${key}`);
+      await redis.del(key);
+      await redis.sRem('uptime:all', key);
+      if (stat && stat.device_id) {
+        await redis.sRem(`device:${stat.device_id}:uptime_records`, key);
+      }
+      uptimeCleaned++;
+    }
+  }
+  
+  if (uptimeCleaned > 0) {
+    console.log(`🧹 Cleaned ${uptimeCleaned} orphaned uptime records.`);
+  }
+
+  console.log('✅ Deep reconciliation pass complete.');
 }
 
 async function logSync(syncLog: Partial<SyncLog>): Promise<void> {
@@ -359,5 +465,38 @@ async function logSync(syncLog: Partial<SyncLog>): Promise<void> {
 export async function getLastSyncStatus(): Promise<any> {
   const redis = getRedisClient();
   const logs = await redis.lRange('sync:logs', 0, 4);
-  return logs.map(log => JSON.parse(log));
+  return logs.map((log: string) => JSON.parse(log));
+}
+
+export async function forceCleanSync(): Promise<SyncResult> {
+  const redis = getRedisClient();
+  console.log('☢️ [HARD SYNC] Flashing Redis device cache for fresh start...');
+  
+  // 1. Identify all device and alert related keys
+  const deviceIds = await redis.sMembers('devices:all');
+  const alertIds = await redis.sMembers('alerts:all');
+  
+  // 2. Delete all related keys
+  const keysToDelete = [
+    'devices:all',
+    'alerts:all',
+    SYNC_STATE_KEY,
+    ...deviceIds.map((id: string) => `device:${id}`),
+    ...deviceIds.map((id: string) => `device:${id}:alerts`),
+    ...deviceIds.map((id: string) => `device:${id}:alerts:open`),
+    ...deviceIds.map((id: string) => `device:${id}:uptime_records`),
+    ...alertIds.map((id: string) => `alert:${id}`)
+  ];
+  
+  for (const key of keysToDelete) {
+    await redis.del(key);
+  }
+  
+  // 3. Clear L1 cache
+  l1Cache.clear();
+  
+  console.log(`✅ Redis keys cleared (${keysToDelete.length} keys). Re-syncing from Firestore...`);
+  
+  // 4. Trigger a fresh full sync
+  return syncFromFirebase('manual');
 }

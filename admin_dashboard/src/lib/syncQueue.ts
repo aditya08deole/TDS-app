@@ -134,13 +134,32 @@ async function executeAction(action: QueuedAction): Promise<void> {
         }
 
         case 'ACKNOWLEDGE_ALERT': {
-            const { alertId, userId } = action.payload as { alertId: string; userId: string }
-            const docRef = doc(db, 'alerts', alertId)
-            await updateDoc(docRef, {
-                status: 'acknowledged',
-                acknowledged_by: userId,
-                acknowledged_at: new Date().toISOString()
+            const { alertId, userId, role } = action.payload as { alertId: string; userId: string; role?: string }
+            const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/alerts/${alertId}/ack`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': userId,
+                    'x-user-role': role || 'viewer'
+                },
+                body: JSON.stringify({ userId })
             })
+            if (!response.ok) throw new Error('Failed to acknowledge alert')
+            break
+        }
+
+        case 'RESOLVE_ALERT': {
+            const { alertId, userId, role } = action.payload as { alertId: string; userId: string; role?: string }
+            const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/alerts/${alertId}/resolve`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-id': userId,
+                    'x-user-role': role || 'viewer'
+                },
+                body: JSON.stringify({ userId })
+            })
+            if (!response.ok) throw new Error('Failed to resolve alert')
             break
         }
 

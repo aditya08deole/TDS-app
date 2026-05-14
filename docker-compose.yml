@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  # Redis for caching and real-time state
+  redis:
+    image: redis:alpine
+    container_name: tds-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+
+volumes:
+  redis_data:

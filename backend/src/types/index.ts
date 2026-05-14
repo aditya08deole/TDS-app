@@ -28,6 +28,7 @@ export interface Device {
   created_at: string;
   updated_at?: string;
   synced_at?: string;
+  firestore_id?: string;
 }
 
 export interface Alert {
@@ -47,6 +48,7 @@ export interface Alert {
   created_by?: string;
   escalation_level?: number;
   synced_at?: string;
+  firestore_id?: string;
 }
 
 export interface SensorData {
@@ -57,11 +59,12 @@ export interface SensorData {
   voltage?: number;
   recorded_at: string;
   synced_at?: string;
+  firestore_id?: string;
 }
 
 export interface SyncLog {
   id: number;
-  sync_type: 'manual' | 'scheduled' | 'event';
+  sync_type: 'manual' | 'scheduled' | 'event' | 'startup';
   started_at: string;
   completed_at?: string;
   devices_synced: number;

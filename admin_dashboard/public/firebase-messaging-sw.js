@@ -21,12 +21,23 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
   
-  const notificationTitle = payload.notification.title;
+  const notificationTitle = payload.notification?.title || 'EvaraTDS Alert';
+  const location = payload.data?.location_name || payload.data?.deviceId || 'System';
+  const ppm = payload.data?.ppm || 'N/A';
+  const recordedAt = payload.data?.recorded_at || '';
   const notificationOptions = {
-    body: payload.notification.body,
+    body: `${location} • ${ppm} ppm${recordedAt ? ` • ${recordedAt}` : ''}`,
     icon: '/pwa-192x192.png', // Corrected icon path
-    data: payload.data
+    data: payload.data,
+    tag: payload.data?.alertId || 'evaratds-alert',
+    renotify: true,
+    requireInteraction: false
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(clients.openWindow('/alerts'));
 });

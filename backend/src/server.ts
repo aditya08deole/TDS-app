@@ -13,6 +13,7 @@ import deviceRoutes from './api/routes/devices';
 import syncRoutes from './api/routes/sync';
 import notificationRoutes from './api/routes/notifications';
 import telemetryRoutes from './api/routes/telemetry';
+import alertsRoutes from './api/routes/alerts';
 import { TDS_CONFIG } from './config/tdsConfig';
 import { getFrontendPath } from './utils/pathUtils';
 import { startNotificationListeners } from './services/notificationService';
@@ -51,7 +52,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-db-init-key']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-db-init-key', 'x-user-role', 'x-user-id']
 }));
 
 app.use(morgan('combined'));
@@ -183,6 +184,11 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/notifications', notificationRoutes);
 
 /**
+ * Alerts routes
+ */
+app.use('/api/alerts', alertsRoutes);
+
+/**
  * Telemetry routes (Device sensor data submission)
  */
 app.use('/api/telemetry', telemetryRoutes);
@@ -230,11 +236,9 @@ async function start() {
     // Start alert auto-cleanup (deletes alerts older than 10 min every minute)
     startAlertCleanupJob();
 
-    // Perform initial sync (Incremental)
-    console.log('📡 Running initial sync...');
     try {
-      const syncResult = await syncFromFirebase('event');
-      console.log(`✅ Initial sync complete: ${syncResult.devicesSynced} devices, ${syncResult.alertsSynced} alerts`);
+      const syncResult = await syncFromFirebase('startup');
+      console.log(`✅ Initial full sync complete: ${syncResult.devicesSynced} devices, ${syncResult.alertsSynced} alerts`);
     } catch (syncError) {
       console.warn('⚠️ Initial sync failed, continuing anyway:', syncError);
     }

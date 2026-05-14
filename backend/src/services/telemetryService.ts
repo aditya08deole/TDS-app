@@ -84,7 +84,7 @@ export async function processTelemetry(data: {
     });
 
     // 5. Threshold Checking & Alerting
-    await checkThresholds(updatedDevice, reading);
+    await checkThresholds(updatedDevice, reading, recordedAt);
 
     // 6. Check if buffer needs flushing
     if (sensorDataBuffer.length >= BATCH_SIZE) {
@@ -97,7 +97,7 @@ export async function processTelemetry(data: {
 /**
  * Check TDS thresholds and create alerts if needed
  */
-async function checkThresholds(device: Device, reading: any) {
+async function checkThresholds(device: Device, reading: any, recordedAt: Date) {
     const min = device.safe_tds_min || TDS_CONFIG.RANGES.SAFE_MIN;
     const max = device.safe_tds_max || TDS_CONFIG.RANGES.SAFE_MAX;
 
@@ -108,16 +108,20 @@ async function checkThresholds(device: Device, reading: any) {
         const openAlertId = await getRedis().sMembers(`device:${device.id}:alerts:open`);
         
         if (openAlertId.length === 0) {
+            const locationName = device.location_name || device.name || device.id;
+            const recordedAtISO = recordedAt.toISOString();
             const alertData = {
                 device_id: device.id,
                 device_name: device.name,
+                location_name: locationName,
                 type: reading.tds > max ? 'TDS_HIGH' : 'TDS_LOW',
                 severity: 'critical',
-                message: `Critical TDS level detected: ${reading.tds} ppm. Safe range is ${min}-${max} ppm.`,
+                message: `Critical TDS level detected at ${locationName}: ${reading.tds} ppm. Safe range is ${min}-${max} ppm.`,
                 value_at_time: reading.tds,
+                recorded_at: recordedAtISO,
                 status: 'open',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
+                created_at: recordedAtISO,
+                updated_at: recordedAtISO
             };
 
             // Add to Redis first (immediate response)

@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useRole } from '../context/RoleContext'
 import { db } from '../lib/firebase'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { fetchWhatsAppRecipients, addWhatsAppRecipientApi, removeWhatsAppRecipientApi, type WhatsAppRecipient } from '../lib/api'
 import {
     User, Bell, Shield, LogOut, Moon, Mail, ChevronRight, Save, Loader2, CheckCircle,
     Globe, Lock, Layout, BellRing, UserCircle, Volume2, VolumeX,
-    MessageSquare, Zap, Smartphone, ExternalLink, Info, Copy
+    MessageSquare, Zap, Smartphone, ExternalLink, Info, Copy, Trash2, Plus
 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
 import { Button } from '@/components/ui/button'
@@ -36,12 +38,16 @@ type SettingsTab = 'general' | 'notifications' | 'data' | 'account'
 
 export default function Settings() {
     const { user, signOut } = useAuth()
+    const { role } = useRole()
     const { theme, setTheme } = useTheme()
     const navigate = useNavigate()
     const [activeTab, setActiveTab] = useState<SettingsTab>('general')
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
+    const [whatsAppRecipients, setWhatsAppRecipients] = useState<WhatsAppRecipient[]>([])
+    const [newPhone, setNewPhone] = useState('')
+    const [recipientLoading, setRecipientLoading] = useState(false)
 
     const { 
         soundEnabled, 
@@ -97,6 +103,57 @@ export default function Settings() {
         }
         loadSettings()
     }, [user, theme, setTheme])
+
+    useEffect(() => {
+        const loadRecipients = async () => {
+            if (!user || (role !== 'admin' && role !== 'super_admin')) return
+            try {
+                setRecipientLoading(true)
+                const data = await fetchWhatsAppRecipients(role)
+                setWhatsAppRecipients(data.filter(r => r.active))
+            } catch (error) {
+                console.error('Failed to load WhatsApp recipients', error)
+            } finally {
+                setRecipientLoading(false)
+            }
+        }
+        loadRecipients()
+    }, [user, role])
+
+    const addRecipient = async () => {
+        if (!user) return
+        const phone = newPhone.trim()
+        if (!/^\+91\d{10}$/.test(phone)) {
+            toast.error('Use +91XXXXXXXXXX format')
+            return
+        }
+        try {
+            setRecipientLoading(true)
+            await addWhatsAppRecipientApi(phone, user.uid, role)
+            const data = await fetchWhatsAppRecipients(role)
+            setWhatsAppRecipients(data.filter(r => r.active))
+            setNewPhone('')
+            toast.success('WhatsApp recipient added')
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to add recipient')
+        } finally {
+            setRecipientLoading(false)
+        }
+    }
+
+    const removeRecipient = async (phone: string) => {
+        if (!user) return
+        try {
+            setRecipientLoading(true)
+            await removeWhatsAppRecipientApi(phone, user.uid, role)
+            setWhatsAppRecipients(prev => prev.filter(r => r.phone_e164 !== phone))
+            toast.success('Recipient removed')
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to remove recipient')
+        } finally {
+            setRecipientLoading(false)
+        }
+    }
 
     const saveSettings = async () => {
         if (!user) return
@@ -384,6 +441,42 @@ export default function Settings() {
                                         />
                                     </div>
                                 </div>
+
+                                {(role === 'admin' || role === 'super_admin') && (
+                                    <div className="p-4 space-y-3 border-t border-white/5">
+                                        <div className="text-left">
+                                            <p className="text-foreground font-medium">WhatsApp Recipients</p>
+                                            <p className="text-xs text-muted-foreground">Add/remove Indian numbers in +91XXXXXXXXXX format</p>
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            <input
+                                                value={newPhone}
+                                                onChange={(e) => setNewPhone(e.target.value)}
+                                                placeholder="+919876543210"
+                                                className="flex-1 h-9 bg-transparent border border-accent rounded-lg px-3 text-sm"
+                                            />
+                                            <Button onClick={addRecipient} disabled={recipientLoading} className="h-9 text-xs">
+                                                <Plus className="w-3.5 h-3.5 mr-1" /> Add
+                                            </Button>
+                                        </div>
+
+                                        <div className="space-y-2 max-h-40 overflow-auto pr-1">
+                                            {whatsAppRecipients.length === 0 ? (
+                                                <p className="text-xs text-muted-foreground">No active recipients</p>
+                                            ) : (
+                                                whatsAppRecipients.map((recipient) => (
+                                                    <div key={recipient.id} className="flex items-center justify-between bg-accent/30 rounded-lg px-3 py-2">
+                                                        <span className="text-xs font-mono text-foreground">{recipient.phone_e164}</span>
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeRecipient(recipient.phone_e164)}>
+                                                            <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                                                        </Button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* NTFY Alerts */}
                                 <div className="p-4 flex items-center justify-between">

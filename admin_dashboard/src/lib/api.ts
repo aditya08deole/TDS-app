@@ -8,6 +8,41 @@ interface ApiResponse<T> {
   timestamp: string
 }
 
+export interface AlertRecord {
+  id: string
+  device_id: string
+  device_name?: string
+  message: string
+  severity: 'info' | 'critical' | 'warning' | 'high'
+  status: 'open' | 'acknowledged' | 'resolved'
+  created_at: string
+  acknowledged_at?: string
+  resolved_at?: string
+  escalation_level?: number
+  expiresAt?: string
+}
+
+export interface DeliveryLogRecord {
+  id: string
+  alert_id: string
+  channel: 'push' | 'whatsapp' | 'ntfy' | 'ifttt'
+  status: 'success' | 'partial' | 'failed' | 'skipped'
+  reason?: string
+  error?: string
+  recipient?: string
+  success_count?: number
+  failure_count?: number
+  created_at: string
+}
+
+export interface WhatsAppRecipient {
+  id: string
+  phone_e164: string
+  active: boolean
+  created_at?: string
+  updated_at?: string
+}
+
 export async function fetchDevices(): Promise<Device[]> {
   const response = await fetch(`${API_BASE_URL}/api/devices`)
   if (!response.ok) throw new Error('Failed to fetch devices')
@@ -139,4 +174,89 @@ export async function getUptimeStats(deviceId?: string): Promise<UptimeStat[]> {
   if (!response.ok) throw new Error('Failed to fetch uptime stats')
   const result: ApiResponse<UptimeStat[]> = await response.json()
   return result.data || []
+}
+
+export async function fetchAlerts(limit: number = 50): Promise<AlertRecord[]> {
+  const response = await fetch(`${API_BASE_URL}/api/alerts?limit=${limit}`)
+  if (!response.ok) throw new Error('Failed to fetch alerts')
+  const result: ApiResponse<AlertRecord[]> = await response.json()
+  return result.data || []
+}
+
+export async function acknowledgeAlertApi(alertId: string, userId: string, role: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/alerts/${alertId}/ack`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+      'x-user-role': role,
+    },
+    body: JSON.stringify({ userId }),
+  })
+  if (!response.ok) throw new Error('Failed to acknowledge alert')
+}
+
+export async function resolveAlertApi(alertId: string, userId: string, role: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/alerts/${alertId}/resolve`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+      'x-user-role': role,
+    },
+    body: JSON.stringify({ userId }),
+  })
+  if (!response.ok) throw new Error('Failed to resolve alert')
+}
+
+export async function fetchDeliveryLogs(limit: number, role: string): Promise<DeliveryLogRecord[]> {
+  const response = await fetch(`${API_BASE_URL}/api/alerts/delivery-logs/list?limit=${limit}`, {
+    headers: {
+      'x-user-role': role,
+    },
+  })
+  if (!response.ok) throw new Error('Failed to fetch delivery logs')
+  const result: ApiResponse<DeliveryLogRecord[]> = await response.json()
+  return result.data || []
+}
+
+export async function fetchWhatsAppRecipients(role: string): Promise<WhatsAppRecipient[]> {
+  const response = await fetch(`${API_BASE_URL}/api/notifications/recipients/whatsapp`, {
+    headers: { 'x-user-role': role },
+  })
+  if (!response.ok) throw new Error('Failed to fetch WhatsApp recipients')
+  const result: ApiResponse<WhatsAppRecipient[]> = await response.json()
+  return result.data || []
+}
+
+export async function addWhatsAppRecipientApi(phone: string, userId: string, role: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/notifications/recipients/whatsapp`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+      'x-user-role': role,
+    },
+    body: JSON.stringify({ phone, userId }),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.error || 'Failed to add WhatsApp recipient')
+  }
+}
+
+export async function removeWhatsAppRecipientApi(phone: string, userId: string, role: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/notifications/recipients/whatsapp`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+      'x-user-role': role,
+    },
+    body: JSON.stringify({ phone, userId }),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.error || 'Failed to remove WhatsApp recipient')
+  }
 }
