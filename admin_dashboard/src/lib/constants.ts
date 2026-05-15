@@ -8,9 +8,9 @@ export const TDS_RANGES = {
     // Minimum valid reading (filter out sensor noise)
     MIN_VALID: 20,
     
-    // Maximum valid reading (filter out voltage/temp misreads like 663)
-    // Realistic TDS for drinking water should never exceed 500 ppm
-    MAX_VALID: 500
+    // Maximum valid reading (filter out voltage/temp misreads)
+    // Increased to 2000 ppm to support a wider range of water sources
+    MAX_VALID: 2000
 } as const
 
 // Calculate internal thresholds (Fallback)

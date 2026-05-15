@@ -12,7 +12,7 @@ export const TDS_CONFIG = {
     MIN_VALID: 20,
     
     // Maximum valid reading (filter out voltage/temp misreads)
-    MAX_VALID: 500
+    MAX_VALID: 2000
   },
   THRESHOLDS: {
     CRITICAL_LOW: 35,
