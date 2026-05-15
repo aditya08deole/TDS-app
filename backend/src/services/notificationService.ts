@@ -331,9 +331,9 @@ export function startNotificationListeners() {
 
 // ─── Notification Channels ────────────────────────────────────────────────────
 
-async function sendPushNotification(alertId: string, alertData: any) {
+async function sendPushNotification(alertId: string, alertData: any, isReminder = false) {
     try {
-        if (await shouldSkipByDedupe(alertId, 'push')) {
+        if (!isReminder && await shouldSkipByDedupe(alertId, 'push')) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'dedupe' });
             return;
         }
@@ -369,7 +369,7 @@ async function sendPushNotification(alertId: string, alertData: any) {
 
         const message = {
             notification: {
-                title: `🚨 TDS Alert: ${location}`,
+                title: `${isReminder ? '⏰ Reminder: ' : '🚨 '}TDS Alert: ${location}`,
                 body: `${ppm} ppm recorded at ${time}`,
             },
             data: {
@@ -379,19 +379,21 @@ async function sendPushNotification(alertId: string, alertData: any) {
                 location_name: String(location),
                 ppm: String(ppm),
                 recorded_at: String(time),
+                isReminder: String(isReminder),
                 url: '/alerts'
             },
             tokens: tokens,
         };
 
         const response = await withRetry(() => messaging.sendEachForMulticast(message), 1);
-        console.log(`✅ Sent ${response.successCount} push notifications (${response.failureCount} failed).`);
+        console.log(`✅ Sent ${response.successCount} push notifications (${response.failureCount} failed)${isReminder ? ' [REMINDER]' : ''}.`);
         await writeDeliveryLog({
             alert_id: alertId,
             channel: 'push',
             status: response.failureCount > 0 ? 'partial' : 'success',
             success_count: response.successCount,
             failure_count: response.failureCount,
+            is_reminder: isReminder
         });
 
         // ── Auto-cleanup stale / invalid FCM tokens ────────────────────────
@@ -436,7 +438,7 @@ async function sendPushNotification(alertId: string, alertData: any) {
     }
 }
 
-async function sendWhatsAppNotification(alertId: string, alertData: any) {
+async function sendWhatsAppNotification(alertId: string, alertData: any, isReminder = false) {
     if (!twilioClient) {
         console.log('ℹ️ WhatsApp skipped: Missing Twilio config.');
         await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'skipped', reason: 'missing_config' });
@@ -444,7 +446,7 @@ async function sendWhatsAppNotification(alertId: string, alertData: any) {
     }
 
     try {
-        if (await shouldSkipByDedupe(alertId, 'whatsapp')) {
+        if (!isReminder && await shouldSkipByDedupe(alertId, 'whatsapp')) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'skipped', reason: 'dedupe' });
             return;
         }
@@ -457,12 +459,16 @@ async function sendWhatsAppNotification(alertId: string, alertData: any) {
         const { location, ppm, time } = formatAlertContext(alertData);
         for (const recipient of recipients) {
             try {
+                const body = isReminder 
+                    ? `⏰ *Hourly Reminder: EvaraTDS Alert*\n\n*Location:* ${location}\n*TDS:* ${ppm} ppm\n*Time:* ${time}\n*Status:* Still Critical`
+                    : `🚨 *EvaraTDS Alert*\n\n*Location:* ${location}\n*TDS:* ${ppm} ppm\n*Time:* ${time}\n*Severity:* ${String(alertData.severity || 'critical').toUpperCase()}\n\n_Reply STATUS for real-time update._`;
+
                 await withRetry(() => twilioClient.messages.create({
                     from: twilioFrom,
-                    body: `🚨 *EvaraTDS Alert*\n\n*Location:* ${location}\n*TDS:* ${ppm} ppm\n*Time:* ${time}\n*Severity:* ${String(alertData.severity || 'critical').toUpperCase()}\n\n_Reply STATUS for real-time update._`,
+                    body: body,
                     to: `whatsapp:${recipient}`
                 }), 1);
-                await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'success', recipient });
+                await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'success', recipient, is_reminder: isReminder });
             } catch (recipientError: any) {
                 await writeDeliveryLog({
                     alert_id: alertId,
@@ -483,7 +489,7 @@ async function sendWhatsAppNotification(alertId: string, alertData: any) {
  * NTFY.sh - Free System Notification Service
  * To receive these: Download 'ntfy' app on phone and subscribe to topic set in .env
  */
-async function sendNTFYNotification(alertId: string, alertData: any) {
+async function sendNTFYNotification(alertId: string, alertData: any, isReminder = false) {
     const topic = process.env.NTFY_TOPIC?.trim();
     if (!topic) {
         await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'skipped', reason: 'missing_topic' });
@@ -491,26 +497,24 @@ async function sendNTFYNotification(alertId: string, alertData: any) {
     }
 
     try {
-        if (await shouldSkipByDedupe(alertId, 'ntfy')) {
+        if (!isReminder && await shouldSkipByDedupe(alertId, 'ntfy')) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'skipped', reason: 'dedupe' });
             return;
         }
         const { location, ppm, time } = formatAlertContext(alertData);
-        // NOTE: HTTP headers are Latin-1 only (code points 0-255).
-        // Emojis (e.g. U+1F6A8) are multi-byte and will crash undici fetch with a ByteString error.
-        // All emojis must stay in the body, never in headers.
+        const prefix = isReminder ? '[REMINDER] ' : '[CRITICAL ALERT] ';
         const response = await fetch(`https://ntfy.sh/${topic}`, {
             method: 'POST',
-            body: `[CRITICAL ALERT] Location: ${location} | TDS: ${ppm} ppm | Time: ${time} | Severity: ${String(alertData.severity || 'critical').toUpperCase()}\n\nMessage: ${alertData.message}`,
+            body: `${prefix}Location: ${location} | TDS: ${ppm} ppm | Time: ${time} | Severity: ${String(alertData.severity || 'critical').toUpperCase()}\n\nMessage: ${alertData.message}`,
             headers: {
-                'Title': `TDS ALERT: ${String(location).replace(/[^\x00-\xFF]/g, '')}`,
+                'Title': `${isReminder ? '⏰ ' : '🚨 '}TDS ALERT: ${String(location).replace(/[^\x00-\xFF]/g, '')}`,
                 'Priority': 'urgent',
-                'Tags': 'rotating_light,skull'
+                'Tags': isReminder ? 'alarm_clock' : 'rotating_light,skull'
             }
         });
         if (response.ok) {
             console.log(`📲 NTFY System Notification sent to topic: ${topic}`);
-            await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'success', topic });
+            await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'success', topic, is_reminder: isReminder });
         } else {
             await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'failed', error: `HTTP ${response.status}` });
         }
@@ -523,7 +527,7 @@ async function sendNTFYNotification(alertId: string, alertData: any) {
 /**
  * IFTTT Webhook Trigger — fires only when rate limit allows
  */
-async function triggerIFTTTWebhook(alertId: string, alertData: any) {
+async function triggerIFTTTWebhook(alertId: string, alertData: any, isReminder = false) {
     const key = process.env.IFTTT_WEBHOOK_KEY;
     const event = process.env.IFTTT_EVENT_NAME || 'tds_alert';
     if (!key) {
@@ -533,7 +537,7 @@ async function triggerIFTTTWebhook(alertId: string, alertData: any) {
     }
 
     try {
-        if (await shouldSkipByDedupe(alertId, 'ifttt')) {
+        if (!isReminder && await shouldSkipByDedupe(alertId, 'ifttt')) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'skipped', reason: 'dedupe' });
             return;
         }
@@ -542,13 +546,13 @@ async function triggerIFTTTWebhook(alertId: string, alertData: any) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 value1: alertData.device_name || alertData.device_id,
-                value2: alertData.severity,
+                value2: isReminder ? 'reminder' : alertData.severity,
                 value3: alertData.message
             })
         });
         if (response.ok) {
             console.log(`🔗 IFTTT Webhook triggered: event="${event}" device="${alertData.device_name || alertData.device_id}"`);
-            await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'success', event });
+            await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'success', event, is_reminder: isReminder });
         } else {
             console.warn(`⚠️ IFTTT responded with status ${response.status}`);
             await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'failed', error: `HTTP ${response.status}` });
@@ -557,6 +561,62 @@ async function triggerIFTTTWebhook(alertId: string, alertData: any) {
         console.error('❌ IFTTT trigger failed:', error);
         await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'failed', error: String(error) });
     }
+}
+
+/**
+ * Hourly Reminder Job — triggered by scheduler
+ * Finds all critical devices and resends notifications
+ */
+export async function sendHourlyReminders() {
+    console.log('⏰ [REMINDER JOB] Starting hourly reminder dispatch...');
+    const redis = getRedis();
+    const deviceIds = await redis.sMembers('devices:all');
+
+    if (!deviceIds || deviceIds.length === 0) {
+        console.log('ℹ️ [REMINDER JOB] No devices found, skipping.');
+        return;
+    }
+
+    let dispatchCount = 0;
+
+    for (const id of deviceIds) {
+        try {
+            const device = await hgetall<Device>(`device:${id}`);
+            if (!device || device.status !== 'critical') continue;
+
+            // Find the most recent open alert for this device
+            const openAlertIds = await redis.sMembers(`device:${id}:alerts:open`);
+            if (!openAlertIds || openAlertIds.length === 0) {
+                console.log(`⚠️ [REMINDER JOB] Device ${id} is critical but has no open alerts in Redis.`);
+                continue;
+            }
+
+            // For reminders, we'll just take the first open alert (usually only one exists due to checkThresholds logic)
+            const alertId = openAlertIds[0];
+            const alertData = await hgetall<Alert>(`alert:${alertId}`);
+
+            if (!alertData) {
+                console.log(`⚠️ [REMINDER JOB] Could not find alert data for ${alertId}`);
+                continue;
+            }
+
+            console.log(`🔔 [REMINDER JOB] Dispatching hourly reminder for device: ${device.name || id}`);
+            
+            // Dispatch to all channels with isReminder = true
+            await Promise.all([
+                sendPushNotification(alertId, alertData, true),
+                sendWhatsAppNotification(alertId, alertData, true),
+                sendNTFYNotification(alertId, alertData, true),
+                triggerIFTTTWebhook(alertId, alertData, true)
+            ]);
+
+            dispatchCount++;
+        } catch (error) {
+            console.error(`❌ [REMINDER JOB] Failed to process reminder for device ${id}:`, error);
+        }
+    }
+
+    console.log(`✅ [REMINDER JOB] Finished. Dispatched reminders for ${dispatchCount} devices.`);
 }
 
 /**

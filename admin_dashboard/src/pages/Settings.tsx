@@ -82,20 +82,14 @@ export default function Settings() {
                 const docSnap = await getDoc(docRef)
                 if (docSnap.exists()) {
                     const data = docSnap.data()
-                    const isDark = data.dark_mode ?? (theme === 'dark')
                     setSettings({
                         notifications_enabled: data.notifications_enabled ?? true,
                         email_alerts: data.email_alerts ?? false,
                         whatsapp_alerts: data.whatsapp_alerts ?? true,
                         ntfy_alerts: data.ntfy_alerts ?? true,
                         ifttt_alerts: data.ifttt_alerts ?? false,
-                        dark_mode: isDark
+                        dark_mode: theme === 'dark'
                     })
-                    // Sync global theme with Firestore preference on load
-                    // (only if it differs, and we do this once on load)
-                    if (isDark !== (document.documentElement.classList.contains('dark'))) {
-                        setTheme(isDark ? 'dark' : 'light')
-                    }
                 }
             } catch (err) {
                 console.log('No settings found, using defaults', err)

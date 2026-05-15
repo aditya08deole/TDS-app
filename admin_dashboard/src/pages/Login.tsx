@@ -121,8 +121,21 @@ export default function Login() {
                 await signInWithRedirect(auth, provider)
                 // No need to navigate or setLoading(false) here because the page redirects
             }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Google login failed')
+        } catch (err: any) {
+            console.error('Google login failed:', err)
+            let errorMessage = 'Google login failed';
+            if (err instanceof Error) {
+                errorMessage = err.message;
+            } else if (typeof err === 'object' && err !== null) {
+                try {
+                    errorMessage = JSON.stringify(err);
+                } catch (e) {
+                    errorMessage = String(err);
+                }
+            } else {
+                errorMessage = String(err);
+            }
+            setError(`Google Login Error: ${errorMessage}`);
             setLoading(false)
         }
     }

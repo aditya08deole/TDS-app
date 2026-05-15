@@ -75,7 +75,7 @@ export function useDeviceThingSpeakData(device: Device | undefined) {
         queryFn: () => fetchDeviceThingSpeakData(device!),
         enabled: !!device?.thingspeak_channel_id && !!device?.thingspeak_read_key,
         staleTime: 0, // Always consider stale - fetch immediately on mount/focus
-        refetchInterval: 15 * 1000, // Poll every 15 seconds (respects ThingSpeak 4 req/sec free tier limit)
+        refetchInterval: 5 * 1000, // Reduced to 5 seconds for faster updates
         refetchOnWindowFocus: true, // Refetch when user returns to tab
         refetchOnReconnect: true, // Refetch on network reconnect
         refetchIntervalInBackground: false, // Don't poll when tab is hidden (save resources)
@@ -118,7 +118,7 @@ export function useDeviceLatestReading(device: Device | undefined) {
         },
         enabled: !!device?.thingspeak_channel_id && !!device?.thingspeak_read_key,
         staleTime: 0, // Always fresh
-        refetchInterval: 15 * 1000, // Poll every 15 seconds (respects ThingSpeak free tier limit)
+        refetchInterval: 5 * 1000, // Reduced to 5 seconds for faster updates
         refetchOnWindowFocus: true,
         refetchOnReconnect: true,
         refetchIntervalInBackground: false,
@@ -148,8 +148,8 @@ export function useAllDevicesThingSpeakData(devices: Device[]) {
                 )
             },
             enabled: !!device.thingspeak_channel_id && !!device.thingspeak_read_key,
-            staleTime: 10 * 1000, 
-            refetchInterval: 15 * 1000, 
+            staleTime: 0, // Always fresh
+            refetchInterval: 5 * 1000, // Reduced to 5 seconds for faster updates
             gcTime: 5 * 60 * 1000,
         }))
     })
@@ -211,8 +211,8 @@ export function useDeviceThingSpeakChartData(
             return data
         },
         enabled: !!device?.thingspeak_channel_id && !!device?.thingspeak_read_key,
-        staleTime: 10 * 1000, // 10 seconds for real-time feel
-        refetchInterval: 15 * 1000, // Auto-refresh every 15 seconds
+        staleTime: 0, // Always consider stale - fetch immediately
+        refetchInterval: 5 * 1000, // Reduced to 5 seconds for faster updates
         gcTime: 60 * 1000
     })
 }

@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { syncFromFirebase } from '../services/syncService';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getRedisClient } from '../db/redis';
+import { sendHourlyReminders } from '../services/notificationService';
 
 function getDb() { return getFirestore(); }
 function getRedis() { return getRedisClient(); }
@@ -9,6 +10,7 @@ function getRedis() { return getRedisClient(); }
 let scheduledTask: any = null;
 let cleanupTask: any = null;
 let heartbeatTask: any = null;
+let reminderTask: any = null;
 
 export function startScheduler(): void {
   const syncInterval = process.env.SYNC_INTERVAL_HOURS || '1';
@@ -65,12 +67,21 @@ export function startAlertCleanupJob(): void {
       console.log(`🧹 [CLEANUP] Deleting ${oldAlerts.size} alert(s) older than 10 minutes...`);
 
       const batch = db.batch();
+      let deleteCount = 0;
 
       for (const doc of oldAlerts.docs) {
+        const alertData = doc.data();
+        
+        // Skip 'open' alerts — we want to keep them for hourly notifications
+        if (alertData.status === 'open') {
+            console.log(`ℹ️ [CLEANUP] Skipping open alert ${doc.id} for device ${alertData.device_id}`);
+            continue;
+        }
+
         batch.delete(doc.ref);
+        deleteCount++;
 
         // Clean up Redis in parallel
-        const alertData = doc.data();
         const alertId = doc.id;
         const deviceId = typeof alertData.device_id === 'object' && alertData.device_id !== null
           ? (alertData.device_id as any).id
@@ -85,8 +96,12 @@ export function startAlertCleanupJob(): void {
         ]).catch(e => console.error(`❌ Redis cleanup failed for alert ${alertId}:`, e));
       }
 
-      await batch.commit();
-      console.log(`✅ [CLEANUP] Deleted ${oldAlerts.size} old alert(s) from Firestore.`);
+      if (deleteCount > 0) {
+          await batch.commit();
+          console.log(`✅ [CLEANUP] Deleted ${deleteCount} old alert(s) from Firestore.`);
+      } else {
+          console.log(`✅ [CLEANUP] No old non-open alerts to delete.`);
+      }
     } catch (error) {
       console.error('❌ [CLEANUP] Alert cleanup job failed:', error);
     }
@@ -147,6 +162,22 @@ export function startDeviceHeartbeatJob(): void {
   console.log('✅ Device heartbeat job started — checking every 5 minutes (1-hr inactivity threshold).');
 }
 
+/**
+ * Hourly Notification Reminder Job — runs at minute 0 of every hour.
+ * Finds all critical devices and resends alerts to all channels.
+ */
+export function startHourlyReminderJob(): void {
+    reminderTask = cron.schedule('0 * * * *', async () => {
+        try {
+            await sendHourlyReminders();
+        } catch (error) {
+            console.error('❌ Hourly reminder job failed:', error);
+        }
+    });
+
+    console.log('✅ Hourly reminder job started — running every hour at :00.');
+}
+
 export function stopScheduler(): void {
   if (scheduledTask) {
     scheduledTask.stop();
@@ -163,6 +194,11 @@ export function stopScheduler(): void {
     heartbeatTask = null;
     console.log('⏹️ Device heartbeat job stopped');
   }
+  if (reminderTask) {
+    reminderTask.stop();
+    reminderTask = null;
+    console.log('⏹️ Hourly reminder job stopped');
+  }
 }
 
 export function getSchedulerStatus(): any {
@@ -170,6 +206,7 @@ export function getSchedulerStatus(): any {
     isRunning: scheduledTask ? true : false,
     cleanupRunning: cleanupTask ? true : false,
     heartbeatRunning: heartbeatTask ? true : false,
+    reminderRunning: reminderTask ? true : false,
     nextRun: scheduledTask ? 'Check logs' : 'Not running',
     interval: process.env.SYNC_INTERVAL_HOURS || '1 hour',
     alertCleanupTtlMinutes: 10,

@@ -202,20 +202,21 @@ export default function Devices() {
 
     const handleAddDevice = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!isAdmin) return
+        if (!isAdmin) return;
 
-        // ═══ INPUT VALIDATION ═══
-        // Validate GPS coordinates
         const lat = parseFloat(newDevice.latitude)
         const lon = parseFloat(newDevice.longitude)
+        const tdsField = newDevice.tds_field
+        const tempField = newDevice.temp_field
+        const voltageField = newDevice.voltage_field
+        const tdsMin = parseFloat(newDevice.safe_tds_min)
+        const tdsMax = parseFloat(newDevice.safe_tds_max)
+        
         if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
             alert('Invalid GPS coordinates. Latitude must be -90 to 90, Longitude must be -180 to 180')
             return
         }
 
-        // Validate TDS thresholds
-        const tdsMin = parseFloat(newDevice.safe_tds_min)
-        const tdsMax = parseFloat(newDevice.safe_tds_max)
         if (isNaN(tdsMin) || isNaN(tdsMax) || tdsMin < 0 || tdsMax < tdsMin || tdsMax > 10000) {
             alert('Invalid TDS thresholds. Min must be >= 0 and Max must be >= Min and <= 10000')
             return
@@ -233,10 +234,6 @@ export default function Devices() {
             return
         }
 
-        // Use fields directly since they are already numbers in state
-        const tdsField = newDevice.tds_field
-        const tempField = newDevice.temp_field
-        const voltageField = newDevice.voltage_field
         if ([tdsField, tempField, voltageField].some(f => isNaN(f) || f < 1 || f > 8)) {
             alert('Invalid field numbers. ThingSpeak fields must be 1-8')
             return
@@ -306,6 +303,7 @@ export default function Devices() {
     }
 
     const handleDelete = (id: string) => {
+        if (!isAdmin) return;
         if (!confirm('Are you sure you want to delete this device?')) return
         deleteDevice(id)
     }
@@ -339,6 +337,7 @@ export default function Devices() {
     }
 
     const handleBulkDelete = () => {
+        if (!isAdmin) return;
         if (selectedDevices.size === 0) return
         if (!confirm(`Delete ${selectedDevices.size} devices?`)) return
 
@@ -349,6 +348,7 @@ export default function Devices() {
     }
 
     const handleBulkMaintenanceMode = () => {
+        if (!isAdmin) return;
         if (selectedDevices.size === 0) return
 
         selectedDevices.forEach(id => {
@@ -428,6 +428,7 @@ export default function Devices() {
                     >
                         <Download className="h-5 w-5" />
                     </button>
+                    {isAdmin && (
                         <>
                             <button
                                 onClick={() => setIsFormOpen(!isFormOpen)}
@@ -452,6 +453,7 @@ export default function Devices() {
                                 <CheckSquare className="h-5 w-5" />
                             </button>
                         </>
+                    )}
                 </div>
             </div>
 
@@ -497,7 +499,7 @@ export default function Devices() {
             </div>
 
             {/* Bulk Actions Bar */}
-            {selectionMode && selectedDevices.size > 0 && (
+            {isAdmin && selectionMode && selectedDevices.size > 0 && (
                 <div className="flex items-center justify-between bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-3">
                     <div className="flex items-center gap-3">
                         <button
@@ -526,7 +528,7 @@ export default function Devices() {
             )}
 
             {/* Add/Edit Device Form */}
-            {!selectionMode && (isFormOpen || editingDeviceId) && (
+            {isAdmin && !selectionMode && (isFormOpen || editingDeviceId) && (
                 <GlassCard size="lg" className="p-4 lg:p-6 mb-6">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -1113,7 +1115,7 @@ export default function Devices() {
                                     <Smartphone className="h-5 w-5 lg:h-6 lg:w-6 text-primary drop-shadow-[0_0_8px_rgba(59,130,246,0.3)]" />
                                 )}
                             </div>
-                            {!selectionMode && (
+                            {!selectionMode && isAdmin && (
                                 <div className="flex gap-1">
                                     <button
                                         onClick={(e) => {
