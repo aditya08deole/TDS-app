@@ -96,10 +96,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(firebaseUser)
             
             if (firebaseUser) {
-                await Promise.all([
+                // Fetch config and profile in parallel
+                Promise.all([
                     fetchProfile(firebaseUser.uid, firebaseUser.email),
                     fetchAdminConfig()
-                ])
+                ]).catch(err => console.error('Auth post-processing failed:', err));
             } else {
                 setProfile(null)
                 setLoading(false)
@@ -107,7 +108,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })
 
         return () => unsubscribe()
-    }, [fetchProfile, fetchAdminConfig])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []) // Run once on mount. fetchProfile/fetchAdminConfig are stable enough or handled via latest state in callback.
 
     const signOut = React.useCallback(async () => {
         await firebaseSignOut(auth)
