@@ -332,19 +332,26 @@ export default function Alerts() {
                                         isLandscape && !isDesktop ? "mt-0" : "mt-4"
                                     )}>
                                         <div className="flex items-center gap-2 md:gap-4">
+                                            {/* Status Badge */}
+                                            <div className={cn(
+                                                "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border flex items-center gap-1.5",
+                                                alert.status === 'open' && "bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]",
+                                                alert.status === 'acknowledged' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                                                alert.status === 'resolved' && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                            )}>
+                                                {alert.status === 'open' && <AlertTriangle className="w-2.5 h-2.5" />}
+                                                {alert.status === 'acknowledged' && <CheckCircle className="w-2.5 h-2.5" />}
+                                                {alert.status === 'resolved' && <CheckCircle className="w-2.5 h-2.5" />}
+                                                {alert.status}
+                                            </div>
+
                                             <div className="flex gap-1 md:gap-2">
                                                 {!isLandscape && (
                                                     <Button variant="ghost" size="sm" className="h-8 w-8 md:h-7 md:w-auto md:px-3 text-xs text-cyan-500 dark:text-cyan-400 hover:text-cyan-600 dark:hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 rounded-lg">
-                                                        <Camera className="h-4 w-4 md:mr-1.5 shrink-0" /> <span className="hidden md:inline">Attach Photo</span>
-                                                    </Button>
-                                                )}
-                                                {!isLandscape && (
-                                                    <Button variant="ghost" size="sm" className="h-8 w-8 md:h-7 md:w-auto md:px-3 text-xs text-muted-foreground hover:text-foreground bg-accent hover:bg-accent/80 rounded-lg">
-                                                        <FileText className="h-4 w-4 md:mr-1.5 shrink-0" /> <span className="hidden md:inline">Add Note</span>
+                                                        <Camera className="h-4 w-4 md:mr-1.5 shrink-0" /> <span className="hidden md:inline">Photo</span>
                                                     </Button>
                                                 )}
                                             </div>
-                                            {alert.acknowledged_at && <span className="text-emerald-500 text-[10px] font-bold md:text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> <span className="hidden md:inline">Acknowledged</span></span>}
                                         </div>
  
                                         <div className="flex gap-2">
