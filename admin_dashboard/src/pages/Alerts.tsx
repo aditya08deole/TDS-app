@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { type Alert } from '../types'
-import { AlertTriangle, CheckCircle, WifiOff, Camera, FileText, Bell, AlertCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle, WifiOff, Camera, Bell, AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useUI } from '../context/UIContext'
 import { useRole } from '../context/RoleContext'
