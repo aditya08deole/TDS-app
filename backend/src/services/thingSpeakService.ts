@@ -18,7 +18,8 @@ export interface ThingSpeakResponse {
 }
 
 /**
- * Fetches the latest reading for a specific device from ThingSpeak
+ * Fetches the absolute latest reading for a specific device from ThingSpeak.
+ * Uses the /feeds/last.json endpoint for maximum accuracy.
  */
 export async function getLatestThingSpeakReading(device: Device): Promise<any | null> {
     if (!device.thingspeak_channel_id) return null;
@@ -26,12 +27,14 @@ export async function getLatestThingSpeakReading(device: Device): Promise<any | 
     try {
         const channelId = device.thingspeak_channel_id;
         const readKey = device.thingspeak_read_key || '';
-        const url = `https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${readKey}&results=1`;
-
-        const response = await axios.get<ThingSpeakResponse>(url, { timeout: 10000 });
         
-        if (response.data.feeds && response.data.feeds.length > 0) {
-            const feed = response.data.feeds[0];
+        // Fix: Use the dedicated 'last.json' endpoint and add a cache-buster
+        const url = `https://api.thingspeak.com/channels/${channelId}/feeds/last.json?api_key=${readKey}&_cb=${Date.now()}`;
+
+        const response = await axios.get<ThingSpeakFieldData>(url, { timeout: 10000 });
+        const feed = response.data;
+        
+        if (feed && feed.entry_id) {
             const tdsField = `field${device.tds_field_number || 1}`;
             const tempField = `field${device.temperature_field_number || 2}`;
             const voltField = `field${device.voltage_field_number || 3}`;
@@ -45,7 +48,7 @@ export async function getLatestThingSpeakReading(device: Device): Promise<any | 
         }
         return null;
     } catch (error: any) {
-        console.error(`❌ [ThingSpeak] Failed to fetch data for device ${device.id}:`, error.message);
+        console.error(`❌ [ThingSpeak] Failed to fetch latest data for device ${device.id}:`, error.message);
         return null;
     }
 }
