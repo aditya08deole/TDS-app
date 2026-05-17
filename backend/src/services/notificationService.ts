@@ -348,6 +348,12 @@ export function startNotificationListeners() {
                 await redis.sRem('alerts:all', alertId);
                 await redis.sRem(`device:${deviceId}:alerts`, alertId);
                 await redis.sRem(`device:${deviceId}:alerts:open`, alertId);
+
+                // Clean up channel deduplication keys
+                const channels = ['global', 'push', 'whatsapp', 'ntfy', 'ifttt'];
+                for (const channel of channels) {
+                    await redis.del(`notif:dedupe:${channel}:${alertId}`);
+                }
             }
         });
     }, (error) => { console.error('❌ Firestore Alert Listener Error:', error); });
@@ -362,7 +368,23 @@ export function startNotificationListeners() {
                     await redis.sAdd('devices:all', deviceId);
                 }
             } else if (change.type === 'removed') {
-                await redis.del(`device:${deviceId}`);
+                const keysToDelete = [
+                    `device:${deviceId}`,
+                    `sensors:${deviceId}`,
+                    `device:${deviceId}:alerts`,
+                    `device:${deviceId}:alerts:open`,
+                    `device:${deviceId}:uptime_records`,
+                    `notif:debounce:${deviceId}`,
+                    `notif:last_severity:${deviceId}`,
+                    `notif:wa_tier_state:${deviceId}`
+                ];
+
+                const channels = ['global', 'push', 'whatsapp', 'ntfy', 'ifttt'];
+                channels.forEach(channel => {
+                    keysToDelete.push(`notif:rate:${deviceId}:${channel}`);
+                });
+
+                await Promise.all(keysToDelete.map(key => redis.del(key)));
                 await redis.sRem('devices:all', deviceId);
             }
         });
@@ -387,15 +409,19 @@ export function startNotificationListeners() {
         });
         const count = await redis.sCard(FCM_TOKEN_CACHE_KEY);
         if (count === 0 && !snapshot.empty) {
+            console.log(`🚀 Initializing FCM token caches in Redis from ${snapshot.size} subscriptions...`);
             const batch = redis.multi();
+            let total = 0;
             snapshot.docs.forEach(doc => {
                 const d = doc.data();
                 if (d.token) {
                     batch.sAdd(FCM_TOKEN_CACHE_KEY, d.token);
                     if (d.user_id) batch.sAdd(`cache:user_tokens:${d.user_id}`, d.token);
+                    total++;
                 }
             });
             await batch.exec();
+            console.log(`✅ Pre-cached ${total} FCM tokens in memory.`);
         }
     }, (error) => { console.error('❌ Firestore Subscription Listener Error:', error); });
 }
@@ -652,19 +678,4 @@ export async function handleWhatsAppWebhook(reqBody: any) {
     if (body === "STATUS") {
         try {
             const db = getDb();
-            const devicesSnap = await db.collection("devices").limit(5).get();
-            if (devicesSnap.empty) {
-                reply = "No devices found in the system.";
-            } else {
-                reply = "📊 *Latest TDS Readings:*\n";
-                devicesSnap.forEach(doc => {
-                    const d = doc.data();
-                    reply += `\n📍 *${d.location_name || d.name}*\nTDS: ${d.last_tds || "N/A"} PPM\nStatus: ${d.status === "online" ? "🟢" : "🔴"} ${d.status.toUpperCase()}\n`;
-                });
-            }
-        } catch (err) { reply = "Sorry, I had trouble fetching the status."; }
-    }
-    const twiml = new twilio.twiml.MessagingResponse();
-    twiml.message(reply);
-    return twiml.toString();
-}
+            const devicesSnap = await db.colle

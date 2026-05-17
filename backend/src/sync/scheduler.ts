@@ -52,8 +52,10 @@ export function startAlertCleanupJob(): void {
       const db = getDb();
       const redis = getRedis();
 
-      // Cutoff = now minus 10 minutes
-      const cutoffDate = new Date(Date.now() - 10 * 60 * 1000);
+      // Cutoff = now minus 10 minutes (or 24 hours in dev)
+      const isDev = process.env.NODE_ENV !== 'production';
+      const ttlMinutes = isDev ? 24 * 60 : 10;
+      const cutoffDate = new Date(Date.now() - ttlMinutes * 60 * 1000);
       const cutoffISO = cutoffDate.toISOString();
 
       // Query for alerts older than the cutoff
@@ -64,7 +66,7 @@ export function startAlertCleanupJob(): void {
 
       if (oldAlerts.empty) return; // Nothing to clean up
 
-      console.log(`🧹 [CLEANUP] Deleting ${oldAlerts.size} alert(s) older than 10 minutes...`);
+      console.log(`🧹 [CLEANUP] Deleting ${oldAlerts.size} alert(s) older than ${ttlMinutes} minutes...`);
 
       const batch = db.batch();
       let deleteCount = 0;

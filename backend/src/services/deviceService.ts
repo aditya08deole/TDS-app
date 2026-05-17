@@ -1,4 +1,5 @@
 import { getFirestore } from 'firebase-admin/firestore';
+import { getRedisClient } from '../db/redis';
 import { Device, SensorData, SystemHealthLog, UptimeStat } from '../types';
 
 function getFirestoreDb() {
@@ -182,9 +183,86 @@ export async function updateDevice(
   return updated;
 }
 
+async function deleteQueryBatch(db: FirebaseFirestore.Firestore, query: FirebaseFirestore.Query, resolve: () => void, reject: (err: any) => void) {
+  try {
+    const snapshot = await query.limit(500).get();
+
+    // When there are no documents left, we are done
+    if (snapshot.size === 0) {
+      resolve();
+      return;
+    }
+
+    const batch = db.batch();
+    snapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+
+    await batch.commit();
+
+    // Recurse on the next batch
+    process.nextTick(() => {
+      deleteQueryBatch(db, query, resolve, reject);
+    });
+  } catch (error) {
+    reject(error);
+  }
+}
+
+async function deleteCollectionByQuery(query: FirebaseFirestore.Query) {
+  const db = getFirestoreDb();
+  return new Promise<void>((resolve, reject) => {
+    deleteQueryBatch(db, query, resolve, reject);
+  });
+}
+
 export async function deleteDevice(deviceId: string): Promise<void> {
   const db = getFirestoreDb();
+
+  // 1. Purge all associated Firestore collections in batches
+  const alertsQuery = db.collection('alerts').where('device_id', '==', deviceId);
+  const sensorDataQuery = db.collection('sensor_data').where('device_id', '==', deviceId);
+  const uptimeQuery = db.collection('uptime_stats').where('device_id', '==', deviceId);
+
+  await Promise.all([
+    deleteCollectionByQuery(alertsQuery),
+    deleteCollectionByQuery(sensorDataQuery),
+    deleteCollectionByQuery(uptimeQuery)
+  ]);
+
+  // 2. Delete the main device document
   await db.collection('devices').doc(deviceId).delete();
+
+  // 3. Purge all corresponding keys in Redis
+  try {
+    const redis = getRedisClient();
+    
+    const keysToDelete = [
+      `device:${deviceId}`,
+      `sensors:${deviceId}`,
+      `device:${deviceId}:alerts`,
+      `device:${deviceId}:alerts:open`,
+      `device:${deviceId}:uptime_records`,
+      `notif:debounce:${deviceId}`,
+      `notif:last_severity:${deviceId}`,
+      `notif:wa_tier_state:${deviceId}`
+    ];
+
+    // Delete channel rate limit keys
+    const channels = ['global', 'push', 'whatsapp', 'ntfy', 'ifttt'];
+    channels.forEach(channel => {
+      keysToDelete.push(`notif:rate:${deviceId}:${channel}`);
+    });
+
+    await Promise.all(keysToDelete.map(key => redis.del(key)));
+
+    // Remove device from devices:all set
+    await redis.sRem('devices:all', deviceId);
+    
+    console.log(`🗑️ Successfully cleaned up all Firestore records and Redis cache keys for device: ${deviceId}`);
+  } catch (error) {
+    console.error(`⚠️ Redis cleanup failed or was not initialized during deletion of device ${deviceId}:`, error);
+  }
 }
 
 export async function getStaleDevices(hoursAgo: number = 1): Promise<Device[]> {
