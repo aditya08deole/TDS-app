@@ -11,10 +11,16 @@ type RedisLike = {
   sAdd(key: string, ...members: string[]): Promise<number>;
   sRem(key: string, ...members: string[]): Promise<number>;
   sMembers(key: string): Promise<string[]>;
+  sCard(key: string): Promise<number>;
+  expire(key: string, seconds: number): Promise<boolean>;
   lPush(key: string, ...values: string[]): Promise<number>;
+  rPush(key: string, ...values: string[]): Promise<number>;
+  lLen(key: string): Promise<number>;
   lRange(key: string, start: number, stop: number): Promise<string[]>;
   lTrim(key: string, start: number, stop: number): Promise<'OK'>;
+  incr(key: string): Promise<number>;
   quit(): Promise<'OK'>;
+  multi(): any;
   on?(event: string, handler: (...args: any[]) => void): void;
 };
 
@@ -81,11 +87,26 @@ function createMemoryRedis(): RedisLike {
     async sMembers(key: string) {
       return Array.from(memorySets.get(key) || []);
     },
+    async sCard(key: string) {
+      return (memorySets.get(key) || new Set()).size;
+    },
+    async expire(key: string, seconds: number) {
+      return true; // Mocked success
+    },
     async lPush(key: string, ...values: string[]) {
       const list = memoryLists.get(key) || [];
       list.unshift(...values);
       memoryLists.set(key, list);
       return list.length;
+    },
+    async rPush(key: string, ...values: string[]) {
+      const list = memoryLists.get(key) || [];
+      list.push(...values);
+      memoryLists.set(key, list);
+      return list.length;
+    },
+    async lLen(key: string) {
+      return (memoryLists.get(key) || []).length;
     },
     async lRange(key: string, start: number, stop: number) {
       const list = memoryLists.get(key) || [];
@@ -100,8 +121,31 @@ function createMemoryRedis(): RedisLike {
       memoryLists.set(key, list.slice(from, to));
       return 'OK';
     },
+    async incr(key: string) {
+      const val = parseInt(memoryStrings.get(key) || '0', 10) + 1;
+      memoryStrings.set(key, String(val));
+      return val;
+    },
     async quit() {
       return 'OK';
+    },
+    multi() {
+      // Return a proxy or a simple object that maps to the existing methods
+      const self = this as any;
+      const batch = {
+        sAdd: (key: string, ...members: string[]) => {
+          self.sAdd(key, ...members);
+          return batch;
+        },
+        expire: (key: string, seconds: number) => {
+          self.expire(key, seconds);
+          return batch;
+        },
+        exec: async () => {
+          return [];
+        }
+      };
+      return batch;
     },
   };
 }

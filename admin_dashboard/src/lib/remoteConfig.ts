@@ -11,7 +11,9 @@ import { app } from './firebase';
 
 // Fallback values — used if Remote Config is unavailable (e.g., no internet on first launch)
 const DEFAULTS: Record<string, string> = {
-  api_url: import.meta.env.VITE_API_URL || 'https://graceful-vitality-production-e097.up.railway.app',
+  api_url: import.meta.env.DEV 
+    ? 'http://localhost:5000' 
+    : (import.meta.env.VITE_API_URL || 'https://graceful-vitality-production-e097.up.railway.app'),
 };
 
 let _resolvedApiUrl: string | null = null;

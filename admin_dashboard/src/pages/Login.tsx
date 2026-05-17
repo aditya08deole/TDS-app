@@ -96,8 +96,13 @@ export default function Login() {
                 await signInWithEmailAndPassword(auth, email, password)
             }
             navigate(from, { replace: true })
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Authentication failed')
+        } catch (err: any) {
+            console.error('Auth failed:', err)
+            if (err.code === 'auth/invalid-credential') {
+                setError("Invalid email or password. Please ensure Email/Password auth is enabled in your Firebase Console and your credentials are correct.")
+            } else {
+                setError(err.message || 'Authentication failed')
+            }
         } finally {
             setLoading(false)
         }
