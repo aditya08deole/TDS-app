@@ -187,21 +187,30 @@ async function writeDeliveryLog(entry: Record<string, any>) {
     const { status, channel, reason, alert_id, error } = entry;
     const db = getDb();
 
+    if (!alert_id || alert_id.startsWith('test-') || alert_id.startsWith('report-')) {
+        console.log(`ℹ️ [LOG:INTERNAL] Skipping Firestore nested log for virtual alert: ${alert_id}`);
+        return;
+    }
+
     // 1. Update the Alert document with the last delivery attempt
     try {
         const alertRef = db.collection('alerts').doc(alert_id);
+        
+        // Use a merged update to ensure we don't overwrite other history tiers
         const updateData: any = {
             last_notified_at: new Date().toISOString(),
-            [`delivery_history.${channel}`]: {
-                status,
-                timestamp: new Date().toISOString(),
-                reason: reason || error || 'Processed',
-                success: status === 'success' || status === 'partial'
-            }
         };
+        updateData[`delivery_history.${channel}`] = {
+            status,
+            timestamp: new Date().toISOString(),
+            reason: reason || error || 'Processed',
+            success: status === 'success' || status === 'partial'
+        };
+
         await alertRef.update(updateData);
+        console.log(`📝 [NESTED LOG] Updated Alert ${alert_id} with ${channel} status.`);
     } catch (err) {
-        console.error(`❌ Failed to update Alert ${alert_id} with delivery info:`, err);
+        console.warn(`⚠️ [NESTED LOG] Could not update Alert ${alert_id} (might be too new or deleted):`, (err as any).message);
     }
 
     // 2. Only write to the technical logs collection if it FAILED
