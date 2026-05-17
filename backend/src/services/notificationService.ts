@@ -187,16 +187,22 @@ async function writeDeliveryLog(entry: Record<string, any>) {
     const { status, channel, reason, alert_id, error } = entry;
     const db = getDb();
 
+    // 1. Filter out Virtual IDs that don't exist as documents in Firestore
     if (!alert_id || alert_id.startsWith('test-') || alert_id.startsWith('report-')) {
         console.log(`ℹ️ [LOG:INTERNAL] Skipping Firestore nested log for virtual alert: ${alert_id}`);
         return;
     }
 
-    // 1. Update the Alert document with the last delivery attempt
+    // 2. Update the Alert document with the last delivery attempt
     try {
         const alertRef = db.collection('alerts').doc(alert_id);
+        const alertSnap = await alertRef.get();
         
-        // Use a merged update to ensure we don't overwrite other history tiers
+        if (!alertSnap.exists) {
+            console.log(`ℹ️ [LOG:SKIP] Alert doc ${alert_id} not found — skipping nested log.`);
+            return;
+        }
+
         const updateData: any = {
             last_notified_at: new Date().toISOString(),
         };
@@ -210,7 +216,7 @@ async function writeDeliveryLog(entry: Record<string, any>) {
         await alertRef.update(updateData);
         console.log(`📝 [NESTED LOG] Updated Alert ${alert_id} with ${channel} status.`);
     } catch (err) {
-        console.warn(`⚠️ [NESTED LOG] Could not update Alert ${alert_id} (might be too new or deleted):`, (err as any).message);
+        console.warn(`⚠️ [NESTED LOG] Could not update Alert ${alert_id}:`, (err as any).message);
     }
 
     // 2. Only write to the technical logs collection if it FAILED
@@ -763,7 +769,13 @@ export async function triggerForceDeviceAlert(deviceId: string, tds: number, tim
     if (!deviceSnap.exists) return;
     const deviceData = deviceSnap.data() as any;
 
-    const alertId = `ghost-${deviceId}-${Date.now()}`;
+    // Use a STABLE alert ID for this device so we update the SAME card in the APK
+    const alertId = `active-alert-${deviceId}`;
+    
+    // Check if an open alert already exists
+    const existingAlert = await db.collection('alerts').doc(alertId).get();
+    const isNew = !existingAlert.exists || existingAlert.data()?.status !== 'open';
+
     const alertData = {
         device_id: deviceId,
         device_name: deviceData.name || deviceId,
@@ -772,24 +784,33 @@ export async function triggerForceDeviceAlert(deviceId: string, tds: number, tim
         severity: 'critical',
         status: 'open',
         value_at_time: tds,
-        created_at: timestamp,
+        created_at: isNew ? timestamp : existingAlert.data()?.created_at,
+        updated_at: timestamp,
         type: 'AUTO_SCAN'
     };
 
-    // 1. Persist to Firestore history (Self-Healing)
+    // 1. Persist to Firestore history (Updates existing card or creates new)
     try {
-        await db.collection('alerts').doc(alertId).set(alertData);
+        await db.collection('alerts').doc(alertId).set(alertData, { merge: true });
+        console.log(`📡 [GHOST] Updated Firestore Alert document: ${alertId}`);
     } catch (e) {
-        console.error('Failed to create ghost alert record', e);
+        console.error('Failed to update ghost alert record', e);
     }
 
-    // 2. Fire notifications forcefully (isReminder=true bypasses dedupe)
-    await Promise.all([
-        sendPushNotification(alertId, alertData, true),
-        sendWhatsAppNotification(alertId, alertData, true),
-        sendNTFYNotification(alertId, alertData, true),
-        triggerIFTTTWebhook(alertId, alertData, true)
-    ]);
+    // 2. Fire notifications forcefully if it's been more than 1 hour (or if brand new)
+    const lastNotified = existingAlert.data()?.last_notified_at ? new Date(existingAlert.data()?.last_notified_at).getTime() : 0;
+    const now = Date.now();
+    const ONE_HOUR = 60 * 60 * 1000;
+
+    if (isNew || (now - lastNotified >= ONE_HOUR)) {
+        console.log(`🔥 [GHOST] Forcing notification blast for ${deviceId}...`);
+        await Promise.all([
+            sendPushNotification(alertId, alertData, true),
+            sendWhatsAppNotification(alertId, alertData, true),
+            sendNTFYNotification(alertId, alertData, true),
+            triggerIFTTTWebhook(alertId, alertData, true)
+        ]);
+    }
 }
 
 // Expose these for the scheduler

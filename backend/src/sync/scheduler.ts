@@ -58,6 +58,10 @@ export function startThingSpeakMonitorJob(): void {
                         tds: tds,
                         time: reading.recorded_at
                     });
+
+                    // ── NEW: Force-create individual Alert if it doesn't exist ──
+                    // This ensures the APK shows the alert card and logs instantly.
+                    await triggerForceDeviceAlert(device.id, tds, reading.recorded_at);
                 }
             }
 
