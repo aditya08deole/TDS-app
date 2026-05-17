@@ -678,4 +678,19 @@ export async function handleWhatsAppWebhook(reqBody: any) {
     if (body === "STATUS") {
         try {
             const db = getDb();
-            const devicesSnap = await db.colle
+            const devicesSnap = await db.collection("devices").limit(5).get();
+            if (devicesSnap.empty) {
+                reply = "No devices found in the system.";
+            } else {
+                reply = "📊 *Latest TDS Readings:*\n";
+                devicesSnap.forEach(doc => {
+                    const d = doc.data();
+                    reply += `\n📍 *${d.location_name || d.name}*\nTDS: ${d.last_tds || "N/A"} PPM\nStatus: ${d.status === "online" ? "🟢" : "🔴"} ${d.status.toUpperCase()}\n`;
+                });
+            }
+        } catch (err) { reply = "Sorry, I had trouble fetching the status."; }
+    }
+    const twiml = new twilio.twiml.MessagingResponse();
+    twiml.message(reply);
+    return twiml.toString();
+}
