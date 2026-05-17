@@ -699,14 +699,92 @@ export async function sendHourlyReminders() {
     console.log(`✅ [REMINDER JOB] Finished for ${dispatchCount} devices.`);
 }
 
-export async function triggerManualTestNotification(deviceId: string, deviceName: string, message: string) {
-    const alertData = { device_id: deviceId, device_name: deviceName, severity: 'critical', message, type: 'TEST', status: 'open' };
-    const alertId = 'test-' + Date.now();
-    await sendPushNotification(alertId, alertData);
-    await sendWhatsAppNotification(alertId, alertData);
-    await sendNTFYNotification(alertId, alertData);
-    await triggerIFTTTWebhook(alertId, alertData);
+/**
+ * Forceful Notification Engine (Ghost Mode)
+ * Triggers a consolidated report of all critical devices directly from ThingSpeak data.
+ */
+export async function sendForceConsolidatedReport(criticalDevices: any[]) {
+    if (criticalDevices.length === 0) return;
+
+    console.log(`🔥 [GHOST ENGINE] Forcing consolidated report for ${criticalDevices.length} devices...`);
+
+    let report = `🚨 *EvaraTDS: Critical System Report*\n\n`;
+    criticalDevices.forEach(d => {
+        report += `📍 *${d.name}* (${d.location || 'N/A'})\n`;
+        report += `💧 TDS: *${d.tds} PPM* | 🕒 ${toIST(d.time)}\n\n`;
+    });
+    report += `_Immediate action required on all above devices._`;
+
+    // 1. Create a "Virtual Alert" ID for logging
+    const reportId = `report-${Date.now()}`;
+
+    // 2. Dispatch to channels
+    // For consolidated reports, we bypass device-specific dedupe as this is a master admin blast
+    const recipients = await getWhatsAppRecipientsForDelivery();
+    if (recipients.length > 0) {
+        for (const recipient of recipients) {
+            try {
+                await withRetry(() => twilioClient.messages.create({
+                    from: twilioFrom,
+                    body: report,
+                    to: `whatsapp:${recipient}`
+                }), 1);
+                console.log(`✅ [GHOST] Consolidated report sent to WhatsApp: ${recipient}`);
+            } catch (err) {
+                console.error(`❌ [GHOST] WhatsApp failed for ${recipient}`);
+            }
+        }
+    }
+
+    // Also send generic Push to all Admins
+    // (In a real system, we'd loop through admin users, but for now we broadcast)
+    await sendPushNotification(reportId, {
+        message: `${criticalDevices.length} devices are in critical state!`,
+        severity: 'critical',
+        device_id: 'SYSTEM_REPORT'
+    }, true);
 }
+
+/**
+ * Triggered by the Ghost Engine for a single device escalation
+ */
+export async function triggerForceDeviceAlert(deviceId: string, tds: number, timestamp: string) {
+    const db = getDb();
+    const deviceSnap = await db.collection('devices').doc(deviceId).get();
+    if (!deviceSnap.exists) return;
+    const deviceData = deviceSnap.data() as any;
+
+    const alertId = `ghost-${deviceId}-${Date.now()}`;
+    const alertData = {
+        device_id: deviceId,
+        device_name: deviceData.name || deviceId,
+        location_name: deviceData.location_name || 'N/A',
+        message: `CRITICAL TDS DETECTED: ${tds} PPM (Autonomous Scan)`,
+        severity: 'critical',
+        status: 'open',
+        value_at_time: tds,
+        created_at: timestamp,
+        type: 'AUTO_SCAN'
+    };
+
+    // 1. Persist to Firestore history (Self-Healing)
+    try {
+        await db.collection('alerts').doc(alertId).set(alertData);
+    } catch (e) {
+        console.error('Failed to create ghost alert record', e);
+    }
+
+    // 2. Fire notifications forcefully (isReminder=true bypasses dedupe)
+    await Promise.all([
+        sendPushNotification(alertId, alertData, true),
+        sendWhatsAppNotification(alertId, alertData, true),
+        sendNTFYNotification(alertId, alertData, true),
+        triggerIFTTTWebhook(alertId, alertData, true)
+    ]);
+}
+
+// Expose these for the scheduler
+export { sendPushNotification, sendWhatsAppNotification, sendNTFYNotification, triggerIFTTTWebhook };
 
 export async function handleWhatsAppWebhook(reqBody: any) {
     const body = reqBody.Body ? reqBody.Body.trim().toUpperCase() : "";

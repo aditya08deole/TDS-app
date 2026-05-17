@@ -2,7 +2,13 @@ import cron from 'node-cron';
 import { syncFromFirebase } from '../services/syncService';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getRedisClient } from '../db/redis';
-import { sendHourlyReminders } from '../services/notificationService';
+import { 
+    sendHourlyReminders, 
+    sendForceConsolidatedReport,
+    triggerForceDeviceAlert 
+} from '../services/notificationService';
+import { getAllDevices, updateDevice } from '../services/deviceService';
+import { getLatestThingSpeakReading } from '../services/thingSpeakService';
 
 function getDb() { return getFirestore(); }
 function getRedis() { return getRedisClient(); }
@@ -11,6 +17,75 @@ let scheduledTask: any = null;
 let cleanupTask: any = null;
 let heartbeatTask: any = null;
 let reminderTask: any = null;
+let thingSpeakTask: any = null;
+
+/**
+ * ThingSpeak Autonomous Ghost Engine
+ * Runs every 15 minutes to fetch real-time data directly from ThingSpeak.
+ * Forcefully notifies admins every 60 minutes if critical state remains.
+ */
+export function startThingSpeakMonitorJob(): void {
+    thingSpeakTask = cron.schedule('*/15 * * * *', async () => {
+        try {
+            console.log('👻 [GHOST ENGINE] Starting autonomous ThingSpeak scan...');
+            const devices = await getAllDevices();
+            const criticalDevices: any[] = [];
+            const now = Date.now();
+            const ONE_HOUR_MS = 60 * 60 * 1000;
+
+            for (const device of devices) {
+                if (!device.thingspeak_channel_id) continue;
+
+                const reading = await getLatestThingSpeakReading(device);
+                if (!reading) continue;
+
+                // 1. Update Device document with latest reading (Low-cost sync)
+                const tds = reading.tds;
+                const maxLimit = device.safe_tds_max || 500;
+                const isCritical = tds >= maxLimit;
+
+                await updateDevice(device.id, {
+                    last_tds: tds,
+                    last_reading_at: reading.recorded_at,
+                    status: isCritical ? 'critical' : (device.status === 'offline' ? 'online' : device.status)
+                });
+
+                if (isCritical) {
+                    criticalDevices.push({
+                        id: device.id,
+                        name: device.name,
+                        location: device.location_name,
+                        tds: tds,
+                        time: reading.recorded_at
+                    });
+                }
+            }
+
+            if (criticalDevices.length > 0) {
+                console.log(`🚨 [GHOST ENGINE] Found ${criticalDevices.length} critical devices! Checking force-timer...`);
+                
+                const redis = getRedis();
+                const FORCE_TIMER_KEY = 'engine:force_report_last_sent';
+                const lastSent = await redis.get(FORCE_TIMER_KEY);
+                const lastSentTime = lastSent ? parseInt(lastSent) : 0;
+
+                if (now - lastSentTime >= ONE_HOUR_MS) {
+                    await sendForceConsolidatedReport(criticalDevices);
+                    await redis.set(FORCE_TIMER_KEY, String(now));
+                    console.log('🔥 [GHOST ENGINE] Forceful consolidated report dispatched.');
+                } else {
+                    console.log(`⏱️ [GHOST ENGINE] Force-timer not reached. Next report in ${Math.round((ONE_HOUR_MS - (now - lastSentTime)) / 60000)} mins.`);
+                }
+            } else {
+                console.log('✅ [GHOST ENGINE] Scan complete. All systems healthy.');
+            }
+        } catch (error) {
+            console.error('❌ [GHOST ENGINE] Job failed:', error);
+        }
+    });
+
+    console.log('✅ ThingSpeak Ghost Engine active — polling every 15 mins.');
+}
 
 export function startScheduler(): void {
   const syncInterval = process.env.SYNC_INTERVAL_HOURS || '1';
@@ -253,6 +328,11 @@ export function stopScheduler(): void {
     reminderTask = null;
     console.log('⏹️ Hourly reminder job stopped');
   }
+  if (thingSpeakTask) {
+    thingSpeakTask.stop();
+    thingSpeakTask = null;
+    console.log('⏹️ ThingSpeak monitor job stopped');
+  }
 }
 
 export function getSchedulerStatus(): any {
@@ -261,6 +341,7 @@ export function getSchedulerStatus(): any {
     cleanupRunning: cleanupTask ? true : false,
     heartbeatRunning: heartbeatTask ? true : false,
     reminderRunning: reminderTask ? true : false,
+    thingSpeakMonitorRunning: thingSpeakTask ? true : false,
     nextRun: scheduledTask ? 'Check logs' : 'Not running',
     interval: process.env.SYNC_INTERVAL_HOURS || '1 hour',
     alertCleanupTtlMinutes: 10,

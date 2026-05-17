@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import {
     handleWhatsAppWebhook,
-    triggerManualTestNotification,
+    triggerForceDeviceAlert,
     listWhatsAppRecipients,
     addWhatsAppRecipient,
     removeWhatsAppRecipient,
@@ -43,10 +43,10 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
     }
 
     try {
-        await triggerManualTestNotification(
+        await triggerForceDeviceAlert(
             String(deviceId),
-            deviceName ? String(deviceName) : `Device ${deviceId}`,
-            message ? String(message) : 'Manual test alert triggered from EvaraTDS dashboard.'
+            999, // Test value
+            new Date().toISOString()
         );
 
         return res.status(200).json({

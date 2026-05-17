@@ -7,7 +7,15 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { initializeRedis, closeRedis, getRedisClient } from './db/redis';
-import { startScheduler, startAlertCleanupJob, startDeviceHeartbeatJob, startHourlyReminderJob, stopScheduler, getSchedulerStatus } from './sync/scheduler';
+import { 
+    startScheduler, 
+    startAlertCleanupJob, 
+    startDeviceHeartbeatJob, 
+    startHourlyReminderJob, 
+    startThingSpeakMonitorJob,
+    stopScheduler, 
+    getSchedulerStatus 
+} from './sync/scheduler';
 import { syncFromFirebase } from './services/syncService';
 import { flushSensorData } from './services/telemetryService';
 import deviceRoutes from './api/routes/devices';
@@ -242,6 +250,9 @@ async function start() {
 
     // Start hourly notification reminders
     startHourlyReminderJob();
+
+    // Start autonomous ThingSpeak monitoring (Ghost Engine)
+    startThingSpeakMonitorJob();
 
     try {
       const syncResult = await syncFromFirebase('startup');
