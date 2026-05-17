@@ -166,18 +166,70 @@ export function startDeviceHeartbeatJob(): void {
 
 /**
  * Hourly Notification Reminder Job — runs at minute 0 of every hour.
- * Finds all critical devices and resends alerts to all channels.
  */
 export function startHourlyReminderJob(): void {
     reminderTask = cron.schedule('0 * * * *', async () => {
         try {
+            console.log('⏰ [CRON] Starting top-of-hour reminder job...');
             await sendHourlyReminders();
         } catch (error) {
             console.error('❌ Hourly reminder job failed:', error);
         }
     });
 
+    // ── NEW: Force-Hunting Critical Alerts ──
+    // Runs every 5 minutes and FORCES a notification if alert is still open
+    // and was last notified more than 60 minutes ago.
+    cron.schedule('*/5 * * * *', async () => {
+        try {
+            console.log('🚀 [FORCE ENGINE] Scanning for unresolved critical alerts...');
+            const db = getDb();
+            const snapshot = await db.collection('alerts')
+                .where('status', '==', 'open')
+                .where('severity', '==', 'critical')
+                .get();
+
+            if (snapshot.empty) return;
+
+            const now = Date.now();
+            const ONE_HOUR_MS = 60 * 60 * 1000;
+
+            for (const doc of snapshot.docs) {
+                const alert = doc.data();
+                const lastNotified = alert.last_notified_at ? new Date(alert.last_notified_at).getTime() : 0;
+
+                if (now - lastNotified >= ONE_HOUR_MS) {
+                    console.log(`🔥 [FORCE DISPATCH] Alert ${doc.id} is still OPEN after 1hr. Forcing re-delivery...`);
+                    // Call channel dispatchers directly
+                    // Note: alerts in FS might not be in Redis memory-fallback, so we use FS data.
+                    const alertData = doc.data();
+                    
+                    // We bypass dedupe by passing isReminder = true
+                    // and manually trigger the main channel functions
+                    // These functions are imported from '../services/notificationService'
+                    // but we are already in the scheduler, which imports from there.
+                    const { 
+                        sendPushNotification, 
+                        sendWhatsAppNotification, 
+                        sendNTFYNotification, 
+                        triggerIFTTTWebhook 
+                    } = require('../services/notificationService');
+
+                    await Promise.all([
+                        sendPushNotification(doc.id, alertData, true),
+                        sendWhatsAppNotification(doc.id, alertData, true),
+                        sendNTFYNotification(doc.id, alertData, true),
+                        triggerIFTTTWebhook(doc.id, alertData, true)
+                    ]);
+                }
+            }
+        } catch (error) {
+            console.error('❌ Force reminder engine failed:', error);
+        }
+    });
+
     console.log('✅ Hourly reminder job started — running every hour at :00.');
+    console.log('✅ Force Critical Engine active — checking every 5 minutes.');
 }
 
 export function stopScheduler(): void {

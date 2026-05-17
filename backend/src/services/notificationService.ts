@@ -178,87 +178,48 @@ const ESCALATION_INTERVALS = {
     ]
 };
 
-const LOG_BUFFER_KEY = 'cache:delivery_logs';
-const LOG_BATCH_SIZE = 100;
-const LOG_FLUSH_INTERVAL = 5 * 60 * 1000; // 5 minutes
-
 /**
- * Optimized Delivery Logging
- * - Skips 'skipped' logs (console only)
- * - Samples 'success' logs (1 in 10)
- * - Buffers in Redis for batch writing
+ * Optimized Delivery Logging (Nested in Alert Doc)
+ * - Updates the Alert document directly with delivery info (low cost)
+ * - Only writes to technical logs on FAILURE.
  */
 async function writeDeliveryLog(entry: Record<string, any>) {
-    const { status, channel, reason, alert_id } = entry;
+    const { status, channel, reason, alert_id, error } = entry;
+    const db = getDb();
 
-    // 1. Skip writing 'skipped' logs to Firestore (Keep in console only)
-    if (status === 'skipped') {
-        console.log(`ℹ️ [LOG:SKIPPED] ${channel} for ${alert_id}: ${reason}`);
-        return;
-    }
-
-    // 2. Sample successes (1 in 10) to save writes
-    if (status === 'success' && Math.random() > 0.1) {
-        // Still show in console for monitoring
-        console.log(`✅ [LOG:SUCCESS] ${channel} for ${alert_id} (Sampled out of Firestore)`);
-        return;
-    }
-
+    // 1. Update the Alert document with the last delivery attempt
     try {
-        const logEntry = {
-            ...entry,
-            created_at: new Date().toISOString(),
+        const alertRef = db.collection('alerts').doc(alert_id);
+        const updateData: any = {
+            last_notified_at: new Date().toISOString(),
+            [`delivery_history.${channel}`]: {
+                status,
+                timestamp: new Date().toISOString(),
+                reason: reason || error || 'Processed',
+                success: status === 'success' || status === 'partial'
+            }
         };
-
-        // Failures and Sampled Successes go to Redis Buffer
-        const redis = getRedis();
-        await redis.rPush(LOG_BUFFER_KEY, JSON.stringify(logEntry));
-
-        // Immediate console feedback
-        if (status === 'failed' || status === 'partial') {
-            console.error(`❌ [LOG:${status.toUpperCase()}] ${channel} for ${alert_id}: ${entry.error || 'Unknown error'}`);
-        }
-
-        // Trigger flush if buffer is large
-        const size = await redis.lLen(LOG_BUFFER_KEY);
-        if (size >= LOG_BATCH_SIZE) {
-            flushDeliveryLogs().catch(e => console.error('Auto-flush logs failed', e));
-        }
-    } catch (error) {
-        console.error('❌ Failed to buffer delivery log:', error);
-    }
-}
-
-/**
- * Batch flush delivery logs to Firestore
- */
-export async function flushDeliveryLogs() {
-    try {
-        const redis = getRedis();
-        const size = await redis.lLen(LOG_BUFFER_KEY);
-        if (size === 0) return;
-
-        const count = Math.min(size, LOG_BATCH_SIZE);
-        const rawData = await redis.lRange(LOG_BUFFER_KEY, 0, count - 1);
-        if (!rawData || rawData.length === 0) return;
-
-        const batch = getDb().batch();
-        rawData.forEach((json: string) => {
-            const entry = JSON.parse(json);
-            const docRef = getDb().collection('notification_delivery_logs').doc();
-            batch.set(docRef, entry);
-        });
-
-        await batch.commit();
-        await redis.lTrim(LOG_BUFFER_KEY, count, -1);
-        console.log(`💾 [LOG FLUSH] Flushed ${count} delivery logs to Firestore.`);
+        await alertRef.update(updateData);
     } catch (err) {
-        console.error('❌ Failed to flush delivery logs:', err);
+        console.error(`❌ Failed to update Alert ${alert_id} with delivery info:`, err);
+    }
+
+    // 2. Only write to the technical logs collection if it FAILED
+    if (status === 'failed' || status === 'partial') {
+        try {
+            await db.collection('notification_delivery_logs').add({
+                ...entry,
+                created_at: new Date().toISOString(),
+            });
+            console.error(`❌ [LOG:ERROR] ${channel} for ${alert_id}: ${error || 'Unknown error'}`);
+        } catch (err) {
+            console.error('❌ Failed to write technical error log:', err);
+        }
+    } else {
+        // Success and Skipped are console only to save writes
+        console.log(`✅ [LOG:${status.toUpperCase()}] ${channel} for ${alert_id} (Nested in Alert)`);
     }
 }
-
-// Set periodic flush
-setInterval(flushDeliveryLogs, LOG_FLUSH_INTERVAL);
 
 async function withRetry<T>(operation: () => Promise<T>, retries = 1): Promise<T> {
     let lastError: unknown;

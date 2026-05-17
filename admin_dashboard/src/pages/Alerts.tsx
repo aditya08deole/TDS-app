@@ -331,27 +331,47 @@ export default function Alerts() {
                                         "flex items-center justify-between",
                                         isLandscape && !isDesktop ? "mt-0" : "mt-4"
                                     )}>
-                                        <div className="flex items-center gap-2 md:gap-4">
-                                            {/* Status Badge */}
-                                            <div className={cn(
-                                                "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border flex items-center gap-1.5",
-                                                alert.status === 'open' && "bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]",
-                                                alert.status === 'acknowledged' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
-                                                alert.status === 'resolved' && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                            )}>
-                                                {alert.status === 'open' && <AlertTriangle className="w-2.5 h-2.5" />}
-                                                {alert.status === 'acknowledged' && <CheckCircle className="w-2.5 h-2.5" />}
-                                                {alert.status === 'resolved' && <CheckCircle className="w-2.5 h-2.5" />}
-                                                {alert.status}
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex items-center gap-2 md:gap-4">
+                                                {/* Status Badge */}
+                                                <div className={cn(
+                                                    "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border flex items-center gap-1.5",
+                                                    alert.status === 'open' && "bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]",
+                                                    alert.status === 'acknowledged' && "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                                                    alert.status === 'resolved' && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                )}>
+                                                    {alert.status === 'open' && <AlertTriangle className="w-2.5 h-2.5" />}
+                                                    {alert.status === 'acknowledged' && <CheckCircle className="w-2.5 h-2.5" />}
+                                                    {alert.status === 'resolved' && <CheckCircle className="w-2.5 h-2.5" />}
+                                                    {alert.status}
+                                                </div>
+
+                                                <div className="flex gap-1 md:gap-2">
+                                                    {!isLandscape && (
+                                                        <Button variant="ghost" size="sm" className="h-8 w-8 md:h-7 md:w-auto md:px-3 text-xs text-cyan-500 dark:text-cyan-400 hover:text-cyan-600 dark:hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 rounded-lg">
+                                                            <Camera className="h-4 w-4 md:mr-1.5 shrink-0" /> <span className="hidden md:inline">Photo</span>
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </div>
 
-                                            <div className="flex gap-1 md:gap-2">
-                                                {!isLandscape && (
-                                                    <Button variant="ghost" size="sm" className="h-8 w-8 md:h-7 md:w-auto md:px-3 text-xs text-cyan-500 dark:text-cyan-400 hover:text-cyan-600 dark:hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 rounded-lg">
-                                                        <Camera className="h-4 w-4 md:mr-1.5 shrink-0" /> <span className="hidden md:inline">Photo</span>
-                                                    </Button>
-                                                )}
-                                            </div>
+                                            {/* Nested Delivery History (Admin Only) */}
+                                            {canViewDeliveryLogs && alert.last_notified_at && (
+                                                <div className="flex items-center gap-2 text-[10px] text-muted-foreground bg-white/5 px-2 py-1 rounded-md border border-white/5">
+                                                    <Bell className="h-3 w-3" />
+                                                    <span>Last Notified: {new Date(alert.last_notified_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    <div className="flex gap-1 ml-2">
+                                                        {alert.delivery_history && Object.entries(alert.delivery_history).map(([channel, hist]: [string, any]) => (
+                                                            <span key={channel} className={cn(
+                                                                "uppercase font-bold text-[8px] px-1 rounded border",
+                                                                hist.success ? "text-emerald-400 border-emerald-500/30" : "text-red-400 border-red-500/30"
+                                                            )}>
+                                                                {channel.charAt(0)}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
  
                                         <div className="flex gap-2">

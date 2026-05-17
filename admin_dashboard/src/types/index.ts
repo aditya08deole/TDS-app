@@ -99,6 +99,13 @@ export type Alert = {
     escalation_level?: number
     device_name?: string // Added for convenience in UI
     expiresAt?: any
+    last_notified_at?: string
+    delivery_history?: Record<string, {
+        status: string
+        timestamp: string
+        reason: string
+        success: boolean
+    }>
 }
 
 export interface DeviceEvent {
