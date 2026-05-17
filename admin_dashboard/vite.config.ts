@@ -3,6 +3,37 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from "path"
 import fs from "fs"
+import type { Plugin } from 'vite'
+
+// Fix #2: Dev-time Service Worker env injection middleware.
+// In production, closeBundle() injects values. In dev, this middleware serves
+// the SW with real env values so background push works without building first.
+function swEnvInjectionPlugin(env: Record<string, string>): Plugin {
+    return {
+        name: 'sw-env-injection',
+        configureServer(server) {
+            server.middlewares.use('/firebase-messaging-sw.js', (req, res, next) => {
+                const swPath = path.resolve(__dirname, 'public/firebase-messaging-sw.js');
+                if (!fs.existsSync(swPath)) { next(); return; }
+                let content = fs.readFileSync(swPath, 'utf8');
+                const placeholders: Record<string, string> = {
+                    '__FIREBASE_API_KEY__': env.VITE_FIREBASE_API_KEY || '',
+                    '__FIREBASE_AUTH_DOMAIN__': env.VITE_FIREBASE_AUTH_DOMAIN || '',
+                    '__FIREBASE_PROJECT_ID__': env.VITE_FIREBASE_PROJECT_ID || '',
+                    '__FIREBASE_STORAGE_BUCKET__': env.VITE_FIREBASE_STORAGE_BUCKET || '',
+                    '__FIREBASE_MESSAGING_SENDER_ID__': env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+                    '__FIREBASE_APP_ID__': env.VITE_FIREBASE_APP_ID || '',
+                    '__FIREBASE_MEASUREMENT_ID__': env.VITE_FIREBASE_MEASUREMENT_ID || '',
+                };
+                Object.entries(placeholders).forEach(([k, v]) => { content = content.split(k).join(v); });
+                // Fix #15: Explicitly set SW scope to root via header
+                res.setHeader('Content-Type', 'application/javascript');
+                res.setHeader('Service-Worker-Allowed', '/');
+                res.end(content);
+            });
+        },
+    };
+}
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
@@ -18,30 +49,36 @@ export default defineConfig(({ mode }) => {
         },
         plugins: [
             react(),
+            // Fix #2: Dev middleware for SW env injection
+            swEnvInjectionPlugin(env),
             {
                 name: 'inject-sw-config',
                 closeBundle() {
+                    // Fix #2: Inject env vars into the copied SW file at build time
                     const swPath = path.resolve(__dirname, 'dist/firebase-messaging-sw.js');
-                    if (fs.existsSync(swPath)) {
-                        let content = fs.readFileSync(swPath, 'utf8');
-                        // Replace placeholders with format __FIREBASE_KEY_NAME__
-                        const placeholders = {
-                            '__FIREBASE_API_KEY__': env.VITE_FIREBASE_API_KEY || '',
-                            '__FIREBASE_AUTH_DOMAIN__': env.VITE_FIREBASE_AUTH_DOMAIN || '',
-                            '__FIREBASE_PROJECT_ID__': env.VITE_FIREBASE_PROJECT_ID || '',
-                            '__FIREBASE_STORAGE_BUCKET__': env.VITE_FIREBASE_STORAGE_BUCKET || '',
-                            '__FIREBASE_MESSAGING_SENDER_ID__': env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-                            '__FIREBASE_APP_ID__': env.VITE_FIREBASE_APP_ID || '',
-                            '__FIREBASE_MEASUREMENT_ID__': env.VITE_FIREBASE_MEASUREMENT_ID || ''
-                        };
-                        
-                        Object.entries(placeholders).forEach(([placeholder, value]) => {
-                            content = content.split(placeholder).join(value);
-                        });
-                        
-                        fs.writeFileSync(swPath, content);
-                        console.log('✅ Injected environment variables into firebase-messaging-sw.js');
+                    if (!fs.existsSync(swPath)) {
+                        console.warn('⚠️  dist/firebase-messaging-sw.js not found — SW env injection skipped.');
+                        return;
                     }
+                    let content = fs.readFileSync(swPath, 'utf8');
+                    const placeholders: Record<string, string> = {
+                        '__FIREBASE_API_KEY__': env.VITE_FIREBASE_API_KEY || '',
+                        '__FIREBASE_AUTH_DOMAIN__': env.VITE_FIREBASE_AUTH_DOMAIN || '',
+                        '__FIREBASE_PROJECT_ID__': env.VITE_FIREBASE_PROJECT_ID || '',
+                        '__FIREBASE_STORAGE_BUCKET__': env.VITE_FIREBASE_STORAGE_BUCKET || '',
+                        '__FIREBASE_MESSAGING_SENDER_ID__': env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+                        '__FIREBASE_APP_ID__': env.VITE_FIREBASE_APP_ID || '',
+                        '__FIREBASE_MEASUREMENT_ID__': env.VITE_FIREBASE_MEASUREMENT_ID || '',
+                    };
+                    const missing = Object.entries(placeholders).filter(([, v]) => !v).map(([k]) => k);
+                    if (missing.length > 0) {
+                        console.warn('⚠️  Missing env vars for SW injection:', missing.join(', '));
+                    }
+                    Object.entries(placeholders).forEach(([placeholder, value]) => {
+                        content = content.split(placeholder).join(value);
+                    });
+                    fs.writeFileSync(swPath, content);
+                    console.log('✅ Injected environment variables into firebase-messaging-sw.js');
                 }
             },
             VitePWA({

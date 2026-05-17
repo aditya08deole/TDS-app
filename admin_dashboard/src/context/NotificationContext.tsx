@@ -129,12 +129,67 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         toast.success('Sound Diagnostic', { description: `Profile "${soundProfile}" is playing correctly.` })
     }, [playSound, soundProfile])
 
-    // Initialize native push if applicable
+    // Fix #18: Initialize native push, passing uid so token is linked to this user on backend
     useEffect(() => {
         if (isNative) {
-            initPushNotifications();
+            initPushNotifications(user?.uid ?? null);
         }
-    }, []);
+    }, [user?.uid]);
+
+    // Fix #3 + #14: Save FCM token linked to the authenticated user UID.
+    // This ensures the backend can target the correct user across all their browsers.
+    const saveTokenForUser = useCallback(async (token: string) => {
+        if (!user || !token) return;
+        const tokenHash = btoa(token).replace(/[^a-zA-Z0-9]/g, '').substring(0, 24);
+        const docId = `${user.uid}_${tokenHash}`;
+        try {
+            await setDoc(doc(db, 'notification_subscriptions', docId), {
+                user_id: user.uid,           // Fix #14: always linked to UID
+                token,
+                platform: isNative ? 'android_native' : 'web_pwa',
+                userAgent: navigator.userAgent,
+                updated_at: serverTimestamp(),
+                created_at: serverTimestamp(),
+            }, { merge: true });
+            await storage.set('fcm_token_doc_id', docId);
+            setIsSubscribed(true);
+        } catch (err) {
+            console.error('❌ Failed to save FCM token to Firestore:', err);
+        }
+    }, [user]);
+
+    // Fix #3: Firebase v9+ removed onTokenRefresh. Instead, proactively refresh
+    // the token every 30 minutes while the tab is open. This catches silent rotations.
+    useEffect(() => {
+        if (!messaging || isNative || !user) return;
+        const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+        const interval = setInterval(async () => {
+            try {
+                const newToken = await getToken(messaging!, { vapidKey: VAPID_PUBLIC_KEY });
+                if (newToken) {
+                    console.log('🔄 FCM token refreshed (scheduled) — updating Firestore...');
+                    await saveTokenForUser(newToken);
+                }
+            } catch (err) {
+                console.warn('⚠️ Scheduled FCM token refresh failed:', err);
+            }
+        }, REFRESH_INTERVAL_MS);
+        return () => clearInterval(interval);
+    }, [messaging, isNative, user, saveTokenForUser]);
+
+    // Fix #3: Re-check token freshness when the user focuses the tab (handles long idle sessions)
+    useEffect(() => {
+        if (!messaging || isNative || !user) return;
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState !== 'visible') return;
+            try {
+                const currentToken = await getToken(messaging!, { vapidKey: VAPID_PUBLIC_KEY });
+                if (currentToken) await saveTokenForUser(currentToken);
+            } catch { /* Non-fatal — token will refresh on next subscribe call */ }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [messaging, isNative, user, saveTokenForUser]);
 
     // Handle incoming messages
     useEffect(() => {
@@ -179,15 +234,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }, [soundEnabled])
 
     const subscribe = async () => {
-        if (!user) return
-        
+        if (!user) return;
         setLoading(true)
         try {
             let token: string | null = null;
 
             if (isNative) {
-                // For native, initPushNotifications handles the initial registration
-                // We just need to make sure we have the token and save it to Firestore
                 token = await getFCMToken();
                 if (!token) {
                     await initPushNotifications();
@@ -195,7 +247,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 }
             } else {
                 if (!messaging) return;
-                if (typeof Notification === 'undefined') return
+                if (typeof Notification === 'undefined') return;
 
                 if (Notification.permission === 'default') {
                     const result = await Notification.requestPermission()
@@ -211,22 +263,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 token = await getToken(messaging, { vapidKey: VAPID_PUBLIC_KEY })
             }
 
-            if (!token) {
-                throw new Error('No FCM registration token available.')
-            }
+            if (!token) throw new Error('No FCM registration token available.');
 
-            const tokenHash = btoa(token).replace(/[^a-zA-Z0-9]/g, '').substring(0, 24)
-            const docId = `${user.uid}_${tokenHash}`
-            await setDoc(doc(db, 'notification_subscriptions', docId), {
-                user_id: user.uid,
-                token,
-                platform: isNative ? 'android_native' : 'web_pwa',
-                userAgent: navigator.userAgent,
-                updated_at: serverTimestamp(),
-                created_at: serverTimestamp(),
-            }, { merge: true })
+            // Fix #14: saveTokenForUser handles Firestore write + UID linking
+            await saveTokenForUser(token);
 
-            setIsSubscribed(true)
             toast.success('Real-time alerts enabled!', {
                 description: 'You will now receive push notifications for critical TDS events.'
             })

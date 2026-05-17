@@ -11,6 +11,11 @@ export default function NotificationManager() {
     const { user } = useAuth()
     const { soundEnabled, permission, playSound } = useNotification()
     const processedAlerts = useRef<Set<string>>(new Set())
+    // Fix #9: Record the exact time this component mounted.
+    // Any alert created BEFORE this time is "stale" and should be silently seeded
+    // into processedAlerts without showing a toast — prevents spam on every page load.
+    const mountTime = useRef<number>(Date.now())
+    const isFirstLoad = useRef<boolean>(true)
 
     const showDesktopNotification = useCallback((title: string, body: string, icon?: string) => {
         if (permission === 'granted' && document.hidden && typeof Notification !== 'undefined') {
@@ -32,11 +37,20 @@ export default function NotificationManager() {
         // Listen for new alerts in Firestore
         const q = query(collection(db, 'alerts'), orderBy('created_at', 'desc'), limit(5))
         const unsubscribe = onSnapshot(q, (snapshot) => {
+            // Fix #9: On the very first snapshot callback, mark all existing alerts as
+            // already-seen without showing any toasts. This prevents stale alerts from
+            // spamming the user every time they open or refresh the app.
+            if (isFirstLoad.current) {
+                isFirstLoad.current = false;
+                snapshot.docs.forEach((d) => processedAlerts.current.add(d.id));
+                return;
+            }
+
             snapshot.docChanges().forEach((change) => {
                 if (change.type === 'added') {
                     const alertId = change.doc.id
                     if (processedAlerts.current.has(alertId)) return
-                    
+
                     processedAlerts.current.add(alertId)
                     // Keep the set small
                     if (processedAlerts.current.size > 50) {
@@ -46,10 +60,10 @@ export default function NotificationManager() {
 
                     const alert = change.doc.data() as NotificationAlert
 
-                    // Only process very recent alerts (within last 30 seconds)
+                    // Fix #9: Only show toasts for alerts created after this component mounted
                     const createdAt = alert.created_at?.toDate ? alert.created_at.toDate().getTime() : Date.now()
-                    const isNew = (Date.now() - createdAt) < 30000
-                    
+                    const isNew = createdAt > mountTime.current
+
                     if (!isNew) return
                     
                     // ═══ FILTER: Skip showing alerts with invalid TDS values

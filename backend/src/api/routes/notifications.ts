@@ -105,4 +105,44 @@ router.delete('/recipients/whatsapp', requireRole('admin'), async (req: Request,
     }
 });
 
+/**
+ * POST /api/notifications/register-token
+ * Fix #18: Registers a native Android (Capacitor) or web FCM token.
+ * The token is stored in notification_subscriptions (same collection as web tokens)
+ * so the backend push dispatcher includes Android users automatically.
+ *
+ * Body: { token: string, platform: string, userId?: string, userAgent?: string }
+ */
+router.post('/register-token', async (req: Request, res: Response) => {
+    const { token, platform, userId, userAgent } = req.body;
+
+    if (!token || typeof token !== 'string' || token.trim().length < 10) {
+        return res.status(400).json({ success: false, error: 'Valid token is required.' });
+    }
+
+    try {
+        const { getFirestore, FieldValue } = await import('firebase-admin/firestore');
+        const db = getFirestore();
+
+        const safeUserId = userId ? String(userId).trim() : 'anonymous';
+        const tokenHash = Buffer.from(token).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 24);
+        const docId = `${safeUserId}_${tokenHash}`;
+
+        await db.collection('notification_subscriptions').doc(docId).set({
+            token: token.trim(),
+            user_id: safeUserId,
+            platform: platform || 'android_native',
+            userAgent: userAgent || 'native',
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+        }, { merge: true });
+
+        console.log(`✅ [register-token] Native token registered for user ${safeUserId} (${platform || 'android_native'})`);
+        return res.status(200).json({ success: true, docId, timestamp: new Date().toISOString() });
+    } catch (error: any) {
+        console.error('❌ [register-token] Failed:', error);
+        return res.status(500).json({ success: false, error: error.message || 'Internal server error.' });
+    }
+});
+
 export default router;

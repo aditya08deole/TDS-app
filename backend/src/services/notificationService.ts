@@ -48,7 +48,16 @@ function normalizeIndianNumber(phone: string): string {
     return trimmed;
 }
 
+// Fix #6: Recipient cache TTL
+const RECIPIENT_CACHE_KEY = 'cache:wa_recipients';
+const RECIPIENT_CACHE_TTL = 60; // 1 minute
+
 async function getWhatsAppRecipientsForDelivery(): Promise<string[]> {
+    const redis = getRedis();
+    // Try cache
+    const cached = await redis.get(RECIPIENT_CACHE_KEY);
+    if (cached) return JSON.parse(cached);
+
     const recipients = new Set<string>();
     if (adminPhone && /^\+\d{8,15}$/.test(adminPhone)) {
         recipients.add(adminPhone);
@@ -66,7 +75,10 @@ async function getWhatsAppRecipientsForDelivery(): Promise<string[]> {
         }
     });
 
-    return Array.from(recipients);
+    const result = Array.from(recipients);
+    // Cache for 60s
+    await redis.set(RECIPIENT_CACHE_KEY, JSON.stringify(result), { EX: RECIPIENT_CACHE_TTL });
+    return result;
 }
 
 export async function listWhatsAppRecipients() {
@@ -139,7 +151,6 @@ export async function removeWhatsAppRecipient(phone: string, removedBy: string) 
 // Twilio Config
 const twilioSid = process.env.TWILIO_ACCOUNT_SID;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-// Trim all env strings to prevent CRLF-poisoned values from Windows-style .env files
 const twilioFrom = (process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886').trim();
 const adminPhone = process.env.ADMIN_WHATSAPP_TO?.trim();
 
@@ -149,12 +160,23 @@ if (twilioSid && twilioAuthToken) {
     console.log('✅ Twilio initialized in Notification Service');
 }
 
-// ─── Rate Limiting (1 notification per device per hour) ──────────────────────
+// ─── Rate Limiting & Configuration ────────────────────────────────────────────
 
 const RATE_LIMIT_TTL = 3600; // 1 hour in seconds
-const RATE_LIMIT_KEY = (deviceId: string) => `notif:sent:${deviceId}`;
+const RATE_LIMIT_KEY = (deviceId: string, channel = 'global') => `notif:rate:${deviceId}:${channel}`;
 const DELIVERY_DEDUPE_TTL_SEC = 10 * 60;
 const FCM_TOKEN_CACHE_KEY = 'cache:fcm_tokens';
+const PHANTOM_DEBOUNCE_KEY = (deviceId: string) => `notif:debounce:${deviceId}`;
+const PHANTOM_DEBOUNCE_TTL = 5; // seconds
+const LAST_SEVERITY_KEY = (deviceId: string) => `notif:last_severity:${deviceId}`;
+
+const ESCALATION_INTERVALS = {
+    whatsapp: [
+        0,              // T0: immediate
+        30 * 60,        // T30: 30 minutes later
+        120 * 60        // T120: 2 hours later
+    ]
+};
 
 async function writeDeliveryLog(entry: Record<string, any>) {
     try {
@@ -165,15 +187,6 @@ async function writeDeliveryLog(entry: Record<string, any>) {
     } catch (error) {
         console.error('❌ Failed to write delivery log:', error);
     }
-}
-
-async function shouldSkipByDedupe(alertId: string, channel: string): Promise<boolean> {
-    const key = `notif:dedupe:${channel}:${alertId}`;
-    const redis = getRedis();
-    const exists = await redis.exists(key);
-    if (exists === 1) return true;
-    await redis.set(key, '1', { EX: DELIVERY_DEDUPE_TTL_SEC });
-    return false;
 }
 
 async function withRetry<T>(operation: () => Promise<T>, retries = 1): Promise<T> {
@@ -188,32 +201,91 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 1): Promise<T
     throw lastError;
 }
 
-async function isRateLimited(deviceId: string): Promise<boolean> {
-    const exists = await getRedis().exists(RATE_LIMIT_KEY(deviceId));
+async function isRateLimited(deviceId: string, channel = 'global'): Promise<boolean> {
+    const exists = await getRedis().exists(RATE_LIMIT_KEY(deviceId, channel));
     return exists === 1;
 }
 
-async function setRateLimitKey(deviceId: string): Promise<void> {
-    await getRedis().set(RATE_LIMIT_KEY(deviceId), '1', { EX: RATE_LIMIT_TTL });
+async function setRateLimitKey(deviceId: string, channel = 'global'): Promise<void> {
+    await getRedis().set(RATE_LIMIT_KEY(deviceId, channel), '1', { EX: RATE_LIMIT_TTL });
 }
 
-// ─── Device Existence Guard (anti-phantom alerts) ─────────────────────────────
+async function isPhantomDebounced(deviceId: string): Promise<boolean> {
+    const redis = getRedis();
+    const key = PHANTOM_DEBOUNCE_KEY(deviceId);
+    const exists = await redis.exists(key);
+    if (exists === 1) return true;
+    await redis.set(key, '1', { EX: PHANTOM_DEBOUNCE_TTL });
+    return false;
+}
 
 async function deviceExists(deviceId: string): Promise<boolean> {
-    const device = await hgetall<Device>(`device:${deviceId}`);
-    return device !== null && device.name !== undefined;
+    const snap = await getDb().collection('devices').doc(deviceId).get();
+    return snap.exists;
+}
+
+/**
+ * Enhanced Deduplication & Escalation Logic
+ * Fix #5: WhatsApp now uses strict time-intervals for tiers.
+ * Fix #8: Escalation to 'critical' always bypasses dedupe.
+ */
+async function shouldSkipByDedupe(alertId: string, channel: string, deviceId?: string, currentSeverity?: string): Promise<boolean> {
+    const redis = getRedis();
+
+    // ── Fix #8: Severity Escalation Bypass ──
+    if (deviceId && currentSeverity === 'critical') {
+        const lastSev = await redis.get(LAST_SEVERITY_KEY(deviceId));
+        if (lastSev && lastSev !== 'critical') {
+            console.log(`🚀 [ESCALATION] Bypassing dedupe for ${deviceId} (escalated to critical)`);
+            await redis.set(LAST_SEVERITY_KEY(deviceId), 'critical', { EX: 86400 });
+            return false;
+        }
+    }
+    if (deviceId && currentSeverity) {
+        await redis.set(LAST_SEVERITY_KEY(deviceId), currentSeverity, { EX: 86400 });
+    }
+
+    // ── Fix #5: WhatsApp Escalation Tiering (Time-based) ──
+    if (channel === 'whatsapp' && deviceId) {
+        const dataKey = `notif:wa_tier_state:${deviceId}`;
+        const rawState = await redis.get(dataKey);
+        const now = Math.floor(Date.now() / 1000);
+        
+        let state = rawState ? JSON.parse(rawState) : { lastSent: 0, tierIndex: -1 };
+
+        if (now - state.lastSent > 86400) state = { lastSent: 0, tierIndex: -1 };
+
+        const nextTierIndex = state.tierIndex + 1;
+        if (nextTierIndex >= ESCALATION_INTERVALS.whatsapp.length) return true;
+
+        const requiredInterval = ESCALATION_INTERVALS.whatsapp[nextTierIndex];
+        const timeSinceLast = now - state.lastSent;
+
+        if (timeSinceLast >= requiredInterval) {
+            state.lastSent = now;
+            state.tierIndex = nextTierIndex;
+            await redis.set(dataKey, JSON.stringify(state), { EX: 86400 });
+            console.log(`📡 [WHATSAPP TIER] Advancing to tier ${nextTierIndex} for device ${deviceId}`);
+            return false;
+        }
+        return true;
+    }
+
+    const key = `notif:dedupe:${channel}:${alertId}`;
+    const exists = await redis.exists(key);
+    if (exists === 1) return true;
+    await redis.set(key, '1', { EX: DELIVERY_DEDUPE_TTL_SEC });
+    return false;
 }
 
 /**
  * Starts real-time listeners for Firestore collections
- * This handles synchronization between Firestore and Redis for metadata and alerts.
  */
 export function startNotificationListeners() {
     console.log('📡 Starting real-time Firestore listeners...');
     const db = getDb();
     const redis = getRedis();
 
-    // 1. Listen for Alerts Changes
     db.collection('alerts').onSnapshot(async (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
             const alertData = change.doc.data() as Alert;
@@ -223,7 +295,6 @@ export function startNotificationListeners() {
                 : String(alertData.device_id);
 
             if (change.type === 'added' || change.type === 'modified') {
-                // Sync to Redis
                 const fullAlert = { ...alertData, id: alertId, device_id: deviceId };
                 await hset(`alert:${alertId}`, fullAlert);
                 await redis.sAdd('alerts:all', alertId);
@@ -235,37 +306,41 @@ export function startNotificationListeners() {
                     await redis.sRem(`device:${deviceId}:alerts:open`, alertId);
                 }
 
-                // Process new alerts for notification delivery
                 if (change.type === 'added') {
                     const createdAtRaw = alertData.created_at as any;
                     const createdAt = createdAtRaw?.toDate ? createdAtRaw.toDate() : new Date(alertData.created_at);
-                    const isRecent = (Date.now() - createdAt.getTime()) < 60000; // < 60 seconds old
+                    const isRecent = (Date.now() - createdAt.getTime()) < 60000;
 
                     if (alertData.status === 'open' && isRecent) {
-                        // ── Guard 1: Verify device actually exists (anti-phantom) ──
                         const exists = await deviceExists(deviceId);
                         if (!exists) {
-                            console.warn(`⚠️ [PHANTOM GUARD] Alert ${alertId} references non-existent device ${deviceId} — skipping notifications.`);
+                            console.warn(`⚠️ [PHANTOM GUARD] Alert ${alertId} references non-existent device ${deviceId}.`);
                             return;
                         }
 
-                        // ── Guard 2: Rate limit — 1 notification per device per hour ──
-                        const limited = await isRateLimited(deviceId);
-                        if (limited) {
-                            console.log(`⏱️ [RATE LIMITED] Skipping notifications for device ${deviceId} — already notified within the last hour.`);
-                            return;
-                        }
+                        const debounced = await isPhantomDebounced(deviceId);
+                        if (debounced) return;
 
-                        // ── All guards passed — fire notifications ──
-                        console.log(`🚨 [ALERT] New critical alert for device ${deviceId}: ${alertData.message}`);
-                        await sendPushNotification(alertId, alertData);
-                        await sendWhatsAppNotification(alertId, alertData);
-                        await sendNTFYNotification(alertId, alertData);
-                        await triggerIFTTTWebhook(alertId, alertData);
+                        const channels: Array<'push' | 'whatsapp' | 'ntfy' | 'ifttt'> = ['push', 'whatsapp', 'ntfy', 'ifttt'];
+                        const dispatchers = [
+                            { channel: 'push' as const,     fn: () => sendPushNotification(alertId, alertData) },
+                            { channel: 'whatsapp' as const, fn: () => sendWhatsAppNotification(alertId, alertData) },
+                            { channel: 'ntfy' as const,     fn: () => sendNTFYNotification(alertId, alertData) },
+                            { channel: 'ifttt' as const,    fn: () => triggerIFTTTWebhook(alertId, alertData) },
+                        ];
 
-                        // Stamp the rate limit key AFTER successful dispatch
-                        await setRateLimitKey(deviceId);
-                        console.log(`✅ [RATE LIMIT SET] Device ${deviceId} will not receive another notification for 1 hour.`);
+                        console.log(`🚨 [ALERT] New alert for device ${deviceId}: ${alertData.message}`);
+                        await Promise.all(
+                            dispatchers.map(async ({ channel, fn }) => {
+                                const limited = await isRateLimited(deviceId, channel);
+                                if (limited) {
+                                    await writeDeliveryLog({ alert_id: alertId, channel, status: 'skipped', reason: `rate_limited_${channel}` });
+                                    return;
+                                }
+                                await fn();
+                                await setRateLimitKey(deviceId, channel);
+                            })
+                        );
                     }
                 }
             } else if (change.type === 'removed') {
@@ -275,18 +350,13 @@ export function startNotificationListeners() {
                 await redis.sRem(`device:${deviceId}:alerts:open`, alertId);
             }
         });
-    }, (error) => {
-        console.error('❌ Firestore Alert Listener Error:', error);
-    });
+    }, (error) => { console.error('❌ Firestore Alert Listener Error:', error); });
 
-    // 2. Listen for Devices Changes (Metadata sync)
     db.collection('devices').onSnapshot(async (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
             const deviceData = change.doc.data() as Device;
             const deviceId = change.doc.id;
-
             if (change.type === 'added' || change.type === 'modified') {
-                // Only sync if it's a valid device
                 if (deviceData.name) {
                     await hset(`device:${deviceId}`, { ...deviceData, id: deviceId });
                     await redis.sAdd('devices:all', deviceId);
@@ -296,141 +366,116 @@ export function startNotificationListeners() {
                 await redis.sRem('devices:all', deviceId);
             }
         });
-    }, (error) => {
-        console.error('❌ Firestore Device Listener Error:', error);
-    });
+    }, (error) => { console.error('❌ Firestore Device Listener Error:', error); });
     
-    // 3. Listen for Notification Subscriptions (FCM Token Caching)
     db.collection('notification_subscriptions').onSnapshot(async (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
             const data = change.doc.data();
             const token = data.token;
-            
+            const userId = data.user_id;
             if (!token) return;
-
             if (change.type === 'added' || change.type === 'modified') {
                 await redis.sAdd(FCM_TOKEN_CACHE_KEY, token);
+                if (userId) {
+                    await redis.sAdd(`cache:user_tokens:${userId}`, token);
+                    await redis.expire(`cache:user_tokens:${userId}`, 86400);
+                }
             } else if (change.type === 'removed') {
                 await redis.sRem(FCM_TOKEN_CACHE_KEY, token);
+                if (userId) await redis.sRem(`cache:user_tokens:${userId}`, token);
             }
         });
-        
-        // Initial load if Redis is empty
         const count = await redis.sCard(FCM_TOKEN_CACHE_KEY);
         if (count === 0 && !snapshot.empty) {
-            const tokens = snapshot.docs.map(doc => doc.data().token).filter(Boolean);
-            if (tokens.length > 0) {
-                await redis.sAdd(FCM_TOKEN_CACHE_KEY, tokens);
-                console.log(`🚀 Cached ${tokens.length} FCM tokens in Redis.`);
-            }
+            const batch = redis.multi();
+            snapshot.docs.forEach(doc => {
+                const d = doc.data();
+                if (d.token) {
+                    batch.sAdd(FCM_TOKEN_CACHE_KEY, d.token);
+                    if (d.user_id) batch.sAdd(`cache:user_tokens:${d.user_id}`, d.token);
+                }
+            });
+            await batch.exec();
         }
-    }, (error) => {
-        console.error('❌ Firestore Subscription Listener Error:', error);
-    });
+    }, (error) => { console.error('❌ Firestore Subscription Listener Error:', error); });
 }
 
 // ─── Notification Channels ────────────────────────────────────────────────────
 
 async function sendPushNotification(alertId: string, alertData: any, isReminder = false) {
     try {
-        if (!isReminder && await shouldSkipByDedupe(alertId, 'push')) {
+        if (!isReminder && await shouldSkipByDedupe(alertId, 'push', alertData.device_id, alertData.severity)) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'dedupe' });
             return;
         }
 
         const messaging = getMsg();
         const redis = getRedis();
+        const db = getDb();
+        const deviceId = alertData.device_id;
+        let tokens: string[] = [];
 
-        // 1. Try fetching from Redis Cache first
-        let tokens = await redis.sMembers(FCM_TOKEN_CACHE_KEY);
+        // Targeted Routing (Fix #14)
+        const deviceSnap = await db.collection('devices').doc(deviceId).get();
+        const targetUserId = deviceSnap.data()?.user_id || deviceSnap.data()?.owner_id || null;
 
-        // 2. Fallback to Firestore if cache is empty
-        if (!tokens || tokens.length === 0) {
-            console.log('ℹ️ FCM token cache empty, falling back to Firestore...');
-            const subscriptionsSnap = await getDb().collection('notification_subscriptions').get();
-            if (subscriptionsSnap.empty) {
-                await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'no_tokens' });
-                return;
+        if (targetUserId) {
+            tokens = await redis.sMembers(`cache:user_tokens:${targetUserId}`);
+            if (!tokens || tokens.length === 0) {
+                const userTokensSnap = await db.collection('notification_subscriptions').where('user_id', '==', targetUserId).get();
+                tokens = userTokensSnap.docs.map(d => d.data().token).filter(Boolean);
+                if (tokens.length > 0) await redis.sAdd(`cache:user_tokens:${targetUserId}`, tokens);
             }
-            tokens = subscriptionsSnap.docs.map(doc => doc.data().token).filter(Boolean);
-            
-            // Repopulate cache
-            if (tokens.length > 0) {
-                await redis.sAdd(FCM_TOKEN_CACHE_KEY, tokens);
+        } 
+        
+        if (tokens.length === 0) {
+            tokens = await redis.sMembers(FCM_TOKEN_CACHE_KEY);
+            if (!tokens || tokens.length === 0) {
+                const allSnap = await db.collection('notification_subscriptions').get();
+                tokens = allSnap.docs.map(d => d.data().token).filter(Boolean);
             }
         }
 
         if (tokens.length === 0) {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'empty_tokens' });
+            await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'no_tokens_found' });
             return;
         }
 
         const { location, ppm, time } = formatAlertContext(alertData);
-
         const message = {
             notification: {
                 title: `${isReminder ? '⏰ Reminder: ' : '🚨 '}TDS Alert: ${location}`,
                 body: `${ppm} ppm recorded at ${time}`,
             },
             data: {
-                alertId: alertId,
-                deviceId: alertData.device_id || '',
-                severity: alertData.severity || 'critical',
-                location_name: String(location),
-                ppm: String(ppm),
-                recorded_at: String(time),
-                isReminder: String(isReminder),
-                url: '/alerts'
+                alertId, deviceId, severity: alertData.severity || 'critical',
+                location_name: String(location), ppm: String(ppm), recorded_at: String(time),
+                isReminder: String(isReminder), url: '/alerts'
             },
-            tokens: tokens,
+            tokens,
         };
 
         const response = await withRetry(() => messaging.sendEachForMulticast(message), 1);
-        console.log(`✅ Sent ${response.successCount} push notifications (${response.failureCount} failed)${isReminder ? ' [REMINDER]' : ''}.`);
         await writeDeliveryLog({
-            alert_id: alertId,
-            channel: 'push',
-            status: response.failureCount > 0 ? 'partial' : 'success',
-            success_count: response.successCount,
-            failure_count: response.failureCount,
-            is_reminder: isReminder
+            alert_id: alertId, channel: 'push', status: response.failureCount > 0 ? 'partial' : 'success',
+            success_count: response.successCount, failure_count: response.failureCount, is_reminder: isReminder
         });
 
-        // ── Auto-cleanup stale / invalid FCM tokens ────────────────────────
         if (response.failureCount > 0) {
-            const staleCleanups: Promise<void>[] = [];
             response.responses.forEach((resp, idx) => {
                 if (!resp.success) {
                     const code = resp.error?.code ?? '';
-                    const isStale = (
-                        code === 'messaging/registration-token-not-registered' ||
-                        code === 'messaging/invalid-registration-token' ||
-                        code === 'messaging/invalid-argument'
-                    );
-                    if (isStale) {
+                    if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token') {
                         const staleToken = tokens[idx];
-                        console.warn(`🗑️ Removing stale FCM token (${code}): ${staleToken.substring(0, 20)}...`);
-                        const cleanup = getDb().collection('notification_subscriptions')
-                            .where('token', '==', staleToken)
-                            .get()
-                            .then((snap: any) => {
-                                const batch = getDb().batch();
-                                snap.docs.forEach((d: any) => batch.delete(d.ref));
-                                // Also remove from Redis cache
-                                getRedis().sRem(FCM_TOKEN_CACHE_KEY, staleToken).catch(() => {});
-                                return snap.empty ? Promise.resolve() : batch.commit().then(() => {});
-                            })
-                            .catch((e: any) => { console.error('Failed to remove stale token:', e); });
-                        staleCleanups.push(cleanup as Promise<void>);
+                        db.collection('notification_subscriptions').where('token', '==', staleToken).get().then((snap) => {
+                            const b = db.batch();
+                            snap.docs.forEach(d => b.delete(d.ref));
+                            redis.sRem(FCM_TOKEN_CACHE_KEY, staleToken);
+                            b.commit();
+                        });
                     }
                 }
             });
-            if (staleCleanups.length > 0) {
-                // Non-blocking — run cleanup in background
-                Promise.all(staleCleanups).then(() =>
-                    console.log(`🗑️ Cleaned ${staleCleanups.length} stale FCM subscription(s).`)
-                );
-            }
         }
     } catch (error) {
         console.error('❌ Error sending push notification:', error);
@@ -440,13 +485,11 @@ async function sendPushNotification(alertId: string, alertData: any, isReminder 
 
 async function sendWhatsAppNotification(alertId: string, alertData: any, isReminder = false) {
     if (!twilioClient) {
-        console.log('ℹ️ WhatsApp skipped: Missing Twilio config.');
         await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'skipped', reason: 'missing_config' });
         return;
     }
-
     try {
-        if (!isReminder && await shouldSkipByDedupe(alertId, 'whatsapp')) {
+        if (!isReminder && await shouldSkipByDedupe(alertId, 'whatsapp', alertData.device_id, alertData.severity)) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'skipped', reason: 'dedupe' });
             return;
         }
@@ -455,49 +498,37 @@ async function sendWhatsAppNotification(alertId: string, alertData: any, isRemin
             await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'skipped', reason: 'no_recipients' });
             return;
         }
-
         const { location, ppm, time } = formatAlertContext(alertData);
         for (const recipient of recipients) {
             try {
                 const body = isReminder 
                     ? `⏰ *Hourly Reminder: EvaraTDS Alert*\n\n*Location:* ${location}\n*TDS:* ${ppm} ppm\n*Time:* ${time}\n*Status:* Still Critical`
                     : `🚨 *EvaraTDS Alert*\n\n*Location:* ${location}\n*TDS:* ${ppm} ppm\n*Time:* ${time}\n*Severity:* ${String(alertData.severity || 'critical').toUpperCase()}\n\n_Reply STATUS for real-time update._`;
-
-                await withRetry(() => twilioClient.messages.create({
-                    from: twilioFrom,
-                    body: body,
-                    to: `whatsapp:${recipient}`
-                }), 1);
+                await withRetry(() => twilioClient.messages.create({ from: twilioFrom, body, to: `whatsapp:${recipient}` }), 1);
                 await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'success', recipient, is_reminder: isReminder });
-            } catch (recipientError: any) {
-                await writeDeliveryLog({
-                    alert_id: alertId,
-                    channel: 'whatsapp',
-                    status: 'failed',
-                    recipient,
-                    error: String(recipientError?.message || recipientError)
-                });
+            } catch (err: any) {
+                await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'failed', recipient, error: String(err?.message || err) });
             }
         }
     } catch (error: any) {
-        console.error('❌ WhatsApp delivery failed:', error.message);
         await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'failed', error: String(error?.message || error) });
     }
 }
 
-/**
- * NTFY.sh - Free System Notification Service
- * To receive these: Download 'ntfy' app on phone and subscribe to topic set in .env
- */
 async function sendNTFYNotification(alertId: string, alertData: any, isReminder = false) {
-    const topic = process.env.NTFY_TOPIC?.trim();
+    const deviceId = alertData.device_id;
+    let topic = process.env.NTFY_TOPIC?.trim();
+    try {
+        const deviceSnap = await getDb().collection('devices').doc(deviceId).get();
+        const customTopic = deviceSnap.data()?.ntfy_topic;
+        if (customTopic) topic = customTopic;
+    } catch (e) {}
     if (!topic) {
         await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'skipped', reason: 'missing_topic' });
         return;
     }
-
     try {
-        if (!isReminder && await shouldSkipByDedupe(alertId, 'ntfy')) {
+        if (!isReminder && await shouldSkipByDedupe(alertId, 'ntfy', deviceId, alertData.severity)) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'skipped', reason: 'dedupe' });
             return;
         }
@@ -513,146 +544,111 @@ async function sendNTFYNotification(alertId: string, alertData: any, isReminder 
             }
         });
         if (response.ok) {
-            console.log(`📲 NTFY System Notification sent to topic: ${topic}`);
             await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'success', topic, is_reminder: isReminder });
         } else {
             await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'failed', error: `HTTP ${response.status}` });
         }
     } catch (error) {
-        console.error('❌ NTFY delivery failed:', error);
         await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'failed', error: String(error) });
     }
 }
 
-/**
- * IFTTT Webhook Trigger — fires only when rate limit allows
- */
+async function fetchWithBackoff(url: string, options: RequestInit, maxAttempts = 3): Promise<Response> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const res = await fetch(url, options);
+            if (res.ok || res.status < 500) return res;
+            throw new Error(`HTTP ${res.status}`);
+        } catch (err) {
+            lastError = err;
+            if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
+        }
+    }
+    throw lastError;
+}
+
 async function triggerIFTTTWebhook(alertId: string, alertData: any, isReminder = false) {
     const key = process.env.IFTTT_WEBHOOK_KEY;
     const event = process.env.IFTTT_EVENT_NAME || 'tds_alert';
     if (!key) {
-        console.log('ℹ️ IFTTT skipped: IFTTT_WEBHOOK_KEY not set.');
         await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'skipped', reason: 'missing_key' });
         return;
     }
-
     try {
-        if (!isReminder && await shouldSkipByDedupe(alertId, 'ifttt')) {
+        if (!isReminder && await shouldSkipByDedupe(alertId, 'ifttt', alertData.device_id, alertData.severity)) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'skipped', reason: 'dedupe' });
             return;
         }
-        const response = await fetch(`https://maker.ifttt.com/trigger/${event}/with/key/${key}`, {
+        const response = await fetchWithBackoff(`https://maker.ifttt.com/trigger/${event}/with/key/${key}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 value1: alertData.device_name || alertData.device_id,
                 value2: isReminder ? 'reminder' : alertData.severity,
-                value3: alertData.message
-            })
+                value3: alertData.message,
+            }),
         });
         if (response.ok) {
-            console.log(`🔗 IFTTT Webhook triggered: event="${event}" device="${alertData.device_name || alertData.device_id}"`);
             await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'success', event, is_reminder: isReminder });
         } else {
-            console.warn(`⚠️ IFTTT responded with status ${response.status}`);
-            await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'failed', error: `HTTP ${response.status}` });
+            await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'failed', error: `HTTP ${response.status}`, reason: 'bad_status' });
         }
     } catch (error) {
-        console.error('❌ IFTTT trigger failed:', error);
-        await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'failed', error: String(error) });
+        await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'failed', error: String(error), reason: 'exception_after_retry' });
     }
 }
 
-/**
- * Hourly Reminder Job — triggered by scheduler
- * Finds all critical devices and resends notifications
- */
 export async function sendHourlyReminders() {
     console.log('⏰ [REMINDER JOB] Starting hourly reminder dispatch...');
     const redis = getRedis();
     const deviceIds = await redis.sMembers('devices:all');
-
-    if (!deviceIds || deviceIds.length === 0) {
-        console.log('ℹ️ [REMINDER JOB] No devices found, skipping.');
-        return;
-    }
-
+    if (!deviceIds || deviceIds.length === 0) return;
     let dispatchCount = 0;
-
     for (const id of deviceIds) {
         try {
             const device = await hgetall<Device>(`device:${id}`);
-            if (!device || device.status !== 'critical') continue;
-
-            // Find the most recent open alert for this device
+            if (!device) continue;
+            const deviceSeverity = String((device as any).severity || device.status || '').toLowerCase();
+            const isEscalated = deviceSeverity === 'critical' || deviceSeverity === 'high' || device.status === 'critical';
+            if (!isEscalated) continue;
             const openAlertIds = await redis.sMembers(`device:${id}:alerts:open`);
-            if (!openAlertIds || openAlertIds.length === 0) {
-                console.log(`⚠️ [REMINDER JOB] Device ${id} is critical but has no open alerts in Redis.`);
-                continue;
-            }
-
-            // For reminders, we'll just take the first open alert (usually only one exists due to checkThresholds logic)
+            if (!openAlertIds || openAlertIds.length === 0) continue;
             const alertId = openAlertIds[0];
             const alertData = await hgetall<Alert>(`alert:${alertId}`);
-
-            if (!alertData) {
-                console.log(`⚠️ [REMINDER JOB] Could not find alert data for ${alertId}`);
+            if (!alertData) continue;
+            const fsAlert = await getDb().collection('alerts').doc(alertId).get();
+            if (!fsAlert.exists || fsAlert.data()?.status !== 'open') {
+                await redis.sRem(`device:${id}:alerts:open`, alertId);
                 continue;
             }
-
             console.log(`🔔 [REMINDER JOB] Dispatching hourly reminder for device: ${device.name || id}`);
-            
-            // Dispatch to all channels with isReminder = true
             await Promise.all([
                 sendPushNotification(alertId, alertData, true),
                 sendWhatsAppNotification(alertId, alertData, true),
                 sendNTFYNotification(alertId, alertData, true),
                 triggerIFTTTWebhook(alertId, alertData, true)
             ]);
-
             dispatchCount++;
-        } catch (error) {
-            console.error(`❌ [REMINDER JOB] Failed to process reminder for device ${id}:`, error);
-        }
+        } catch (error) { console.error(`❌ [REMINDER JOB] Failed for device ${id}:`, error); }
     }
-
-    console.log(`✅ [REMINDER JOB] Finished. Dispatched reminders for ${dispatchCount} devices.`);
+    console.log(`✅ [REMINDER JOB] Finished for ${dispatchCount} devices.`);
 }
 
-/**
- * Manual test notification — triggered via POST /api/notifications/test
- * Bypasses rate limiting (it's a manual test)
- */
 export async function triggerManualTestNotification(deviceId: string, deviceName: string, message: string) {
-    const alertData = {
-        device_id: deviceId,
-        device_name: deviceName,
-        severity: 'critical',
-        message,
-        type: 'TEST',
-        status: 'open',
-    };
-
-    console.log(`🧪 [TEST] Firing manual test notification for device ${deviceId}`);
+    const alertData = { device_id: deviceId, device_name: deviceName, severity: 'critical', message, type: 'TEST', status: 'open' };
     const alertId = 'test-' + Date.now();
     await sendPushNotification(alertId, alertData);
     await sendWhatsAppNotification(alertId, alertData);
     await sendNTFYNotification(alertId, alertData);
     await triggerIFTTTWebhook(alertId, alertData);
-    console.log(`✅ [TEST] Manual test notification dispatched.`);
 }
 
-/**
- * Logic for the WhatsApp Webhook (responding to messages)
- */
 export async function handleWhatsAppWebhook(reqBody: any) {
     const body = reqBody.Body ? reqBody.Body.trim().toUpperCase() : "";
     const from = reqBody.From;
-
     console.log(`📩 Received WhatsApp from ${from}: ${body}`);
-
     let reply = "Hello! I am the EvaraTDS Monitor Bot. \n\nCommands:\n- STATUS: Get latest readings\n- HELP: List commands";
-
     if (body === "STATUS") {
         try {
             const db = getDb();
@@ -663,16 +659,11 @@ export async function handleWhatsAppWebhook(reqBody: any) {
                 reply = "📊 *Latest TDS Readings:*\n";
                 devicesSnap.forEach(doc => {
                     const d = doc.data();
-                    reply += `\n📍 *${d.location_name || d.name}*\n`;
-                    reply += `TDS: ${d.last_tds || "N/A"} PPM\n`;
-                    reply += `Status: ${d.status === "online" ? "🟢" : "🔴"} ${d.status.toUpperCase()}\n`;
+                    reply += `\n📍 *${d.location_name || d.name}*\nTDS: ${d.last_tds || "N/A"} PPM\nStatus: ${d.status === "online" ? "🟢" : "🔴"} ${d.status.toUpperCase()}\n`;
                 });
             }
-        } catch (err) {
-            reply = "Sorry, I had trouble fetching the status.";
-        }
+        } catch (err) { reply = "Sorry, I had trouble fetching the status."; }
     }
-
     const twiml = new twilio.twiml.MessagingResponse();
     twiml.message(reply);
     return twiml.toString();
