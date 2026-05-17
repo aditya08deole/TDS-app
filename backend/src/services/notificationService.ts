@@ -272,7 +272,13 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 1): Promise<T
     throw lastError;
 }
 
+// Fix: Decouple delivery from rate-limiting to ensure Escalations (30m, 120m) work
+// even if the 1-hour global safety lock is active.
 async function isRateLimited(deviceId: string, channel = 'global'): Promise<boolean> {
+    // For WhatsApp, we rely on the specific Tier state logic in shouldSkipByDedupe
+    // so we return false here to let the Tier logic decide.
+    if (channel === 'whatsapp') return false;
+    
     const exists = await getRedis().exists(RATE_LIMIT_KEY(deviceId, channel));
     return exists === 1;
 }
