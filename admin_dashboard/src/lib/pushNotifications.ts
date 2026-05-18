@@ -13,7 +13,16 @@ import { getApiBaseUrl } from './remoteConfig';
  */
 
 // Fix #18: POST native token to backend so it's stored alongside web FCM tokens
-async function registerNativeTokenWithBackend(token: string, userId: string | null): Promise<void> {
+// Fix #22: Ensure token is registered AFTER user is authenticated
+async function registerNativeTokenWithBackend(token: string, userId: string | null, maxRetries: number = 3): Promise<void> {
+  if (!userId || userId === 'unknown' || userId === 'anonymous') {
+    console.warn('[FCM-REGISTER] ⏳ User not authenticated yet - token registration deferred');
+    // Store token for later registration
+    const { storage } = await import('./storage');
+    await storage.set('fcm_pending_token', token);
+    return;
+  }
+
   try {
     const { storage } = await import('./storage');
     const base = getApiBaseUrl();
@@ -24,16 +33,16 @@ async function registerNativeTokenWithBackend(token: string, userId: string | nu
     
     console.log(`[FCM-REGISTER] POST ${base}/api/notifications/register-token`);
     console.log(`[FCM-REGISTER] Token: ${token.substring(0, 20)}... (length: ${token.length})`);
-    console.log(`[FCM-REGISTER] User: ${userId || 'anonymous'}`);
+    console.log(`[FCM-REGISTER] User: ${userId}`);
     console.log(`[FCM-REGISTER] Platform: android_native`);
     
     const res = await fetch(`${base}/api/notifications/register-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        token,
+        token: token.trim(),
         platform: 'android_native',
-        userId: userId || 'unknown',
+        userId: String(userId).trim(),
         userAgent: navigator.userAgent,
       }),
     });
@@ -43,12 +52,19 @@ async function registerNativeTokenWithBackend(token: string, userId: string | nu
       const errMsg = `Registration failed: ${res.status} - ${err.error || 'Unknown error'}`;
       console.error('❌ ' + errMsg);
       await storage.set('fcm_registration_error', errMsg);
+      
+      // Retry on network failure
+      if (maxRetries > 0 && res.status >= 500) {
+        console.log(`[FCM-REGISTER] Retrying in 5 seconds... (${maxRetries} retries left)`);
+        setTimeout(() => registerNativeTokenWithBackend(token, userId, maxRetries - 1), 5000);
+      }
     } else {
       const data = await res.json().catch(() => ({}));
       console.log('✅ Native FCM token registered with backend.');
       console.log(`[FCM-REGISTER] Response: ${JSON.stringify(data)}`);
       await storage.set('fcm_registration_error', ''); // Clear error
       await storage.set('fcm_token_timestamp', attemptTime); // Mark success
+      await storage.set('fcm_pending_token', ''); // Clear pending
     }
   } catch (err: any) {
     const errMsg = `Network error: ${err?.message || String(err)}`;
@@ -144,4 +160,21 @@ export const initPushNotifications = async (userId?: string | null) => {
  */
 export const getFCMToken = async (): Promise<string | null> => {
   return await storage.get('fcm_token');
+};
+
+/**
+ * Fix #22: Retry registering pending tokens when user authenticates
+ */
+export const retryPendingTokenRegistration = async (userId: string | null): Promise<void> => {
+  if (!userId) return;
+  
+  try {
+    const pendingToken = await storage.get('fcm_pending_token');
+    if (pendingToken) {
+      console.log('[FCM-REGISTER] 🔄 Retrying pending token registration now that user is authenticated');
+      await registerNativeTokenWithBackend(pendingToken, userId);
+    }
+  } catch (err) {
+    console.error('[FCM-REGISTER] Error retrying pending token:', err);
+  }
 };

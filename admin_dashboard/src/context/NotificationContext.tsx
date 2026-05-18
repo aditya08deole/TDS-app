@@ -5,7 +5,7 @@ import { useAuth } from './AuthContext'
 import { onMessage, getToken } from 'firebase/messaging'
 import { toast } from 'sonner'
 import { storage } from '../lib/storage'
-import { initPushNotifications, getFCMToken } from '../lib/pushNotifications'
+import { initPushNotifications, getFCMToken, retryPendingTokenRegistration } from '../lib/pushNotifications'
 import { Capacitor } from '@capacitor/core'
 import { playSoundIfEnabled } from '../lib/soundService'
 
@@ -98,6 +98,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     useEffect(() => {
         if (isNative) {
             initPushNotifications(user?.uid ?? null);
+        }
+    }, [user?.uid]);
+    
+    // Fix #22: Retry pending token registration when user authenticates
+    useEffect(() => {
+        if (user?.uid && isNative) {
+            retryPendingTokenRegistration(user.uid);
         }
     }, [user?.uid]);
 

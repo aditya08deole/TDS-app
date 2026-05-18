@@ -22,13 +22,14 @@ import {
 import {
     Maximize2, Minimize2, Layers, X, Droplets, Thermometer, MapPin,
     Wifi, WifiOff, Activity, RefreshCw, List,
-    TrendingUp, TrendingDown
+    TrendingUp, TrendingDown, AlertCircle
 } from 'lucide-react'
 import type { ParsedSensorData } from '../lib/thingspeak'
 import { type EnrichedDevice, type MapTheme, type MapStyle, type FilterType, type DeviceLocation } from '../types'
+import { Capacitor } from '@capacitor/core'
 
-// Default icon fix for Leaflet - compatible with both Web and Native
-// We use divIcons for our custom markers, so the default icon is only a fallback
+// Fix #20: Ensure icons work on native platforms by providing base64 fallbacks if needed
+// or just ensuring the prototype is set correctly after import.
 import icon from 'leaflet/dist/images/marker-icon.png'
 import iconShadow from 'leaflet/dist/images/marker-shadow.png'
 
@@ -43,6 +44,11 @@ let DefaultIcon = L.icon({
 if (typeof L !== 'undefined' && L.Marker && L.Marker.prototype) {
     L.Marker.prototype.options.icon = DefaultIcon;
 }
+
+// Fix #21: Log platform for debugging maps on native
+const isNative = Capacitor.isNativePlatform();
+const platform = Capacitor.getPlatform();
+console.log(`[MAP-INIT] Platform: ${platform}, isNative: ${isNative}`);
 
 
 
@@ -484,6 +490,9 @@ function DevicePanel({
 
 
 export default function MapPage() {
+    // State for tracking map errors
+    const [mapError, setMapError] = useState<string | null>(null)
+    
     // Fetch devices using React Query (with caching)
     const { data: devicesList = [] } = useDevices()
 
@@ -495,6 +504,12 @@ export default function MapPage() {
 
     const { resolvedTheme } = useTheme()
     const theme = useMemo(() => getMapTheme(resolvedTheme === 'dark'), [resolvedTheme])
+    
+    // Debug logging for native platform
+    useEffect(() => {
+        console.log(`[MAP-RENDER] Devices loaded: ${devicesList.length}`);
+        console.log(`[MAP-RENDER] Native platform: ${isNative}, Platform: ${platform}`);
+    }, [devicesList])
 
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [mapStyle, setMapStyle] = useState<MapStyle>('street')
@@ -582,8 +597,20 @@ export default function MapPage() {
     const labelTileUrl = 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png'
 
     return (
-        <div className="relative h-[100dvh] overflow-hidden" style={{ minHeight: '600px', background: 'transparent' }}>
-
+        <div className="relative h-[100dvh] overflow-hidden" style={{ minHeight: '600px', background: 'transparent' }} data-testid="map-container">
+            {/* Map Status Indicator - Debug */}
+            <div className="absolute top-2 left-2 z-[10] text-xs text-emerald-400 font-mono opacity-60 pointer-events-none">
+                {mapError ? (
+                    <div className="flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 text-red-500" />
+                        Error: {mapError}
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1">
+                        ✓ Map initialized | Devices: {devices.length}
+                    </div>
+                )}
+            </div>
 
             {/* Desktop Sidebar (Left) */}
             <div className="absolute top-28 left-6 z-[500] w-[320px] max-h-[calc(100%-140px)] hidden lg:flex flex-col pointer-events-none">

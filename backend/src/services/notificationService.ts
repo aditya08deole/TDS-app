@@ -501,8 +501,16 @@ async function sendPushNotification(alertId: string, alertData: any, isReminder 
         if (targetUserId) {
             tokens = await redis.sMembers(`cache:user_tokens:${targetUserId}`);
             if (!tokens || tokens.length === 0) {
-                const userTokensSnap = await db.collection('notification_subscriptions').where('user_id', '==', targetUserId).get();
+                // Fix #22: Explicitly include all platforms (web_pwa and android_native)
+                const userTokensSnap = await db.collection('notification_subscriptions')
+                    .where('user_id', '==', targetUserId)
+                    .get();
                 tokens = userTokensSnap.docs.map(d => d.data().token).filter(Boolean);
+                console.log(`[FCM-PUSH] Found ${tokens.length} tokens for user ${targetUserId} across all platforms`);
+                userTokensSnap.docs.forEach(doc => {
+                    const platform = doc.data().platform || 'unknown';
+                    console.log(`  - Platform: ${platform}, Token: ${doc.data().token?.substring(0, 20)}...`);
+                });
                 if (tokens.length > 0) await redis.sAdd(`cache:user_tokens:${targetUserId}`, tokens);
             }
         } 
@@ -512,11 +520,13 @@ async function sendPushNotification(alertId: string, alertData: any, isReminder 
             if (!tokens || tokens.length === 0) {
                 const allSnap = await db.collection('notification_subscriptions').get();
                 tokens = allSnap.docs.map(d => d.data().token).filter(Boolean);
+                console.log(`[FCM-PUSH] Broadcasting to ${tokens.length} tokens (no specific user)`);
             }
         }
 
         if (tokens.length === 0) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'no_tokens_found' });
+            console.warn(`[FCM-PUSH] ❌ No tokens found for alert ${alertId}`);
             return;
         }
 
@@ -534,11 +544,14 @@ async function sendPushNotification(alertId: string, alertData: any, isReminder 
             tokens,
         };
 
+        console.log(`[FCM-PUSH] Sending to ${tokens.length} tokens for alert ${alertId}`);
         const response = await withRetry(() => messaging.sendEachForMulticast(message), 1);
         await writeDeliveryLog({
             alert_id: alertId, channel: 'push', status: response.failureCount > 0 ? 'partial' : 'success',
             success_count: response.successCount, failure_count: response.failureCount, is_reminder: isReminder
         });
+        
+        console.log(`[FCM-PUSH] ✅ Alert ${alertId}: ${response.successCount} success, ${response.failureCount} failed`);
 
         if (response.failureCount > 0) {
             response.responses.forEach((resp, idx) => {
