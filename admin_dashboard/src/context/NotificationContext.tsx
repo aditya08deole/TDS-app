@@ -158,23 +158,44 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     // Handle incoming messages
     useEffect(() => {
-        if (!messaging || isNative) return // Native has its own listeners in pushNotifications.ts
-        const unsubscribe = onMessage(messaging, (payload) => {
-            console.log('🔔 Foreground Message:', payload)
-            toast.error(payload.notification?.title || 'System Alert', {
-                description: payload.notification?.body,
-                duration: 5000,
-                action: {
-                    label: 'View',
-                    onClick: () => {
-                        window.focus()
-                        if (payload.data?.url) window.location.href = payload.data.url
+        if (isNative) {
+            // Fix #18: Native Foreground Message Listener
+            const setupNativeListener = async () => {
+                const { PushNotifications } = await import('@capacitor/push-notifications');
+                const handler = await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+                    console.log('🔔 [FCM-NATIVE] Foreground Message:', notification);
+                    toast.error(notification.title || 'System Alert', {
+                        description: notification.body,
+                        duration: 5000,
+                    });
+                    playSound(notification.data?.severity === 'critical' ? 'error' : 'warning');
+                });
+                return handler;
+            };
+
+            const handlerPromise = setupNativeListener();
+            return () => {
+                handlerPromise.then(h => h.remove());
+            };
+        } else if (messaging) {
+            // Web Foreground Listener
+            const unsubscribe = onMessage(messaging, (payload) => {
+                console.log('🔔 Foreground Message:', payload)
+                toast.error(payload.notification?.title || 'System Alert', {
+                    description: payload.notification?.body,
+                    duration: 5000,
+                    action: {
+                        label: 'View',
+                        onClick: () => {
+                            window.focus()
+                            if (payload.data?.url) window.location.href = payload.data.url
+                        }
                     }
-                }
+                })
+                playSound(payload.data?.severity === 'critical' ? 'error' : 'warning')
             })
-            playSound(payload.data?.severity === 'critical' ? 'error' : 'warning')
-        })
-        return () => unsubscribe()
+            return () => unsubscribe()
+        }
     }, [playSound])
 
     const testNotification = useCallback(() => {

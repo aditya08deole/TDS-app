@@ -1,11 +1,7 @@
 import { PushNotifications, type Token, type PushNotificationSchema, type ActionPerformed } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 import { storage } from './storage';
-
-// Inline helper — reads VITE_BACKEND_URL (set in .env) or falls back to localhost
-function getApiBaseUrl(): string {
-    return (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:3001';
-}
+import { getApiBaseUrl } from './remoteConfig';
 
 /**
  * Native Push Notification Handler — EvaraTDS Production
@@ -69,6 +65,25 @@ export const initPushNotifications = async (userId?: string | null) => {
   }
 
   console.log(`[FCM-INIT] Starting on ${Capacitor.getPlatform()}...`);
+
+  // Create notification channel for Android (Fix #19)
+  if (Capacitor.getPlatform() === 'android') {
+    try {
+      await PushNotifications.createChannel({
+        id: 'evara_alerts',
+        name: 'EvaraTDS Alerts',
+        description: 'Critical water quality alerts',
+        importance: 5, // High/Urgent
+        visibility: 1, // Public
+        vibration: true,
+        lights: true,
+        lightColor: '#ff0055'
+      });
+      console.log('[FCM-INIT] Notification channel "evara_alerts" created.');
+    } catch (err) {
+      console.error('[FCM-INIT] Failed to create notification channel:', err);
+    }
+  }
 
   // Request permissions
   let permStatus = await PushNotifications.checkPermissions();

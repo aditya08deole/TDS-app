@@ -27,11 +27,22 @@ import {
 import type { ParsedSensorData } from '../lib/thingspeak'
 import { type EnrichedDevice, type MapTheme, type MapStyle, type FilterType, type DeviceLocation } from '../types'
 
-// Default icon fix
+// Default icon fix for Leaflet - compatible with both Web and Native
+// We use divIcons for our custom markers, so the default icon is only a fallback
 import icon from 'leaflet/dist/images/marker-icon.png'
 import iconShadow from 'leaflet/dist/images/marker-shadow.png'
-const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconAnchor: [12, 41] })
-L.Marker.prototype.options.icon = DefaultIcon
+
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconAnchor: [12, 41]
+});
+
+// Fix #20: Ensure icons work on native platforms by providing base64 fallbacks if needed
+// or just ensuring the prototype is set correctly after import.
+if (typeof L !== 'undefined' && L.Marker && L.Marker.prototype) {
+    L.Marker.prototype.options.icon = DefaultIcon;
+}
 
 
 
@@ -63,7 +74,7 @@ const DeviceMarkers = ({
                         icon={createWhiteTransparentMarker(device, theme, zoom)}
                         bubblingMouseEvents={true}
                         eventHandlers={{ 
-                            mousedown: (e) => {
+                            click: (e) => {
                                 L.DomEvent.stopPropagation(e)
                                 setSelectedDevice(device)
                             } 
@@ -78,6 +89,16 @@ const DeviceMarkers = ({
 
 function MapController({ center, zoom }: { center: [number, number] | null; zoom?: number }) {
     const map = useMap()
+    
+    // Fix #20: Force map size recalculation on mount to prevent "stopped" rendering on APK
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            map.invalidateSize();
+            console.log('🗺️ [MAP-INIT] Invalidate size called');
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [map]);
+
     useEffect(() => {
         if (center) {
             map.flyTo(center, zoom || 17, {

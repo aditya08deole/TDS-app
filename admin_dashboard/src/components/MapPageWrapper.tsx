@@ -3,8 +3,7 @@
  * Detects platform and either shows map or fallback
  */
 
-import { isNativeApp } from '../lib/platform';
-import { AlertTriangle, MapPin } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 
 interface MapPageWrapperProps {
   children: React.ReactNode;
@@ -14,41 +13,7 @@ interface MapPageWrapperProps {
  * Wraps map page with error boundary for mobile
  */
 export function MapPageWrapper({ children }: MapPageWrapperProps) {
-  // On native/mobile, show warning about map not fully supported yet
-  if (isNativeApp()) {
-    return (
-      <div className="w-full h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900">
-        <div className="text-center space-y-4 max-w-md px-6">
-          <div className="flex justify-center">
-            <div className="p-4 rounded-full bg-yellow-500/10 border border-yellow-500/20">
-              <AlertTriangle className="w-8 h-8 text-yellow-500" />
-            </div>
-          </div>
-          
-          <h2 className="text-2xl font-bold text-white">Maps Coming Soon</h2>
-          
-          <p className="text-muted-foreground">
-            Map view is currently being optimized for mobile. 
-            Use the <strong>Device List</strong> to view and monitor devices.
-          </p>
-
-          <div className="pt-4 space-y-2">
-            <p className="text-sm text-muted-foreground">✅ Web version: Maps work great</p>
-            <p className="text-sm text-muted-foreground">📱 Mobile version: Coming in next update</p>
-          </div>
-
-          <a
-            href="/"
-            className="inline-block mt-6 px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors"
-          >
-            Go to Dashboard
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  // On web, render the map normally
+  // Always render the map on both web and native apps
   return <>{children}</>;
 }
 
