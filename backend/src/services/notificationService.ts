@@ -630,7 +630,7 @@ async function sendNTFYNotification(alertId: string, alertData: any, isReminder 
             method: 'POST',
             body: `${prefix}Location: ${location} | TDS: ${ppm} ppm | Time: ${time} | Severity: ${String(alertData.severity || 'critical').toUpperCase()}\n\nMessage: ${alertData.message}`,
             headers: {
-                'Title': `${isReminder ? '⏰ ' : '🚨 '}TDS ALERT: ${String(location).replace(/[^\x00-\xFF]/g, '')}`,
+                'Title': `${isReminder ? 'Reminder: ' : ''}TDS ALERT: ${String(location).replace(/[^\x00-\xFF]/g, '')}`,
                 'Priority': 'urgent',
                 'Tags': isReminder ? 'alarm_clock' : 'rotating_light,skull'
             }
