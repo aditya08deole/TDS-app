@@ -128,6 +128,8 @@ router.post('/register-token', async (req: Request, res: Response) => {
         const tokenHash = Buffer.from(token).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 24);
         const docId = `${safeUserId}_${tokenHash}`;
 
+        console.log(`[FCM-REGISTER] Storing token for user=${safeUserId}, platform=${platform}, docId=${docId}`);
+
         await db.collection('notification_subscriptions').doc(docId).set({
             token: token.trim(),
             user_id: safeUserId,
@@ -137,11 +139,136 @@ router.post('/register-token', async (req: Request, res: Response) => {
             created_at: new Date().toISOString(),
         }, { merge: true });
 
-        console.log(`✅ [register-token] Native token registered for user ${safeUserId} (${platform || 'android_native'})`);
+        console.log(`✅ [FCM-REGISTER] Token registered (${token.substring(0, 20)}...)`);
         return res.status(200).json({ success: true, docId, timestamp: new Date().toISOString() });
     } catch (error: any) {
-        console.error('❌ [register-token] Failed:', error);
+        console.error('❌ [FCM-REGISTER] Failed:', error);
         return res.status(500).json({ success: false, error: error.message || 'Internal server error.' });
+    }
+});
+
+/**
+ * POST /api/notifications/verify-token
+ * Fix #7: Verify that a token exists in our system
+ */
+router.post('/verify-token', async (req: Request, res: Response) => {
+    const { token } = req.body;
+
+    if (!token || typeof token !== 'string') {
+        return res.status(400).json({ success: false, error: 'Token is required.' });
+    }
+
+    try {
+        const { getFirestore } = await import('firebase-admin/firestore');
+        const db = getFirestore();
+
+        const snapshot = await db.collection('notification_subscriptions')
+            .where('token', '==', token.trim())
+            .limit(1)
+            .get();
+
+        if (snapshot.empty) {
+            console.log(`⚠️ [FCM-VERIFY] Token not found: ${token.substring(0, 20)}...`);
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Token not found in system',
+                token_registered: false
+            });
+        }
+
+        const doc = snapshot.docs[0];
+        const data = doc.data();
+        console.log(`✅ [FCM-VERIFY] Token verified: user=${data.user_id}, platform=${data.platform}`);
+        
+        return res.status(200).json({
+            success: true,
+            token_registered: true,
+            user_id: data.user_id,
+            platform: data.platform,
+            created_at: data.created_at,
+            updated_at: data.updated_at
+        });
+    } catch (error: any) {
+        console.error('❌ [FCM-VERIFY] Error:', error);
+        return res.status(500).json({ success: false, error: error.message || 'Internal server error.' });
+    }
+});
+
+/**
+ * POST /api/notifications/test-token
+ * Fix #7: Send a test notification to a specific token
+ */
+router.post('/test-token', requireRole('admin'), async (req: Request, res: Response) => {
+    const { token, message } = req.body;
+
+    if (!token || typeof token !== 'string') {
+        return res.status(400).json({ success: false, error: 'Token is required.' });
+    }
+
+    try {
+        const { getMessaging } = await import('firebase-admin/messaging');
+        const messaging = getMessaging();
+
+        console.log(`[FCM-TEST] Sending test notification to token: ${token.substring(0, 20)}...`);
+        
+        const response = await messaging.send({
+            notification: {
+                title: '🧪 Test Notification',
+                body: message || 'This is a test notification from EvaraTDS',
+            },
+            data: {
+                source: 'test',
+                timestamp: new Date().toISOString(),
+            },
+            token: token.trim(),
+        });
+
+        console.log(`✅ [FCM-TEST] Test sent successfully: ${response}`);
+        return res.status(200).json({
+            success: true,
+            messageId: response,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error: any) {
+        console.error('❌ [FCM-TEST] Failed:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to send test notification',
+            errorCode: error.code
+        });
+    }
+});
+
+/**
+ * GET /api/notifications/tokens
+ * Fix #7: List all registered tokens (admin only)
+ */
+router.get('/tokens', requireRole('admin'), async (req: Request, res: Response) => {
+    try {
+        const { getFirestore } = await import('firebase-admin/firestore');
+        const db = getFirestore();
+
+        const snapshot = await db.collection('notification_subscriptions').get();
+        
+        const tokens = snapshot.docs.map(doc => ({
+            id: doc.id,
+            user_id: doc.data().user_id,
+            platform: doc.data().platform,
+            token_preview: (doc.data().token || '').substring(0, 20) + '...',
+            created_at: doc.data().created_at,
+            updated_at: doc.data().updated_at,
+        }));
+
+        console.log(`✅ [FCM-LIST] Retrieved ${tokens.length} tokens`);
+        return res.status(200).json({
+            success: true,
+            total: tokens.length,
+            data: tokens,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error: any) {
+        console.error('❌ [FCM-LIST] Error:', error);
+        return res.status(500).json({ success: false, error: error.message });
     }
 });
 

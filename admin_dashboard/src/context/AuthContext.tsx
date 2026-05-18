@@ -3,6 +3,7 @@ import type { User } from 'firebase/auth'
 import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../lib/firebase'
+import { initTokenRefresh, clearSession } from '../lib/tokenRefresh'
 
 export type Profile = {
     id: string
@@ -96,12 +97,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(firebaseUser)
             
             if (firebaseUser) {
+                // Fix #11: Initialize token refresh on login
+                await initTokenRefresh(firebaseUser);
+                
                 // Fetch config and profile in parallel
                 Promise.all([
                     fetchProfile(firebaseUser.uid, firebaseUser.email),
                     fetchAdminConfig()
                 ]).catch(err => console.error('Auth post-processing failed:', err));
             } else {
+                // Fix #11: Clear session on logout
+                await clearSession();
+                
                 setProfile(null)
                 setLoading(false)
             }
@@ -112,6 +119,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, []) // Run once on mount. fetchProfile/fetchAdminConfig are stable enough or handled via latest state in callback.
 
     const signOut = React.useCallback(async () => {
+        // Fix #11: Clear session before signout
+        await clearSession();
         await firebaseSignOut(auth)
     }, [])
 

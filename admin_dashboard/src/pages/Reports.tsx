@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { 
     useUptimeStats, 
     useSystemHealthLogs 
@@ -14,18 +14,30 @@ import {
     Server,
     Database
 } from 'lucide-react'
-// import { useUI } from '../context/UIContext'
 import { GlassCard } from '../components/GlassCard'
+import { ChartWrapper, ChartTableFallback } from '../components/ChartWrapper'
+import { isNativeApp } from '../lib/platform'
+import { exportAnalyticsCSV } from '../lib/exportService'
 
 export default function Reports() {
-    // const { isOffline } = useUI()
     const [activeTab, setActiveTab] = useState<'analytics' | 'health'>('analytics')
     const [days, setDays] = useState(30)
+    const [isMobile, setIsMobile] = useState(isNativeApp())
+    const [exporting, setExporting] = useState(false)
     
     const { data: uptimeData, isLoading: loadingUptime } = useUptimeStats()
     const { data: healthLogs, isLoading: loadingHealth } = useSystemHealthLogs(50)
 
     const loading = activeTab === 'analytics' ? loadingUptime : loadingHealth
+    
+    // Listen for mobile resize
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
     
     // Process uptime data
     const stats = useMemo(() => {
@@ -34,9 +46,9 @@ export default function Reports() {
             device_id: s.device_id,
             device_name: s.device_name || 'Unknown',
             uptime_percent: s.uptime_percentage,
-            total_online_seconds: (s.uptime_percentage / 100) * 30 * 24 * 3600, // Approximate for display
+            total_online_seconds: (s.uptime_percentage / 100) * 30 * 24 * 3600,
             total_tracked_seconds: 30 * 24 * 3600,
-            outage_count: Math.round(s.downtime_minutes / 10) // Rough estimate
+            outage_count: Math.round(s.downtime_minutes / 10)
         }))
     }, [uptimeData])
 
@@ -48,7 +60,20 @@ export default function Reports() {
         return { avgUptime, totalOutages }
     }, [stats])
 
-    const handleDownloadCSV = () => {
+    const handleDownloadCSV = async () => {
+        try {
+            setExporting(true);
+            await exportAnalyticsCSV(stats);
+        } catch (error) {
+            console.error('Export failed:', error);
+            alert('Failed to export data. Please try again.');
+        } finally {
+            setExporting(false);
+        }
+    }
+
+    // @ts-ignore
+    const handleDownloadCSV_Legacy = () => {
         const headers = ["Device Name", "Uptime %", "Outages", "Total Tracked (hrs)", "Online (hrs)"]
         const rows = stats.map(s => [
             s.device_name,
@@ -118,9 +143,9 @@ export default function Reports() {
                         <button
                             onClick={handleDownloadCSV}
                             className="flex items-center gap-2 px-4 py-2 glass-system-child text-primary-foreground rounded-lg text-xs font-bold transition-all border-white/20 hover:scale-[1.02] active:scale-95 disabled:opacity-50"
-                            disabled={loading || stats.length === 0}
+                            disabled={exporting || loading || stats.length === 0}
                         >
-                            <Download className="h-4 w-4" /> Export CSV
+                            <Download className="h-4 w-4" /> {exporting ? 'Exporting...' : 'Export CSV'}
                         </button>
                     </div>
 
@@ -155,70 +180,83 @@ export default function Reports() {
                         </GlassCard>
                     </div>
 
-                    {/* Data Table */}
-                    <GlassCard size="lg" className="overflow-hidden border border-accent">
-                        <div className="p-4 border-b border-accent flex items-center justify-between">
-                            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                                <FileText className="h-4 w-4 text-muted-foreground" /> Availability Report
-                            </h3>
-                            <span className="text-xs text-muted-foreground">Generated {new Date().toLocaleDateString()}</span>
-                        </div>
+                    {/* Data Table with Mobile Fallback */}
+                    {isMobile && stats.length > 0 ? (
+                        <ChartWrapper title="Mobile Availability Report" minHeight="200px">
+                            <ChartTableFallback
+                                title="Device Status"
+                                data={stats.map(s => ({
+                                    label: s.device_name,
+                                    value: `${s.uptime_percent.toFixed(1)}% uptime`,
+                                    color: s.uptime_percent > 99 ? 'text-emerald-500' : s.uptime_percent > 95 ? 'text-yellow-500' : 'text-red-500'
+                                }))}
+                            />
+                        </ChartWrapper>
+                    ) : (
+                        <GlassCard size="lg" className="overflow-hidden border border-accent">
+                            <div className="p-4 border-b border-accent flex items-center justify-between">
+                                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                    <FileText className="h-4 w-4 text-muted-foreground" /> Availability Report
+                                </h3>
+                                <span className="text-xs text-muted-foreground">Generated {new Date().toLocaleDateString()}</span>
+                            </div>
 
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="glass-system-child text-muted-foreground font-black uppercase tracking-widest text-[10px] border-b border-white/5">
-                                    <tr>
-                                        <th className="p-4">Device</th>
-                                        <th className="p-4">Uptime</th>
-                                        <th className="p-4">Outages</th>
-                                        <th className="p-4">Tracked Time</th>
-                                        <th className="p-4">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-accent">
-                                    {loading ? (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="glass-system-child text-muted-foreground font-black uppercase tracking-widest text-[10px] border-b border-white/5">
                                         <tr>
-                                            <td colSpan={5} className="p-8 text-center text-muted-foreground animate-pulse">Loading report data...</td>
+                                            <th className="p-4">Device</th>
+                                            <th className="p-4">Uptime</th>
+                                            <th className="p-4">Outages</th>
+                                            <th className="p-4">Tracked Time</th>
+                                            <th className="p-4">Status</th>
                                         </tr>
-                                    ) : stats.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={5} className="p-8 text-center text-muted-foreground">No data available for this period.</td>
-                                        </tr>
-                                    ) : (
-                                        stats.map(device => (
-                                            <tr key={device.device_id} className="hover:glass-system-child transition-colors group border-b border-white/5 last:border-0">
-                                                <td className="p-4 font-medium text-foreground">{device.device_name}</td>
-                                                <td className="p-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-16 h-1.5 glass-system-inset rounded-full overflow-hidden border-0">
-                                                            <div
-                                                                className={`h-full rounded-full shadow-[0_0_8px_rgba(16,185,129,0.4)] ${device.uptime_percent > 99 ? 'bg-emerald-500' : device.uptime_percent > 95 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                                                                style={{ width: `${device.uptime_percent}%` }}
-                                                            />
-                                                        </div>
-                                                        <span className={`font-mono ${device.uptime_percent > 99 ? 'text-emerald-500' : device.uptime_percent > 95 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500'}`}>
-                                                            {device.uptime_percent}%
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td className="p-4 text-foreground/70">{device.outage_count}</td>
-                                                <td className="p-4 text-muted-foreground font-mono">{(device.total_tracked_seconds / 3600).toFixed(1)}h</td>
-                                                <td className="p-4">
-                                                    {device.uptime_percent > 99 ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-500">Excellent</span>
-                                                    ) : device.uptime_percent > 90 ? (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/10 text-yellow-600 dark:text-yellow-500">Fair</span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-500">Poor</span>
-                                                    )}
-                                                </td>
+                                    </thead>
+                                    <tbody className="divide-y divide-accent">
+                                        {loading ? (
+                                            <tr>
+                                                <td colSpan={5} className="p-8 text-center text-muted-foreground animate-pulse">Loading report data...</td>
                                             </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </GlassCard>
+                                        ) : stats.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={5} className="p-8 text-center text-muted-foreground">No data available for this period.</td>
+                                            </tr>
+                                        ) : (
+                                            stats.map(device => (
+                                                <tr key={device.device_id} className="hover:glass-system-child transition-colors group border-b border-white/5 last:border-0">
+                                                    <td className="p-4 font-medium text-foreground text-xs sm:text-sm">{device.device_name}</td>
+                                                    <td className="p-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-12 sm:w-16 h-1.5 glass-system-inset rounded-full overflow-hidden border-0">
+                                                                <div
+                                                                    className={`h-full rounded-full shadow-[0_0_8px_rgba(16,185,129,0.4)] ${device.uptime_percent > 99 ? 'bg-emerald-500' : device.uptime_percent > 95 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                                                    style={{ width: `${device.uptime_percent}%` }}
+                                                                />
+                                                            </div>
+                                                            <span className={`font-mono text-xs ${device.uptime_percent > 99 ? 'text-emerald-500' : device.uptime_percent > 95 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500'}`}>
+                                                                {device.uptime_percent}%
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-4 text-foreground/70 text-xs sm:text-sm">{device.outage_count}</td>
+                                                    <td className="p-4 text-muted-foreground font-mono text-xs sm:text-sm">{(device.total_tracked_seconds / 3600).toFixed(1)}h</td>
+                                                    <td className="p-4">
+                                                        {device.uptime_percent > 99 ? (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-500">Excellent</span>
+                                                        ) : device.uptime_percent > 90 ? (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/10 text-yellow-600 dark:text-yellow-500">Fair</span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-500">Poor</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </GlassCard>
+                    )}
                 </>
             )}
 

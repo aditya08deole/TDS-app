@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { storage } from '../lib/storage'
 import { initPushNotifications, getFCMToken } from '../lib/pushNotifications'
 import { Capacitor } from '@capacitor/core'
+import { playSoundIfEnabled } from '../lib/soundService'
 
 const VAPID_PUBLIC_KEY = (import.meta.env['VITE_VAPID_PUBLIC_KEY'] as string) || "";
 const isNative = Capacitor.isNativePlatform();
@@ -67,62 +68,26 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         await storage.set('alert-sound-profile', profile)
     }, [])
 
-    const playSound = useCallback((type: 'success' | 'warning' | 'error' = 'success') => {
+    const playSound = useCallback(async (type: 'success' | 'warning' | 'error' = 'success') => {
         if (!soundEnabled) return
+        
         try {
-            interface WindowWithAudio extends Window {
-                webkitAudioContext?: typeof AudioContext;
+            // Map notification context types to sound service types
+            const soundTypeMap: Record<string, 'warning' | 'critical' | 'success' | 'info'> = {
+                'error': 'critical',
+                'warning': 'warning',
+                'success': 'success',
             }
-            const AudioContextClass = (window.AudioContext || (window as WindowWithAudio).webkitAudioContext);
-            if (!AudioContextClass) return;
-            const audioContext = new AudioContextClass();
-            const oscillator = audioContext.createOscillator()
-            const gainNode = audioContext.createGain()
-            oscillator.connect(gainNode); gainNode.connect(audioContext.destination)
-            const now = audioContext.currentTime
-
-            if (soundProfile === 'modern') {
-                oscillator.type = 'sine'
-                if (type === 'error') {
-                    oscillator.frequency.setValueAtTime(440, now); oscillator.frequency.exponentialRampToValueAtTime(110, now + 0.5)
-                    gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5)
-                    oscillator.start(now); oscillator.stop(now + 0.5)
-                } else {
-                    oscillator.frequency.setValueAtTime(880, now); oscillator.frequency.exponentialRampToValueAtTime(440, now + 0.3)
-                    gainNode.gain.setValueAtTime(0.2, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3)
-                    oscillator.start(now); oscillator.stop(now + 0.3)
-                }
-            } else if (soundProfile === 'digital') {
-                oscillator.type = 'square'
-                if (type === 'error') {
-                    oscillator.frequency.setValueAtTime(150, now); oscillator.frequency.setValueAtTime(100, now + 0.1)
-                    gainNode.gain.value = 0.2
-                    oscillator.start(now); oscillator.stop(now + 0.2)
-                } else {
-                    oscillator.frequency.setValueAtTime(1200, now); gainNode.gain.setValueAtTime(0.1, now)
-                    gainNode.gain.setValueAtTime(0, now + 0.05)
-                    oscillator.start(now); oscillator.stop(now + 0.05)
-                }
-            } else if (soundProfile === 'sonar') {
-                oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(2000, now)
-                gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1)
-                oscillator.start(now); oscillator.stop(now + 1)
-            } else {
-                if (type === 'error') {
-                    oscillator.type = 'square'; oscillator.frequency.setValueAtTime(1000, now)
-                    oscillator.frequency.setValueAtTime(800, now + 0.1); oscillator.frequency.setValueAtTime(1000, now + 0.2)
-                    gainNode.gain.value = 0.4; oscillator.start(now); oscillator.stop(now + 0.3)
-                } else if (type === 'warning') {
-                    oscillator.type = 'sine'; oscillator.frequency.value = 800; gainNode.gain.value = 0.3
-                    oscillator.start(now); oscillator.stop(now + 0.2)
-                } else {
-                    oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(600, now)
-                    oscillator.frequency.linearRampToValueAtTime(800, now + 0.1); gainNode.gain.value = 0.2
-                    oscillator.start(now); oscillator.stop(now + 0.15)
-                }
-            }
-        } catch (err) { console.error('Failed to play sound:', err) }
-    }, [soundEnabled, soundProfile])
+            
+            const soundType = soundTypeMap[type] || 'info';
+            
+            // Use new sound service for native + web fallback
+            await playSoundIfEnabled(soundType, isNative);
+            
+        } catch (err) { 
+            console.error('Failed to play sound:', err) 
+        }
+    }, [soundEnabled])
 
     const testSound = useCallback(() => {
         playSound('success')

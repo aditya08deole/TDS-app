@@ -35,9 +35,7 @@ const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // ═══ MIDDLEWARE ═══
-app.use(helmet({
-  contentSecurityPolicy: false, // Disable CSP for static serving simplicity in production
-}));
+app.use(helmet());
 
 // CORS Configuration - Restrict to allowed origins in production
 const allowedOrigins = process.env.CORS_ORIGINS 

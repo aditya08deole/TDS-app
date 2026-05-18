@@ -15,11 +15,14 @@ import Login from './pages/Login'
 import AuthGuard from './components/AuthGuard'
 import ReloadPrompt from './components/ReloadPrompt'
 import NotificationManager from './components/NotificationManager'
+import { OfflineBadge, OnlineIndicator } from './components/OfflineBadge'
 import { Toaster } from './components/ui/sonner'
 import { initOfflineSync } from './lib/syncQueue'
 import { initWebVitals } from './lib/webVitals'
 import { initErrorTracking } from './lib/errorTracking'
 import { useNotifications } from './hooks/useNotifications'
+
+import { MapPageWrapper, MapPageErrorBoundary } from './components/MapPageWrapper'
 
 // Lazy Load Pages
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -108,7 +111,11 @@ function RoutesWrapper() {
                 <Route index element={<Dashboard />} />
                 <Route path="map" element={
                     <Suspense fallback={<PageLoader />}>
-                        <MapPage />
+                        <MapPageErrorBoundary>
+                            <MapPageWrapper>
+                                <MapPage />
+                            </MapPageWrapper>
+                        </MapPageErrorBoundary>
                     </Suspense>
                 } />
                 <Route path="devices" element={
@@ -172,6 +179,8 @@ function App() {
                                                     <RoutesWrapper />
                                                     <ReloadPrompt />
                                                     <NotificationManager />
+                                                    <OfflineBadge />
+                                                    <OnlineIndicator />
                                                 </AppWrapper>
                                             </GlassEffectProvider>
                                         </NotificationProvider>
