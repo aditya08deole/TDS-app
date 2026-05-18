@@ -279,14 +279,26 @@ export function startHourlyReminderJob(): void {
 
                 if (now - lastNotified >= ONE_HOUR_MS) {
                     console.log(`🔥 [FORCE DISPATCH] Alert ${doc.id} is still OPEN after 1hr. Forcing re-delivery...`);
-                    // Call channel dispatchers directly
-                    // Note: alerts in FS might not be in Redis memory-fallback, so we use FS data.
-                    const alertData = doc.data();
-                    
-                    // We bypass dedupe by passing isReminder = true
-                    // and manually trigger the main channel functions
-                    // These functions are imported from '../services/notificationService'
-                    // but we are already in the scheduler, which imports from there.
+
+                    // FIX RC-3/RC-6: The alertData in Firestore has the original breach time frozen
+                    // in `recorded_at`. Pull the device's LATEST reading to get a rolling timestamp.
+                    const alertData: any = { ...doc.data() };
+                    const deviceId: string = alertData.device_id;
+
+                    if (deviceId && deviceId !== 'SYSTEM_REPORT') {
+                        try {
+                            const deviceDoc = await db.collection('devices').doc(deviceId).get();
+                            if (deviceDoc.exists) {
+                                const fresh = deviceDoc.data()!;
+                                if (fresh.last_tds != null)  alertData.value_at_time = fresh.last_tds;
+                                if (fresh.last_reading_at)   alertData.recorded_at   = fresh.last_reading_at;
+                                console.log(`🔄 [FORCE DISPATCH] Refreshed device ${deviceId}: ppm=${fresh.last_tds}, ts=${fresh.last_reading_at}`);
+                            }
+                        } catch (refreshErr) {
+                            console.warn(`⚠️ [FORCE DISPATCH] Could not refresh device data for ${deviceId}:`, refreshErr);
+                        }
+                    }
+
                     const { 
                         sendPushNotification, 
                         sendWhatsAppNotification, 

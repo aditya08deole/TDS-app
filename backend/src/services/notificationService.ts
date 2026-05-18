@@ -681,6 +681,7 @@ async function triggerIFTTTWebhook(alertId: string, alertData: any, isReminder =
 export async function sendHourlyReminders() {
     console.log('⏰ [REMINDER JOB] Starting hourly reminder dispatch...');
     const redis = getRedis();
+    const db = getDb();
     const deviceIds = await redis.sMembers('devices:all');
     if (!deviceIds || deviceIds.length === 0) return;
     let dispatchCount = 0;
@@ -694,13 +695,30 @@ export async function sendHourlyReminders() {
             const openAlertIds = await redis.sMembers(`device:${id}:alerts:open`);
             if (!openAlertIds || openAlertIds.length === 0) continue;
             const alertId = openAlertIds[0];
-            const alertData = await hgetall<Alert>(`alert:${alertId}`);
+            const alertData: any = await hgetall<Alert>(`alert:${alertId}`);
             if (!alertData) continue;
-            const fsAlert = await getDb().collection('alerts').doc(alertId).get();
+            const fsAlert = await db.collection('alerts').doc(alertId).get();
             if (!fsAlert.exists || fsAlert.data()?.status !== 'open') {
                 await redis.sRem(`device:${id}:alerts:open`, alertId);
                 continue;
             }
+
+            // ── FIX RC-2/RC-7: Refresh PPM and timestamp from the device's latest reading ──
+            // The cached alertData has the original breach time frozen in it.
+            // We always want to show the most current reading in the reminder.
+            try {
+                const deviceDoc = await db.collection('devices').doc(id).get();
+                if (deviceDoc.exists) {
+                    const fresh = deviceDoc.data();
+                    if (fresh?.last_tds != null)      alertData.value_at_time = fresh.last_tds;
+                    if (fresh?.last_reading_at)       alertData.recorded_at   = fresh.last_reading_at;
+                    if (fresh?.tds_value != null)     alertData.tds_value     = fresh.last_tds;
+                    console.log(`🔄 [REMINDER JOB] Refreshed: device=${device.name || id}, ppm=${fresh?.last_tds}, ts=${fresh?.last_reading_at}`);
+                }
+            } catch (refreshErr) {
+                console.warn(`⚠️ [REMINDER JOB] Could not refresh device data for ${id}:`, refreshErr);
+            }
+
             console.log(`🔔 [REMINDER JOB] Dispatching hourly reminder for device: ${device.name || id}`);
             await Promise.all([
                 sendPushNotification(alertId, alertData, true),
@@ -733,7 +751,7 @@ export async function sendForceConsolidatedReport(criticalDevices: any[]) {
     // 1. Create a "Virtual Alert" ID for logging
     const reportId = `report-${Date.now()}`;
 
-    // 2. Dispatch to channels
+    // 2. Dispatch WhatsApp consolidated report
     // For consolidated reports, we bypass device-specific dedupe as this is a master admin blast
     const recipients = await getWhatsAppRecipientsForDelivery();
     if (recipients.length > 0) {
@@ -751,13 +769,21 @@ export async function sendForceConsolidatedReport(criticalDevices: any[]) {
         }
     }
 
-    // Also send generic Push to all Admins
-    // (In a real system, we'd loop through admin users, but for now we broadcast)
-    await sendPushNotification(reportId, {
-        message: `${criticalDevices.length} devices are in critical state!`,
+    // 3. FIX RC-1: Send Push with real aggregated PPM & timestamp so it shows meaningful data
+    // Use the most critical device's TDS and timestamp instead of empty fields that cause "N/A".
+    const worstDevice = criticalDevices.reduce((a, b) => (b.tds > a.tds ? b : a), criticalDevices[0]);
+    const consolidatedAlertData = {
+        message: `${criticalDevices.length} device(s) in critical state! Highest: ${worstDevice.tds} PPM`,
         severity: 'critical',
-        device_id: 'SYSTEM_REPORT'
-    }, true);
+        device_id: 'SYSTEM_REPORT',
+        location_name: criticalDevices.length === 1
+            ? (worstDevice.location || worstDevice.name)
+            : `${criticalDevices.length} Critical Devices`,
+        value_at_time: worstDevice.tds,       // ← real PPM — prevents "N/A"
+        recorded_at:   worstDevice.time || new Date().toISOString(), // ← real timestamp
+        tds_value:     worstDevice.tds,
+    };
+    await sendPushNotification(reportId, consolidatedAlertData, true);
 }
 
 /**
@@ -779,31 +805,37 @@ export async function triggerForceDeviceAlert(deviceId: string, tds: number, tim
     const alertData = {
         device_id: deviceId,
         device_name: deviceData.name || deviceId,
-        location_name: deviceData.location_name || 'N/A',
+        location_name: deviceData.location_name || deviceData.name || 'N/A',
         message: `CRITICAL TDS DETECTED: ${tds} PPM (Autonomous Scan)`,
         severity: 'critical',
         status: 'open',
         value_at_time: tds,
+        // FIX RC-4: Always store recorded_at as the current ThingSpeak reading's timestamp.
+        // This is what formatAlertContext() checks FIRST — previously it was missing, causing
+        // the fallback to created_at (the original breach time = frozen "02:33").
+        recorded_at: timestamp,
         created_at: isNew ? timestamp : existingAlert.data()?.created_at,
         updated_at: timestamp,
         type: 'AUTO_SCAN'
     };
 
-    // 1. Persist to Firestore history (Updates existing card or creates new)
+    // 1. Persist to Firestore (Updates existing card or creates new)
     try {
         await db.collection('alerts').doc(alertId).set(alertData, { merge: true });
-        console.log(`📡 [GHOST] Updated Firestore Alert document: ${alertId}`);
+        console.log(`📡 [GHOST] Updated Firestore Alert document: ${alertId} | TDS=${tds} PPM | ts=${timestamp}`);
     } catch (e) {
         console.error('Failed to update ghost alert record', e);
     }
 
     // 2. Fire notifications forcefully if it's been more than 1 hour (or if brand new)
-    const lastNotified = existingAlert.data()?.last_notified_at ? new Date(existingAlert.data()?.last_notified_at).getTime() : 0;
+    const lastNotified = existingAlert.data()?.last_notified_at
+        ? new Date(existingAlert.data()!.last_notified_at).getTime()
+        : 0;
     const now = Date.now();
     const ONE_HOUR = 60 * 60 * 1000;
 
     if (isNew || (now - lastNotified >= ONE_HOUR)) {
-        console.log(`🔥 [GHOST] Forcing notification blast for ${deviceId}...`);
+        console.log(`🔥 [GHOST] Forcing notification blast for ${deviceId} | TDS=${tds} PPM | ts=${timestamp}`);
         await Promise.all([
             sendPushNotification(alertId, alertData, true),
             sendWhatsAppNotification(alertId, alertData, true),
