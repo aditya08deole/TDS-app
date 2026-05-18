@@ -490,8 +490,7 @@ function DevicePanel({
 
 
 export default function MapPage() {
-    // State for tracking map errors
-    const [mapError, setMapError] = useState<string | null>(null)
+    const [mapError] = useState<string | null>(null)
     
     // Fetch devices using React Query (with caching)
     const { data: devicesList = [] } = useDevices()
