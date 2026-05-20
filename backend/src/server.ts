@@ -208,7 +208,16 @@ app.get('*', (req: Request, res: Response) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ error: 'API route not found' });
   }
-  res.sendFile(path.join(frontendPath, 'index.html'));
+  const indexPath = path.join(frontendPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.json({
+      success: true,
+      message: 'TDS-APP API Server is running. Frontend is served separately.',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 /**
