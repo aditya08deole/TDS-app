@@ -25,7 +25,7 @@ import telemetryRoutes from './api/routes/telemetry';
 import alertsRoutes from './api/routes/alerts';
 import { TDS_CONFIG } from './config/tdsConfig';
 import { getFrontendPath } from './utils/pathUtils';
-import { startNotificationListeners } from './services/notificationService';
+import { startNotificationListeners, warmFCMCache } from './services/notificationService';
 
 // Load environment variables
 dotenv.config();
@@ -261,6 +261,10 @@ async function start() {
 
     // Start real-time notification listeners
     startNotificationListeners();
+
+    // FIX #2a: Pre-warm FCM token cache so push notifications work immediately on boot.
+    // Non-blocking — failure is logged and app continues normally.
+    warmFCMCache().catch(e => console.warn('⚠️ FCM cache warm-up error:', e));
 
     // Start server
     app.listen(PORT, () => {

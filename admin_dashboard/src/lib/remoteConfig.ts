@@ -9,11 +9,27 @@
 import { getRemoteConfig, fetchAndActivate, getValue } from 'firebase/remote-config';
 import { app } from './firebase';
 
+/**
+ * Detect if the app is running inside a Capacitor native container
+ * (iOS or Android APK). In that environment, `window.location.hostname`
+ * resolves to "localhost" but it's actually a WebView — the device cannot
+ * reach the dev server, so we must always use the Railway production URL.
+ */
+const isCapacitorNative = typeof window !== 'undefined' &&
+  (window.location.protocol === 'capacitor:' ||
+   window.location.protocol === 'ionic:' ||
+   (window as any)?.Capacitor?.isNativePlatform?.());
+
+/** Railway production backend — the single source of truth for native builds */
+const RAILWAY_URL = 'https://graceful-vitality-production-e097.up.railway.app';
+
 // Fallback values — used if Remote Config is unavailable (e.g., no internet on first launch)
 const DEFAULTS: Record<string, string> = {
-  api_url: import.meta.env.DEV 
-    ? 'http://localhost:5000' 
-    : (import.meta.env.VITE_API_URL || 'https://graceful-vitality-production-e097.up.railway.app'),
+  api_url: isCapacitorNative
+    ? RAILWAY_URL                                               // native APK → always Railway
+    : import.meta.env.DEV
+      ? 'http://localhost:5000'                                 // local dev → local server
+      : (import.meta.env.VITE_API_URL || RAILWAY_URL),         // web prod → env var or Railway
 };
 
 let _resolvedApiUrl: string | null = null;

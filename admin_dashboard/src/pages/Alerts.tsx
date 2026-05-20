@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { type Alert } from '../types'
-import { AlertTriangle, CheckCircle, WifiOff, Camera, Bell, AlertCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle, WifiOff, Camera, Bell, AlertCircle, ServerCrash } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useUI } from '../context/UIContext'
 import { useRole } from '../context/RoleContext'
@@ -13,7 +13,8 @@ import { useViewport } from '../hooks/useViewport'
 
 export default function Alerts() {
     const [alerts, setAlerts] = useState<Alert[]>([])
-    const [loading, setLoading] = useState(true) // true initially since we load on mount
+    const [loading, setLoading] = useState(true)
+    const [fetchError, setFetchError] = useState<string | null>(null)
     const { user } = useAuth()
     const { isOffline } = useUI()
     const { isLandscape, isDesktop } = useViewport()
@@ -32,9 +33,12 @@ export default function Alerts() {
                 const data = await fetchAlerts(50)
                 if (!mounted) return
                 setAlerts(data as Alert[])
+                setFetchError(null)  // Clear any previous error on success
             } catch (error) {
                 if (!mounted) return
+                const msg = error instanceof Error ? error.message : 'Unable to reach the server'
                 console.error('Error fetching alerts:', error)
+                setFetchError(msg)
             } finally {
                 if (mounted) setLoading(false)
             }
@@ -107,11 +111,20 @@ export default function Alerts() {
     const filteredAlerts = alerts.filter(a => {
         // ═══ EXPIRY FILTER ═══
         if (a.expiresAt) {
-            const expiryDate = a.expiresAt instanceof Date 
-                ? a.expiresAt 
-                : (a.expiresAt.seconds ? new Date(a.expiresAt.seconds * 1000) : new Date(a.expiresAt));
-            
-            if (expiryDate < new Date()) return false; // Filter out if expired
+            let expiryDate: Date
+            const raw = a.expiresAt as any
+            if (raw instanceof Date) {
+                expiryDate = raw
+            } else if (typeof raw === 'object' && raw !== null && typeof raw.seconds === 'number') {
+                // Firestore Timestamp serialized as { seconds, nanoseconds }
+                expiryDate = new Date(raw.seconds * 1000)
+            } else if (typeof raw === 'number') {
+                // Unix epoch milliseconds
+                expiryDate = new Date(raw)
+            } else {
+                expiryDate = new Date(String(raw))
+            }
+            if (!isNaN(expiryDate.getTime()) && expiryDate < new Date()) return false
         }
 
         if (filter === 'all') return true
@@ -273,6 +286,16 @@ export default function Alerts() {
                             </div>
                         </GlassCard>
                     ))
+                ) : fetchError ? (
+                    // ── FIX #3: Error state when backend is unreachable ──
+                    <GlassCard className="text-center py-16 border-red-500/30 bg-red-500/5 flex flex-col items-center gap-3">
+                        <ServerCrash className="h-10 w-10 text-red-400 mx-auto" />
+                        <div>
+                            <p className="text-red-400 font-bold text-sm">Unable to reach the server</p>
+                            <p className="text-muted-foreground text-xs mt-1 max-w-xs">{fetchError}</p>
+                            <p className="text-muted-foreground text-xs mt-2">Retrying every 15 seconds…</p>
+                        </div>
+                    </GlassCard>
                 ) : filteredAlerts.length === 0 ? (
                     <GlassCard className="text-center py-16 border-dashed border-accent flex flex-col items-center">
                         <CheckCircle className="h-10 w-10 text-green-500/50 mx-auto mb-3" />

@@ -121,17 +121,45 @@ router.post('/register-token', async (req: Request, res: Response) => {
     }
 
     try {
-        const { getFirestore, FieldValue } = await import('firebase-admin/firestore');
+        const { getFirestore } = await import('firebase-admin/firestore');
+        const { getRedisClient } = await import('../../db/redis');
         const db = getFirestore();
+        const redis = getRedisClient();
 
         const safeUserId = userId ? String(userId).trim() : 'anonymous';
-        const tokenHash = Buffer.from(token).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 24);
+        const cleanToken = token.trim();
+        const tokenHash = Buffer.from(cleanToken).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 24);
         const docId = `${safeUserId}_${tokenHash}`;
 
         console.log(`[FCM-REGISTER] Storing token for user=${safeUserId}, platform=${platform}, docId=${docId}`);
 
+        // FIX #2c: If a real userId is provided, clean up old anonymous docs for this same token.
+        // This prevents orphaned 'anonymous' entries that cause duplicate / missed deliveries.
+        if (safeUserId !== 'anonymous') {
+            try {
+                const anonSnap = await db.collection('notification_subscriptions')
+                    .where('token', '==', cleanToken)
+                    .where('user_id', '==', 'anonymous')
+                    .get();
+
+                if (!anonSnap.empty) {
+                    const batch = db.batch();
+                    anonSnap.docs.forEach(doc => batch.delete(doc.ref));
+                    await batch.commit();
+
+                    // Update Redis: remove token from global set and re-add under real user
+                    await redis.sRem('cache:fcm_tokens', cleanToken);
+                    await redis.sAdd(`cache:user_tokens:${safeUserId}`, cleanToken);
+                    await redis.expire(`cache:user_tokens:${safeUserId}`, 86400);
+                    console.log(`🔁 [FCM-REGISTER] Migrated ${anonSnap.size} anonymous token(s) to user ${safeUserId}`);
+                }
+            } catch (migrateErr) {
+                console.warn('[FCM-REGISTER] Anonymous migration failed (non-fatal):', migrateErr);
+            }
+        }
+
         await db.collection('notification_subscriptions').doc(docId).set({
-            token: token.trim(),
+            token: cleanToken,
             user_id: safeUserId,
             platform: platform || 'android_native',
             userAgent: userAgent || 'native',
@@ -139,7 +167,14 @@ router.post('/register-token', async (req: Request, res: Response) => {
             created_at: new Date().toISOString(),
         }, { merge: true });
 
-        console.log(`✅ [FCM-REGISTER] Token registered (${token.substring(0, 20)}...)`);
+        // Update Redis immediately so new token is available without waiting for Firestore listener
+        await redis.sAdd('cache:fcm_tokens', cleanToken);
+        if (safeUserId !== 'anonymous') {
+            await redis.sAdd(`cache:user_tokens:${safeUserId}`, cleanToken);
+            await redis.expire(`cache:user_tokens:${safeUserId}`, 86400);
+        }
+
+        console.log(`✅ [FCM-REGISTER] Token registered (${cleanToken.substring(0, 20)}...)`);
         return res.status(200).json({ success: true, docId, timestamp: new Date().toISOString() });
     } catch (error: any) {
         console.error('❌ [FCM-REGISTER] Failed:', error);

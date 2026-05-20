@@ -421,6 +421,33 @@ export function startNotificationListeners() {
                     await redis.sAdd('devices:all', deviceId);
                 }
             } else if (change.type === 'removed') {
+                // ── FIX #1: AUTO-RESOLVE ORPHANED ALERTS ──
+                // When a device is deleted, immediately resolve all its open alerts in Firestore.
+                // This prevents "phantom" alert badges on the dashboard after device removal.
+                try {
+                    const openAlertsSnap = await getDb()
+                        .collection('alerts')
+                        .where('device_id', '==', deviceId)
+                        .where('status', '==', 'open')
+                        .get();
+
+                    if (!openAlertsSnap.empty) {
+                        const batch = getDb().batch();
+                        const resolvedAt = new Date().toISOString();
+                        openAlertsSnap.docs.forEach(doc => {
+                            batch.update(doc.ref, {
+                                status: 'resolved',
+                                resolved_at: resolvedAt,
+                                resolution_note: 'Auto-resolved: device was deleted',
+                            });
+                        });
+                        await batch.commit();
+                        console.log(`🧹 [ORPHAN CLEANUP] Resolved ${openAlertsSnap.size} open alert(s) for deleted device ${deviceId}`);
+                    }
+                } catch (cleanupErr) {
+                    console.error(`❌ [ORPHAN CLEANUP] Failed for device ${deviceId}:`, cleanupErr);
+                }
+
                 const keysToDelete = [
                     `device:${deviceId}`,
                     `sensors:${deviceId}`,
@@ -479,6 +506,40 @@ export function startNotificationListeners() {
     }, (error) => { console.error('❌ Firestore Subscription Listener Error:', error); });
 }
 
+/**
+ * FIX #2a: Warm the FCM token Redis cache on backend startup.
+ * Ensures push notifications work immediately — even on first boot before any Firestore events.
+ * Call this once from server.ts after initializeRedis().
+ */
+export async function warmFCMCache(): Promise<void> {
+    try {
+        const db = getDb();
+        const redis = getRedis();
+        const snapshot = await db.collection('notification_subscriptions').get();
+        if (snapshot.empty) {
+            console.log('ℹ️ [FCM WARM] No subscriptions found — cache stays empty.');
+            return;
+        }
+        const batch = redis.multi();
+        let total = 0;
+        snapshot.docs.forEach(doc => {
+            const d = doc.data();
+            if (d.token) {
+                batch.sAdd(FCM_TOKEN_CACHE_KEY, d.token);
+                if (d.user_id && d.user_id !== 'anonymous') {
+                    batch.sAdd(`cache:user_tokens:${d.user_id}`, d.token);
+                    batch.expire(`cache:user_tokens:${d.user_id}`, 86400);
+                }
+                total++;
+            }
+        });
+        await batch.exec();
+        console.log(`🔥 [FCM WARM] Pre-cached ${total} FCM tokens from ${snapshot.size} subscriptions.`);
+    } catch (err) {
+        console.warn('⚠️ [FCM WARM] Cache warm-up failed (non-fatal):', err);
+    }
+}
+
 // ─── Notification Channels ────────────────────────────────────────────────────
 
 async function sendPushNotification(alertId: string, alertData: any, isReminder = false) {
@@ -492,37 +553,64 @@ async function sendPushNotification(alertId: string, alertData: any, isReminder 
         const redis = getRedis();
         const db = getDb();
         const deviceId = alertData.device_id;
+        const isCritical = alertData.severity === 'critical';
+
+        // ── FIX #2b: GLOBAL BROADCAST FOR CRITICAL ALERTS ──
+        // For critical alerts, notify ALL registered users — not just the device owner.
+        // For non-critical, still target the owner but fall back to global if no tokens found.
         let tokens: string[] = [];
+        const tokenSet = new Set<string>();
 
-        // Targeted Routing (Fix #14)
-        const deviceSnap = await db.collection('devices').doc(deviceId).get();
-        const targetUserId = deviceSnap.data()?.user_id || deviceSnap.data()?.owner_id || null;
-
-        if (targetUserId) {
-            tokens = await redis.sMembers(`cache:user_tokens:${targetUserId}`);
-            if (!tokens || tokens.length === 0) {
-                // Fix #22: Explicitly include all platforms (web_pwa and android_native)
-                const userTokensSnap = await db.collection('notification_subscriptions')
-                    .where('user_id', '==', targetUserId)
-                    .get();
-                tokens = userTokensSnap.docs.map(d => d.data().token).filter(Boolean);
-                console.log(`[FCM-PUSH] Found ${tokens.length} tokens for user ${targetUserId} across all platforms`);
-                userTokensSnap.docs.forEach(doc => {
-                    const platform = doc.data().platform || 'unknown';
-                    console.log(`  - Platform: ${platform}, Token: ${doc.data().token?.substring(0, 20)}...`);
-                });
-                if (tokens.length > 0) await redis.sAdd(`cache:user_tokens:${targetUserId}`, tokens);
-            }
-        } 
-        
-        if (tokens.length === 0) {
-            tokens = await redis.sMembers(FCM_TOKEN_CACHE_KEY);
-            if (!tokens || tokens.length === 0) {
+        if (isCritical) {
+            // Always broadcast to everyone on critical
+            const allCached = await redis.sMembers(FCM_TOKEN_CACHE_KEY);
+            allCached.forEach((t: string) => tokenSet.add(t));
+            if (tokenSet.size === 0) {
+                // Cold-start fallback: query Firestore directly
                 const allSnap = await db.collection('notification_subscriptions').get();
-                tokens = allSnap.docs.map(d => d.data().token).filter(Boolean);
-                console.log(`[FCM-PUSH] Broadcasting to ${tokens.length} tokens (no specific user)`);
+                allSnap.docs.forEach(doc => {
+                    const t = doc.data().token;
+                    if (t) tokenSet.add(t);
+                });
+                console.log(`[FCM-PUSH] ⚡ Critical broadcast: loaded ${tokenSet.size} tokens from Firestore`);
+            } else {
+                console.log(`[FCM-PUSH] ⚡ Critical broadcast: ${tokenSet.size} tokens from Redis cache`);
+            }
+        } else {
+            // Non-critical: targeted to device owner, fall back to global
+            const deviceSnap = await db.collection('devices').doc(deviceId).get();
+            const targetUserId = deviceSnap.data()?.user_id || deviceSnap.data()?.owner_id || null;
+
+            if (targetUserId) {
+                const userCached = await redis.sMembers(`cache:user_tokens:${targetUserId}`);
+                userCached.forEach((t: string) => tokenSet.add(t));
+
+                if (tokenSet.size === 0) {
+                    const userTokensSnap = await db.collection('notification_subscriptions')
+                        .where('user_id', '==', targetUserId)
+                        .get();
+                    userTokensSnap.docs.forEach(doc => {
+                        const t = doc.data().token;
+                        if (t) tokenSet.add(t);
+                    });
+                    if (tokenSet.size > 0) await redis.sAdd(`cache:user_tokens:${targetUserId}`, Array.from(tokenSet));
+                }
+                console.log(`[FCM-PUSH] Targeted: ${tokenSet.size} tokens for user ${targetUserId}`);
+            }
+
+            // If still no tokens, fall back to global
+            if (tokenSet.size === 0) {
+                const allCached = await redis.sMembers(FCM_TOKEN_CACHE_KEY);
+                allCached.forEach((t: string) => tokenSet.add(t));
+                if (tokenSet.size === 0) {
+                    const allSnap = await db.collection('notification_subscriptions').get();
+                    allSnap.docs.forEach(doc => { const t = doc.data().token; if (t) tokenSet.add(t); });
+                }
+                console.log(`[FCM-PUSH] Fallback global: ${tokenSet.size} tokens`);
             }
         }
+
+        tokens = Array.from(tokenSet);
 
         if (tokens.length === 0) {
             await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'no_tokens_found' });
