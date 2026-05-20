@@ -6,7 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "cd admin_dashboard && npm install --include=dev && npm run build && cd ../backend && npm install --include=dev && npm run build",
+    "build": "cd backend && npm install --include=dev && npm run build",
     "start": "cd backend && npm start",
     "db:init": "cd backend && npm run db:init"
   }
