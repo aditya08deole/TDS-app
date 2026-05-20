@@ -28,6 +28,7 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined)
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useNotification = () => {
     const context = useContext(NotificationContext)
     if (!context) throw new Error('useNotification must be used within a NotificationProvider')
@@ -147,7 +148,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             }
         }, REFRESH_INTERVAL_MS);
         return () => clearInterval(interval);
-    }, [messaging, isNative, user, saveTokenForUser]);
+    }, [user, saveTokenForUser]);
 
     // Fix #3: Re-check token freshness when the user focuses the tab (handles long idle sessions)
     useEffect(() => {
@@ -161,7 +162,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [messaging, isNative, user, saveTokenForUser]);
+    }, [user, saveTokenForUser]);
 
     // Handle incoming messages
     useEffect(() => {

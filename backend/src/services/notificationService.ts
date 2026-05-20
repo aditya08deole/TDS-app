@@ -219,20 +219,20 @@ async function writeDeliveryLog(entry: Record<string, any>) {
         console.warn(`⚠️ [NESTED LOG] Could not update Alert ${alert_id}:`, (err as any).message);
     }
 
-    // 2. Only write to the technical logs collection if it FAILED
-    if (status === 'failed' || status === 'partial') {
-        try {
-            await db.collection('notification_delivery_logs').add({
-                ...entry,
-                created_at: new Date().toISOString(),
-            });
+    // 2. Write every attempt to the technical logs collection so the Alerts page
+    // can show success, partial, failed, and skipped deliveries consistently.
+    try {
+        await db.collection('notification_delivery_logs').add({
+            ...entry,
+            created_at: new Date().toISOString(),
+        });
+        if (status === 'failed' || status === 'partial') {
             console.error(`❌ [LOG:ERROR] ${channel} for ${alert_id}: ${error || 'Unknown error'}`);
-        } catch (err) {
-            console.error('❌ Failed to write technical error log:', err);
+        } else {
+            console.log(`✅ [LOG:${status.toUpperCase()}] ${channel} for ${alert_id}`);
         }
-    } else {
-        // Success and Skipped are console only to save writes
-        console.log(`✅ [LOG:${status.toUpperCase()}] ${channel} for ${alert_id} (Nested in Alert)`);
+    } catch (err) {
+        console.error('❌ Failed to write technical log:', err);
     }
 }
 
@@ -553,61 +553,24 @@ async function sendPushNotification(alertId: string, alertData: any, isReminder 
         const redis = getRedis();
         const db = getDb();
         const deviceId = alertData.device_id;
-        const isCritical = alertData.severity === 'critical';
 
-        // ── FIX #2b: GLOBAL BROADCAST FOR CRITICAL ALERTS ──
-        // For critical alerts, notify ALL registered users — not just the device owner.
-        // For non-critical, still target the owner but fall back to global if no tokens found.
+        // Broadcast every push notification to every registered token so it reaches
+        // all logged-in web and app users, regardless of role.
         let tokens: string[] = [];
         const tokenSet = new Set<string>();
 
-        if (isCritical) {
-            // Always broadcast to everyone on critical
-            const allCached = await redis.sMembers(FCM_TOKEN_CACHE_KEY);
-            allCached.forEach((t: string) => tokenSet.add(t));
-            if (tokenSet.size === 0) {
-                // Cold-start fallback: query Firestore directly
-                const allSnap = await db.collection('notification_subscriptions').get();
-                allSnap.docs.forEach(doc => {
-                    const t = doc.data().token;
-                    if (t) tokenSet.add(t);
-                });
-                console.log(`[FCM-PUSH] ⚡ Critical broadcast: loaded ${tokenSet.size} tokens from Firestore`);
-            } else {
-                console.log(`[FCM-PUSH] ⚡ Critical broadcast: ${tokenSet.size} tokens from Redis cache`);
-            }
+        const allCached = await redis.sMembers(FCM_TOKEN_CACHE_KEY);
+        allCached.forEach((t: string) => tokenSet.add(t));
+        if (tokenSet.size === 0) {
+            // Cold-start fallback: query Firestore directly
+            const allSnap = await db.collection('notification_subscriptions').get();
+            allSnap.docs.forEach(doc => {
+                const t = doc.data().token;
+                if (t) tokenSet.add(t);
+            });
+            console.log(`[FCM-PUSH] Broadcast loaded ${tokenSet.size} tokens from Firestore`);
         } else {
-            // Non-critical: targeted to device owner, fall back to global
-            const deviceSnap = await db.collection('devices').doc(deviceId).get();
-            const targetUserId = deviceSnap.data()?.user_id || deviceSnap.data()?.owner_id || null;
-
-            if (targetUserId) {
-                const userCached = await redis.sMembers(`cache:user_tokens:${targetUserId}`);
-                userCached.forEach((t: string) => tokenSet.add(t));
-
-                if (tokenSet.size === 0) {
-                    const userTokensSnap = await db.collection('notification_subscriptions')
-                        .where('user_id', '==', targetUserId)
-                        .get();
-                    userTokensSnap.docs.forEach(doc => {
-                        const t = doc.data().token;
-                        if (t) tokenSet.add(t);
-                    });
-                    if (tokenSet.size > 0) await redis.sAdd(`cache:user_tokens:${targetUserId}`, Array.from(tokenSet));
-                }
-                console.log(`[FCM-PUSH] Targeted: ${tokenSet.size} tokens for user ${targetUserId}`);
-            }
-
-            // If still no tokens, fall back to global
-            if (tokenSet.size === 0) {
-                const allCached = await redis.sMembers(FCM_TOKEN_CACHE_KEY);
-                allCached.forEach((t: string) => tokenSet.add(t));
-                if (tokenSet.size === 0) {
-                    const allSnap = await db.collection('notification_subscriptions').get();
-                    allSnap.docs.forEach(doc => { const t = doc.data().token; if (t) tokenSet.add(t); });
-                }
-                console.log(`[FCM-PUSH] Fallback global: ${tokenSet.size} tokens`);
-            }
+            console.log(`[FCM-PUSH] Broadcast loaded ${tokenSet.size} tokens from Redis cache`);
         }
 
         tokens = Array.from(tokenSet);

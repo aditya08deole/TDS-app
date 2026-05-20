@@ -314,7 +314,7 @@ export async function fetchAlerts(limit: number = 50): Promise<AlertRecord[]> {
     const response = await fetch(endpoint)
     if (!response.ok) throw new Error('Failed to fetch alerts')
     const result: ApiResponse<AlertRecord[]> = await response.json()
-    return result.data || []
+    return Array.isArray(result.data) ? result.data : []
   }, { useSwrPattern: true });
 }
 
@@ -360,7 +360,7 @@ export async function fetchDeliveryLogs(limit: number, role: string): Promise<De
     })
     if (!response.ok) throw new Error('Failed to fetch delivery logs')
     const result: ApiResponse<DeliveryLogRecord[]> = await response.json()
-    return result.data || []
+    return Array.isArray(result.data) ? result.data : []
   }, { useSwrPattern: true });
 }
 

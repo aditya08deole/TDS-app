@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { getToken } from 'firebase/messaging';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { messaging, db, auth } from '../lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 const VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
 
@@ -23,13 +24,15 @@ export const useNotifications = () => {
     if (typeof window === 'undefined' || !messaging) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
 
-    const refreshToken = async () => {
-      try {
-        const token = await getToken(messaging!, { vapidKey: VAPID_KEY });
-        if (!token) return;
+    let mounted = true;
 
+    const refreshTokenForUser = async () => {
+      try {
         const user = auth.currentUser;
-        if (!user) return;
+        if (!user || !mounted) return;
+
+        const token = await getToken(messaging!, { vapidKey: VAPID_KEY });
+        if (!token || !mounted) return;
 
         // Build a stable, deterministic doc ID from user + token fingerprint.
         const tokenHash = btoa(token).replace(/[^a-zA-Z0-9]/g, '').substring(0, 24);
@@ -41,6 +44,7 @@ export const useNotifications = () => {
           platform: 'web_pwa',
           userAgent: navigator.userAgent,
           updated_at: serverTimestamp(),
+          created_at: serverTimestamp(),
         }, { merge: true });
 
         console.log('🔄 FCM token refreshed silently');
@@ -50,6 +54,19 @@ export const useNotifications = () => {
       }
     };
 
-    refreshToken();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        refreshTokenForUser();
+      }
+    });
+
+    if (auth.currentUser) {
+      refreshTokenForUser();
+    }
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []); // Run once on mount — no permission dialog
 };

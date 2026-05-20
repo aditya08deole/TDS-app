@@ -123,11 +123,6 @@ export async function dedupFetch<T>(
       setCached(endpoint, data);
       return data;
     } catch (error) {
-      // Cache error responses with shorter TTL (10 seconds) to prevent request stampede
-      // but not too long to keep stale errors
-      if (error instanceof Error) {
-        setCached(endpoint, { __error: true, message: error.message, timestamp: Date.now() } as any);
-      }
       throw error;
     } finally {
       // Remove from in-flight tracking

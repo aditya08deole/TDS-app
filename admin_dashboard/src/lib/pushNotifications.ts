@@ -66,8 +66,8 @@ async function registerNativeTokenWithBackend(token: string, userId: string | nu
       await storage.set('fcm_token_timestamp', attemptTime); // Mark success
       await storage.set('fcm_pending_token', ''); // Clear pending
     }
-  } catch (err: any) {
-    const errMsg = `Network error: ${err?.message || String(err)}`;
+  } catch (err: unknown) {
+    const errMsg = `Network error: ${err instanceof Error ? err.message : String(err)}`;
     console.error('❌ ' + errMsg);
     const { storage } = await import('./storage');
     await storage.set('fcm_registration_error', errMsg);
@@ -118,10 +118,8 @@ export const initPushNotifications = async (userId?: string | null) => {
   }
 
   console.log('[FCM-INIT] Registering with FCM...');
-  // Register with FCM
-  await PushNotifications.register();
-
-  // On success, save the token locally AND register it with the backend
+  // On success, save the token locally AND register it with the backend.
+  // Register listeners before calling register() so the token event cannot be missed.
   PushNotifications.addListener('registration', async (token: Token) => {
     console.log(`✅ [FCM-TOKEN] Generated: ${token.value.substring(0, 20)}...`);
     await storage.set('fcm_token', token.value);
@@ -130,8 +128,8 @@ export const initPushNotifications = async (userId?: string | null) => {
   });
 
   // Handle registration errors
-  PushNotifications.addListener('registrationError', (error: any) => {
-    const errMsg = JSON.stringify(error);
+  PushNotifications.addListener('registrationError', (error: unknown) => {
+    const errMsg = error instanceof Error ? error.message : JSON.stringify(error);
     console.error(`❌ [FCM-ERROR] ${errMsg}`);
     storage.set('fcm_registration_error', errMsg);
   });
@@ -151,6 +149,9 @@ export const initPushNotifications = async (userId?: string | null) => {
       window.location.href = url;
     }
   });
+
+  // Register with FCM after listeners are in place.
+  await PushNotifications.register();
   
   console.log('[FCM-INIT] Push notification initialization complete.');
 };
