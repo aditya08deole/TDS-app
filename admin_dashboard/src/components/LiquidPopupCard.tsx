@@ -35,23 +35,23 @@ export function LiquidPopupCard({
   const getGlowClasses = () => {
     switch (glowColor) {
       case 'blue':
-        return 'from-blue-500/10 via-indigo-600/5 to-slate-900/10 dark:from-blue-500/20 dark:via-indigo-600/5 dark:to-slate-900/40 shadow-blue-500/15';
+        return 'from-blue-500/10 via-indigo-600/5 to-transparent shadow-blue-500/15';
       case 'purple':
-        return 'from-purple-500/10 via-pink-600/5 to-slate-900/10 dark:from-purple-500/20 dark:via-pink-600/5 dark:to-slate-900/40 shadow-purple-500/15';
+        return 'from-purple-500/10 via-pink-600/5 to-transparent shadow-purple-500/15';
       case 'amber':
-        return 'from-amber-500/10 via-orange-600/5 to-slate-900/10 dark:from-amber-500/20 dark:via-orange-600/5 dark:to-slate-900/40 shadow-amber-500/15';
+        return 'from-amber-500/10 via-orange-600/5 to-transparent shadow-amber-500/15';
       case 'cyan':
       default:
-        return 'from-cyan-500/10 via-blue-600/5 to-indigo-900/10 dark:from-cyan-500/20 dark:via-blue-600/5 dark:to-indigo-900/40 shadow-cyan-500/15';
+        return 'from-cyan-500/10 via-blue-600/5 to-transparent shadow-cyan-500/15';
     }
   };
 
   return (
     <div
       className={cn(
-        'relative overflow-hidden group border border-white/40 dark:border-white/10',
-        'bg-white/60 dark:bg-slate-950/70 backdrop-blur-2xl',
-        'shadow-[0_20px_50px_rgba(0,0,0,0.12)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)]',
+        'relative overflow-hidden group border border-white/35 dark:border-white/15',
+        'bg-white/10 dark:bg-slate-950/40 backdrop-blur-3xl',
+        'shadow-[0_20px_50px_rgba(0,0,0,0.1)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.5)]',
         getRoundingClasses(),
         hover && 'transition-all duration-500 ease-out hover:scale-[1.01] hover:border-cyan-400/40 hover:shadow-2xl',
         className

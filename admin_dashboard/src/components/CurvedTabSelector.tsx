@@ -15,9 +15,7 @@ interface CurvedTabSelectorProps {
 
 /**
  * CurvedTabSelector Component
- * Modeled directly after Screen 3 in the reference UI:
- * - Asymmetric inverted curve cutout where the active tab rises seamlessly
- * - Theme adaptive liquid glass backdrop blur (translucent white in light mode, dark glass in dark mode)
+ * Ultra-pure transparent glassmorphism matching the master system glass cards.
  */
 export function CurvedTabSelector({
   tabs,
@@ -28,8 +26,8 @@ export function CurvedTabSelector({
   return (
     <div
       className={cn(
-        'relative inline-flex items-center p-1.5 rounded-2xl border border-white/40 dark:border-white/15',
-        'bg-white/60 dark:bg-slate-950/60 backdrop-blur-2xl shadow-lg',
+        'relative inline-flex items-center p-1.5 rounded-2xl border border-white/35 dark:border-white/15',
+        'bg-white/15 dark:bg-slate-950/40 backdrop-blur-3xl shadow-lg',
         className
       )}
     >
