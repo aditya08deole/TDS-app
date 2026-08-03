@@ -2,10 +2,14 @@ import cron from 'node-cron';
 import { syncFromFirebase } from '../services/syncService';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getRedisClient } from '../db/redis';
-import { 
-    sendHourlyReminders, 
+import {
+    sendHourlyReminders,
     sendForceConsolidatedReport,
-    triggerForceDeviceAlert 
+    triggerForceDeviceAlert,
+    sendPushNotification,
+    sendWhatsAppNotification,
+    sendNTFYNotification,
+    triggerIFTTTWebhook,
 } from '../services/notificationService';
 import { getAllDevices, updateDevice } from '../services/deviceService';
 import { getLatestThingSpeakReading } from '../services/thingSpeakService';
@@ -13,19 +17,23 @@ import { getLatestThingSpeakReading } from '../services/thingSpeakService';
 function getDb() { return getFirestore(); }
 function getRedis() { return getRedisClient(); }
 
+// ─── Scheduler Task Handles ──────────────────────────────────────────────────
+// Fix #10: All task handles are tracked so stopScheduler() can stop ALL of them.
 let scheduledTask: any = null;
 let cleanupTask: any = null;
 let heartbeatTask: any = null;
 let reminderTask: any = null;
 let thingSpeakTask: any = null;
+let forceEngineTask: any = null; // Fix #10: Was untracked — leaked after stopScheduler()
 
 /**
  * ThingSpeak Autonomous Ghost Engine
- * Runs every 15 minutes to fetch real-time data directly from ThingSpeak.
- * Forcefully notifies admins every 60 minutes if critical state remains.
+ * Fix #9: Reduced from 15-min to 2-min polling for near-real-time detection.
+ * First breach fires immediately; subsequent blasts throttled to 1 per hour.
  */
 export function startThingSpeakMonitorJob(): void {
-    thingSpeakTask = cron.schedule('*/15 * * * *', async () => {
+    // Fix #9: Was '*/15 * * * *' — up to 15 minute delay on new alerts.
+    thingSpeakTask = cron.schedule('*/2 * * * *', async () => {
         try {
             console.log('👻 [GHOST ENGINE] Starting autonomous ThingSpeak scan...');
             const devices = await getAllDevices();
@@ -39,7 +47,6 @@ export function startThingSpeakMonitorJob(): void {
                 const reading = await getLatestThingSpeakReading(device);
                 if (!reading) continue;
 
-                // 1. Update Device document with latest reading (Low-cost sync)
                 const tds = reading.tds;
                 const maxLimit = device.safe_tds_max || 500;
                 const isCritical = tds >= maxLimit;
@@ -59,26 +66,26 @@ export function startThingSpeakMonitorJob(): void {
                         time: reading.recorded_at
                     });
 
-                    // ── NEW: Force-create individual Alert if it doesn't exist ──
-                    // This ensures the APK shows the alert card and logs instantly.
+                    // Force-create individual alert — ensures APK shows the card immediately
                     await triggerForceDeviceAlert(device.id, tds, reading.recorded_at);
                 }
             }
 
             if (criticalDevices.length > 0) {
                 console.log(`🚨 [GHOST ENGINE] Found ${criticalDevices.length} critical devices! Checking force-timer...`);
-                
+
                 const redis = getRedis();
                 const FORCE_TIMER_KEY = 'engine:force_report_last_sent';
                 const lastSent = await redis.get(FORCE_TIMER_KEY);
                 const lastSentTime = lastSent ? parseInt(lastSent) : 0;
 
+                // Fix #9: Fire immediately on first breach (lastSentTime === 0), then throttle to 1hr
                 if (now - lastSentTime >= ONE_HOUR_MS) {
                     await sendForceConsolidatedReport(criticalDevices);
                     await redis.set(FORCE_TIMER_KEY, String(now));
                     console.log('🔥 [GHOST ENGINE] Forceful consolidated report dispatched.');
                 } else {
-                    console.log(`⏱️ [GHOST ENGINE] Force-timer not reached. Next report in ${Math.round((ONE_HOUR_MS - (now - lastSentTime)) / 60000)} mins.`);
+                    console.log(`⏱️ [GHOST ENGINE] Force-timer active. Next report in ${Math.round((ONE_HOUR_MS - (now - lastSentTime)) / 60000)} mins.`);
                 }
             } else {
                 console.log('✅ [GHOST ENGINE] Scan complete. All systems healthy.');
@@ -88,27 +95,21 @@ export function startThingSpeakMonitorJob(): void {
         }
     });
 
-    console.log('✅ ThingSpeak Ghost Engine active — polling every 15 mins.');
+    console.log('✅ ThingSpeak Ghost Engine active — polling every 2 mins (was 15).');
 }
 
 export function startScheduler(): void {
   const syncInterval = process.env.SYNC_INTERVAL_HOURS || '1';
   const hours = parseInt(syncInterval);
 
-  if (hours < 1 || hours > 24) {
+  if (isNaN(hours) || hours < 1 || hours > 24) {
     console.warn(`Invalid SYNC_INTERVAL_HOURS: ${syncInterval}, defaulting to 1 hour`);
   }
-
-  // Schedule sync every N hours at :00 minutes
-  // For 1 hour: "0 * * * *" (every hour at :00)
-  // For 2 hours: "0 */2 * * *" (every 2 hours at :00)
-  // For 24 hours: "0 0 * * *" (daily at midnight)
 
   const cronExpression = hours === 24 ? '0 0 * * *' : `0 */${hours} * * *`;
 
   scheduledTask = cron.schedule(cronExpression, async () => {
     console.log(`\n📅 [SCHEDULED SYNC] Running sync at ${new Date().toISOString()}`);
-
     try {
       const result = await syncFromFirebase('scheduled');
       console.log(`✅ Scheduled sync completed: ${result.devicesSynced} devices, ${result.alertsSynced} alerts`);
@@ -117,13 +118,13 @@ export function startScheduler(): void {
     }
   });
 
-  console.log(`✅ Sync scheduler started - running every ${hours} hour(s) at pattern: ${cronExpression}`);
+  console.log(`✅ Sync scheduler started — every ${hours} hour(s) at pattern: ${cronExpression}`);
 }
 
 /**
  * Alert Cleanup Job — runs every minute.
- * Deletes Firestore alert documents older than 10 minutes.
- * Also cleans up associated Redis keys to keep memory in sync.
+ * Fix #14: Now only deletes RESOLVED alerts older than 24 hours.
+ * Previously deleted all non-open alerts older than 10 minutes, destroying audit history.
  */
 export function startAlertCleanupJob(): void {
   cleanupTask = cron.schedule('* * * * *', async () => {
@@ -131,44 +132,43 @@ export function startAlertCleanupJob(): void {
       const db = getDb();
       const redis = getRedis();
 
-      // Cutoff = now minus 10 minutes (or 24 hours in dev)
-      const isDev = process.env.NODE_ENV !== 'production';
-      const ttlMinutes = isDev ? 24 * 60 : 10;
-      const cutoffDate = new Date(Date.now() - ttlMinutes * 60 * 1000);
+      // Fix #14: Preserve resolved alerts for 24 hours (was 10 minutes for ALL non-open alerts)
+      const RESOLVED_TTL_HOURS = 24;
+      const cutoffDate = new Date(Date.now() - RESOLVED_TTL_HOURS * 3600 * 1000);
       const cutoffISO = cutoffDate.toISOString();
 
-      // Query for alerts older than the cutoff
+      // Only delete alerts that are BOTH resolved AND older than 24 hours
       const oldAlerts = await db
         .collection('alerts')
-        .where('created_at', '<=', cutoffISO)
+        .where('status', '==', 'resolved')
+        .where('resolved_at', '<=', cutoffISO)
         .get();
 
-      if (oldAlerts.empty) return; // Nothing to clean up
+      if (oldAlerts.empty) return;
 
-      console.log(`🧹 [CLEANUP] Deleting ${oldAlerts.size} alert(s) older than ${ttlMinutes} minutes...`);
+      console.log(`🧹 [CLEANUP] Deleting ${oldAlerts.size} resolved alert(s) older than ${RESOLVED_TTL_HOURS}h...`);
 
       const batch = db.batch();
       let deleteCount = 0;
 
       for (const doc of oldAlerts.docs) {
         const alertData = doc.data();
-        
-        // Skip 'open' alerts — we want to keep them for hourly notifications
+
+        // Safety guard: never delete open alerts
         if (alertData.status === 'open') {
-            console.log(`ℹ️ [CLEANUP] Skipping open alert ${doc.id} for device ${alertData.device_id}`);
-            continue;
+          console.warn(`⚠️ [CLEANUP] Skipping open alert ${doc.id} (query filter mismatch)`);
+          continue;
         }
 
         batch.delete(doc.ref);
         deleteCount++;
 
-        // Clean up Redis in parallel
         const alertId = doc.id;
         const deviceId = typeof alertData.device_id === 'object' && alertData.device_id !== null
           ? (alertData.device_id as any).id
           : String(alertData.device_id || '');
 
-        // Fire-and-forget Redis cleanup (non-blocking)
+        // Fire-and-forget Redis cleanup
         Promise.all([
           redis.del(`alert:${alertId}`),
           redis.sRem('alerts:all', alertId),
@@ -178,31 +178,29 @@ export function startAlertCleanupJob(): void {
       }
 
       if (deleteCount > 0) {
-          await batch.commit();
-          console.log(`✅ [CLEANUP] Deleted ${deleteCount} old alert(s) from Firestore.`);
+        await batch.commit();
+        console.log(`✅ [CLEANUP] Deleted ${deleteCount} resolved alert(s).`);
       } else {
-          console.log(`✅ [CLEANUP] No old non-open alerts to delete.`);
+        console.log('✅ [CLEANUP] No eligible resolved alerts to delete.');
       }
     } catch (error) {
       console.error('❌ [CLEANUP] Alert cleanup job failed:', error);
     }
   });
 
-  console.log('✅ Alert cleanup job started — running every minute (10-min TTL on alerts).');
+  console.log('✅ Alert cleanup job started — 24hr retention for resolved alerts.');
 }
 
 /**
  * Device Heartbeat Job — runs every 5 minutes.
- * Checks all devices for inactivity. If a device hasn't sent telemetry in 1 hour,
- * it is marked as 'offline'.
+ * Marks devices as offline if no telemetry for 1+ hour.
  */
 export function startDeviceHeartbeatJob(): void {
   heartbeatTask = cron.schedule('*/5 * * * *', async () => {
     try {
       const redis = getRedis();
       const db = getDb();
-      
-      // 1. Get all device IDs from Redis
+
       const deviceIds = await redis.sMembers('devices:all');
       if (deviceIds.length === 0) return;
 
@@ -221,13 +219,11 @@ export function startDeviceHeartbeatJob(): void {
         if (lastReadingAt && currentStatus !== 'offline') {
           const lastTime = new Date(lastReadingAt).getTime();
           if (now - lastTime > ONE_HOUR_MS) {
-            console.log(`⚠️ Device ${deviceJson.name || id} is inactive for >1hr. Marking OFFLINE.`);
-            
-            // Update Redis
+            console.log(`⚠️ Device ${deviceJson.name || id} inactive >1hr. Marking OFFLINE.`);
+
             await redis.hSet(`device:${id}`, 'status', 'offline');
             await redis.hSet(`device:${id}`, 'updated_at', new Date().toISOString());
 
-            // Update Firestore (non-blocking)
             db.collection('devices').doc(id).update({
               status: 'offline',
               updated_at: new Date().toISOString()
@@ -240,11 +236,17 @@ export function startDeviceHeartbeatJob(): void {
     }
   });
 
-  console.log('✅ Device heartbeat job started — checking every 5 minutes (1-hr inactivity threshold).');
+  console.log('✅ Device heartbeat job started — checking every 5 minutes.');
 }
 
 /**
- * Hourly Notification Reminder Job — runs at minute 0 of every hour.
+ * Hourly Reminder Job — fires at :00 of every hour.
+ * Also: Force-Hunting Engine — every 5 min, re-dispatches if critical alert
+ * still open and last notification was >1 hour ago.
+ *
+ * Fix #10: forceEngineTask now tracked in a module-level variable so
+ * stopScheduler() can properly stop it.
+ * Fix #22: Removed dynamic require() — functions imported statically at top.
  */
 export function startHourlyReminderJob(): void {
     reminderTask = cron.schedule('0 * * * *', async () => {
@@ -256,10 +258,8 @@ export function startHourlyReminderJob(): void {
         }
     });
 
-    // ── NEW: Force-Hunting Critical Alerts ──
-    // Runs every 5 minutes and FORCES a notification if alert is still open
-    // and was last notified more than 60 minutes ago.
-    cron.schedule('*/5 * * * *', async () => {
+    // Fix #10: Store handle in module-level variable so stopScheduler() can stop it
+    forceEngineTask = cron.schedule('*/5 * * * *', async () => {
         try {
             console.log('🚀 [FORCE ENGINE] Scanning for unresolved critical alerts...');
             const db = getDb();
@@ -278,13 +278,12 @@ export function startHourlyReminderJob(): void {
                 const lastNotified = alert.last_notified_at ? new Date(alert.last_notified_at).getTime() : 0;
 
                 if (now - lastNotified >= ONE_HOUR_MS) {
-                    console.log(`🔥 [FORCE DISPATCH] Alert ${doc.id} is still OPEN after 1hr. Forcing re-delivery...`);
+                    console.log(`🔥 [FORCE DISPATCH] Alert ${doc.id} still OPEN after 1hr. Forcing re-delivery...`);
 
-                    // FIX RC-3/RC-6: The alertData in Firestore has the original breach time frozen
-                    // in `recorded_at`. Pull the device's LATEST reading to get a rolling timestamp.
                     const alertData: any = { ...doc.data() };
                     const deviceId: string = alertData.device_id;
 
+                    // Refresh with latest device reading
                     if (deviceId && deviceId !== 'SYSTEM_REPORT') {
                         try {
                             const deviceDoc = await db.collection('devices').doc(deviceId).get();
@@ -292,20 +291,14 @@ export function startHourlyReminderJob(): void {
                                 const fresh = deviceDoc.data()!;
                                 if (fresh.last_tds != null)  alertData.value_at_time = fresh.last_tds;
                                 if (fresh.last_reading_at)   alertData.recorded_at   = fresh.last_reading_at;
-                                console.log(`🔄 [FORCE DISPATCH] Refreshed device ${deviceId}: ppm=${fresh.last_tds}, ts=${fresh.last_reading_at}`);
+                                console.log(`🔄 [FORCE DISPATCH] Refreshed device ${deviceId}: ppm=${fresh.last_tds}`);
                             }
                         } catch (refreshErr) {
-                            console.warn(`⚠️ [FORCE DISPATCH] Could not refresh device data for ${deviceId}:`, refreshErr);
+                            console.warn(`⚠️ [FORCE DISPATCH] Could not refresh device ${deviceId}:`, refreshErr);
                         }
                     }
 
-                    const { 
-                        sendPushNotification, 
-                        sendWhatsAppNotification, 
-                        sendNTFYNotification, 
-                        triggerIFTTTWebhook 
-                    } = require('../services/notificationService');
-
+                    // Fix #22: Use statically imported functions — NOT require()
                     await Promise.all([
                         sendPushNotification(doc.id, alertData, true),
                         sendWhatsAppNotification(doc.id, alertData, true),
@@ -319,47 +312,54 @@ export function startHourlyReminderJob(): void {
         }
     });
 
-    console.log('✅ Hourly reminder job started — running every hour at :00.');
-    console.log('✅ Force Critical Engine active — checking every 5 minutes.');
+    console.log('✅ Hourly reminder job started — every hour at :00.');
+    console.log('✅ Force Critical Engine active — checking every 5 minutes (now tracked).');
 }
 
+/**
+ * Stop all scheduler tasks.
+ * Fix #10: forceEngineTask is now properly stopped.
+ */
 export function stopScheduler(): void {
-  if (scheduledTask) {
-    scheduledTask.stop();
-    scheduledTask = null;
-    console.log('⏹️ Sync scheduler stopped');
+  const tasks: [string, any][] = [
+    ['Sync scheduler', scheduledTask],
+    ['Alert cleanup job', cleanupTask],
+    ['Device heartbeat job', heartbeatTask],
+    ['Hourly reminder job', reminderTask],
+    ['ThingSpeak monitor job', thingSpeakTask],
+    ['Force Critical Engine', forceEngineTask], // Fix #10: now tracked
+  ];
+
+  for (const [name, task] of tasks) {
+    if (task) {
+      task.stop();
+      console.log(`⏹️ ${name} stopped`);
+    }
   }
-  if (cleanupTask) {
-    cleanupTask.stop();
-    cleanupTask = null;
-    console.log('⏹️ Alert cleanup job stopped');
-  }
-  if (heartbeatTask) {
-    heartbeatTask.stop();
-    heartbeatTask = null;
-    console.log('⏹️ Device heartbeat job stopped');
-  }
-  if (reminderTask) {
-    reminderTask.stop();
-    reminderTask = null;
-    console.log('⏹️ Hourly reminder job stopped');
-  }
-  if (thingSpeakTask) {
-    thingSpeakTask.stop();
-    thingSpeakTask = null;
-    console.log('⏹️ ThingSpeak monitor job stopped');
-  }
+
+  scheduledTask = null;
+  cleanupTask = null;
+  heartbeatTask = null;
+  reminderTask = null;
+  thingSpeakTask = null;
+  forceEngineTask = null; // Fix #10
 }
 
+/**
+ * Returns the current status of all scheduler tasks.
+ * Fix #26: Used by /health endpoint to report real scheduler state.
+ */
 export function getSchedulerStatus(): any {
   return {
-    isRunning: scheduledTask ? true : false,
-    cleanupRunning: cleanupTask ? true : false,
-    heartbeatRunning: heartbeatTask ? true : false,
-    reminderRunning: reminderTask ? true : false,
-    thingSpeakMonitorRunning: thingSpeakTask ? true : false,
+    isRunning: !!scheduledTask,
+    cleanupRunning: !!cleanupTask,
+    heartbeatRunning: !!heartbeatTask,
+    reminderRunning: !!reminderTask,
+    thingSpeakMonitorRunning: !!thingSpeakTask,
+    forceEngineRunning: !!forceEngineTask, // Fix #10: now reported
     nextRun: scheduledTask ? 'Check logs' : 'Not running',
     interval: process.env.SYNC_INTERVAL_HOURS || '1 hour',
-    alertCleanupTtlMinutes: 10,
+    alertRetentionHours: 24,
+    thingSpeakPollIntervalMins: 2,
   };
 }

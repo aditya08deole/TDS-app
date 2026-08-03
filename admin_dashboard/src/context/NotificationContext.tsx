@@ -109,21 +109,37 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
     }, [user?.uid]);
 
-    // Fix #3 + #14: Save FCM token linked to the authenticated user UID.
-    // This ensures the backend can target the correct user across all their browsers.
+    // Fix #21: Preserve created_at on token refresh.
+    // Previous code set created_at: serverTimestamp() on every merge, which
+    // overwrote the original subscription date every time the token refreshed.
+    // Now: created_at is ONLY set on first write via a separate check.
     const saveTokenForUser = useCallback(async (token: string) => {
         if (!user || !token) return;
         const tokenHash = btoa(token).replace(/[^a-zA-Z0-9]/g, '').substring(0, 24);
         const docId = `${user.uid}_${tokenHash}`;
         try {
-            await setDoc(doc(db, 'notification_subscriptions', docId), {
-                user_id: user.uid,           // Fix #14: always linked to UID
+            const docRef = doc(db, 'notification_subscriptions', docId);
+
+            // Fix #21: Separate the "always update" fields from "only on create" fields
+            // Firestore merge doesn't natively support "set if not exists" for individual
+            // fields, so we check existence first on a fresh registration.
+            const { getDoc } = await import('firebase/firestore');
+            const existing = await getDoc(docRef);
+
+            const payload: Record<string, any> = {
+                user_id: user.uid,
                 token,
                 platform: isNative ? 'android_native' : 'web_pwa',
                 userAgent: navigator.userAgent,
-                updated_at: serverTimestamp(),
-                created_at: serverTimestamp(),
-            }, { merge: true });
+                updated_at: serverTimestamp(),  // ← always update
+            };
+
+            // Only set created_at if this is a brand new document
+            if (!existing.exists()) {
+                payload.created_at = serverTimestamp();
+            }
+
+            await setDoc(docRef, payload, { merge: true });
             await storage.set('fcm_token_doc_id', docId);
             setIsSubscribed(true);
         } catch (err) {

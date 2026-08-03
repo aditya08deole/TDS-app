@@ -1,37 +1,12 @@
-# ── Dependencies (installed fresh during build) ──
-node_modules/
-**/node_modules/
-
-# ── Build artifacts (built fresh during build) ──
-dist/
-**/dist/
-build/
-**/.next/
-
-# ── Local environment files ──
-.env
-.env.local
-.env.*.local
-
-# ── Debug / scratch files ──
-scratch/
-**/scratch/
+node_modules
+dist
+.git
+.gitignore
 *.log
 npm-debug.log*
-
-# ── Editor & OS metadata ──
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# ── Firebase emulator artifacts ──
-.firebase/
-firestore-debug.log
-ui-debug.log
-
-# ── Git internals ──
-.git/
-.gitignore
+yarn-debug.log*
+.vscode
+.idea
+.gemini
+brain
+tmp

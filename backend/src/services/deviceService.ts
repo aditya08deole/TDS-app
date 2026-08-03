@@ -1,5 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
-import { getRedisClient } from '../db/redis';
+import { getRedisClient, hgetall } from '../db/redis';
+import { l1Cache } from '../db/cache';
 import { Device, SensorData, SystemHealthLog, UptimeStat } from '../types';
 
 function getFirestoreDb() {
@@ -63,16 +64,44 @@ export async function createDevice(deviceData: Partial<Device>): Promise<Device>
   return device;
 }
 
+/**
+ * Fix #31: searchDevices now reads from Redis (O(n) over in-memory cache)
+ * instead of fetching all devices from Firestore on every search.
+ * This avoids a full Firestore collection scan per keystroke.
+ */
 export async function searchDevices(query: string): Promise<Device[]> {
-  const allDevices = await getAllDevices();
+  const redis = getRedisClient();
   const q = query.toLowerCase();
+  const deviceIds = await redis.sMembers('devices:all');
 
-  return allDevices.filter(d => 
-    (d.name && d.name.toLowerCase().includes(q)) ||
-    (d.location_name && d.location_name.toLowerCase().includes(q)) ||
-    (d.node_number && d.node_number.toLowerCase().includes(q)) ||
-    (d.id && d.id.toLowerCase().includes(q))
-  ).slice(0, 50);
+  const matched: Device[] = [];
+  for (const id of deviceIds) {
+    const device = await hgetall<Device>(`device:${id}`);
+    if (
+      device && (
+        device.name?.toLowerCase().includes(q) ||
+        device.location_name?.toLowerCase().includes(q) ||
+        device.node_number?.toLowerCase().includes(q) ||
+        device.id?.toLowerCase().includes(q)
+      )
+    ) {
+      matched.push(device);
+      if (matched.length >= 50) break; // enforce limit
+    }
+  }
+
+  // Fallback to Firestore if Redis cache is cold
+  if (matched.length === 0 && deviceIds.length === 0) {
+    const allDevices = await getAllDevices();
+    return allDevices.filter(d =>
+      (d.name && d.name.toLowerCase().includes(q)) ||
+      (d.location_name && d.location_name.toLowerCase().includes(q)) ||
+      (d.node_number && d.node_number.toLowerCase().includes(q)) ||
+      (d.id && d.id.toLowerCase().includes(q))
+    ).slice(0, 50);
+  }
+
+  return matched;
 }
 
 export async function getDevicesByStatus(status: string): Promise<Device[]> {
@@ -98,13 +127,22 @@ export async function getDeviceStats(): Promise<any> {
   };
 }
 
+/**
+ * Fix #30: getDeviceWithRecentData cached in L1 memory cache (30s TTL).
+ * Previously fired 3 sequential Firestore reads on every device detail page load.
+ * Now serves from fast in-memory cache between refreshes.
+ */
 export async function getDeviceWithRecentData(id: string): Promise<any> {
+  const cacheKey = `device:detail:${id}`;
+  const cached = l1Cache.get<any>(cacheKey);
+  if (cached) return cached;
+
   try {
     const device = await getDeviceById(id);
     if (!device) return null;
 
     const db = getFirestoreDb();
-    
+
     // Get open alerts count
     const alertsSnapshot = await db.collection('alerts')
       .where('device_id', '==', id)
@@ -118,7 +156,7 @@ export async function getDeviceWithRecentData(id: string): Promise<any> {
       .orderBy('recorded_at', 'desc')
       .limit(1)
       .get();
-    
+
     let latestReading = null;
     if (!readingsSnapshot.empty) {
       latestReading = readingsSnapshot.docs[0].data();
@@ -127,7 +165,7 @@ export async function getDeviceWithRecentData(id: string): Promise<any> {
     const countSnapshot = await db.collection('sensor_data').where('device_id', '==', id).count().get();
     const totalReadings = countSnapshot.data().count;
 
-    return {
+    const result = {
       ...device,
       open_alerts_count: openAlertsCount,
       total_readings: totalReadings,
@@ -135,6 +173,10 @@ export async function getDeviceWithRecentData(id: string): Promise<any> {
       latest_temperature: latestReading?.payload?.temperature || latestReading?.temperature || null,
       latest_voltage: latestReading?.payload?.voltage || latestReading?.voltage || null
     };
+
+    // Cache result for 30 seconds to avoid repeated Firestore reads
+    l1Cache.set(cacheKey, result, 30 * 1000);
+    return result;
   } catch (error) {
     console.error(`Error fetching recent data for device ${id}:`, error);
     return null;

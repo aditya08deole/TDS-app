@@ -3,6 +3,7 @@
  * Detects platform and either shows map or fallback
  */
 
+import React from 'react';
 import { MapPin } from 'lucide-react';
 
 interface MapPageWrapperProps {
@@ -87,6 +88,3 @@ export class MapPageErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
-
-// Need this import for React.Component
-import React from 'react';

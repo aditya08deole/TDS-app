@@ -1,35 +1,25 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { auth } from '../lib/firebase'
-import { 
-    signInWithEmailAndPassword, 
+import {
+    signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
-    GoogleAuthProvider, 
-    signInWithRedirect,
-    getRedirectResult
+    GoogleAuthProvider,
+    signInWithPopup,        // Fix #1: switched from signInWithRedirect — no stuck spinner
+    sendPasswordResetEmail, // Fix #3: forgot password implementation
+    sendEmailVerification,  // Fix #23: email verification on sign-up
+    signOut as firebaseSignOut,
 } from 'firebase/auth'
-import { Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { Lock, Mail, AlertCircle, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
 
 // Custom Google Icon
 const GoogleIcon = () => (
     <svg className="w-5 h-5" viewBox="0 0 24 24">
-        <path
-            fill="#4285F4"
-            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-        />
-        <path
-            fill="#34A853"
-            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-        />
-        <path
-            fill="#FBBC05"
-            d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94L5.84 14.1z"
-        />
-        <path
-            fill="#EA4335"
-            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-        />
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+        <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94L5.84 14.1z" />
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
     </svg>
 )
 
@@ -44,27 +34,16 @@ export default function Login() {
     const [confirmPassword, setConfirmPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [successMessage, setSuccessMessage] = useState<string | null>(null) // Fix #3 success toast
     const [showPassword, setShowPassword] = useState(false)
 
     const navigate = useNavigate()
     const location = useLocation()
     const from = location.state?.from?.pathname || '/'
 
-    // Handle Google Redirect Result
-    useEffect(() => {
-        const checkRedirectResult = async () => {
-            if (Capacitor.isNativePlatform()) return; // Native doesn't use redirect result
-            try {
-                const result = await getRedirectResult(auth)
-                if (result) {
-                    navigate(from, { replace: true })
-                }
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Google login failed')
-            }
-        }
-        checkRedirectResult()
-    }, [navigate, from])
+    // Fix #1: Removed the useEffect that called getRedirectResult() —
+    // we no longer use signInWithRedirect, so it's not needed.
+    // The signInWithPopup approach is synchronous and handles navigation directly.
 
     // Cursor Glow Effect
     useEffect(() => {
@@ -82,6 +61,7 @@ export default function Login() {
         e.preventDefault()
         setLoading(true)
         setError(null)
+        setSuccessMessage(null)
 
         if (isSignUp && password !== confirmPassword) {
             setError("Passwords do not match")
@@ -91,15 +71,26 @@ export default function Login() {
 
         try {
             if (isSignUp) {
-                await createUserWithEmailAndPassword(auth, email, password)
+                // Fix #23: Send email verification before allowing access
+                const userCred = await createUserWithEmailAndPassword(auth, email, password)
+                await sendEmailVerification(userCred.user)
+                // Sign them out until they verify
+                await firebaseSignOut(auth)
+                setSuccessMessage('Account created! Please check your email to verify before signing in.')
+                setIsSignUp(false)
+                setPassword('')
+                setConfirmPassword('')
+                return // Don't navigate
             } else {
                 await signInWithEmailAndPassword(auth, email, password)
+                navigate(from, { replace: true })
             }
-            navigate(from, { replace: true })
         } catch (err: any) {
             console.error('Auth failed:', err)
             if (err.code === 'auth/invalid-credential') {
-                setError("Invalid email or password. Please ensure Email/Password auth is enabled in your Firebase Console and your credentials are correct.")
+                setError("Invalid email or password. Please check your credentials.")
+            } else if (err.code === 'auth/email-already-in-use') {
+                setError("An account with this email already exists. Try signing in.")
             } else {
                 setError(err.message || 'Authentication failed')
             }
@@ -111,36 +102,71 @@ export default function Login() {
     const handleGoogleLogin = async () => {
         setLoading(true)
         setError(null)
+        setSuccessMessage(null)
         try {
             if (Capacitor.isNativePlatform()) {
+                // Native Android (Capacitor) path — unchanged
                 const result = await FirebaseAuthentication.signInWithGoogle()
                 if (result.credential?.idToken) {
                     const credential = GoogleAuthProvider.credential(result.credential.idToken)
                     await signInWithCredential(auth, credential)
+                    // Fix #2: setLoading(false) before navigate to prevent race condition
+                    setLoading(false)
                     navigate(from, { replace: true })
                 } else {
                     throw new Error("Google Sign-In failed or was cancelled")
                 }
             } else {
+                // Fix #1: Use signInWithPopup instead of signInWithRedirect
+                // — popup stays on the same page, result is immediately available,
+                //   no redirect loop, and loading state is properly cleaned up.
                 const provider = new GoogleAuthProvider()
-                await signInWithRedirect(auth, provider)
-                // No need to navigate or setLoading(false) here because the page redirects
+                const result = await signInWithPopup(auth, provider)
+                if (result.user) {
+                    navigate(from, { replace: true })
+                }
             }
         } catch (err: any) {
             console.error('Google login failed:', err)
-            let errorMessage = 'Google login failed';
-            if (err instanceof Error) {
-                errorMessage = err.message;
-            } else if (typeof err === 'object' && err !== null) {
-                try {
-                    errorMessage = JSON.stringify(err);
-                } catch (e) {
+            // User closed the popup — not a real error
+            if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+                setError(null) // silently clear
+            } else {
+                let errorMessage = 'Google login failed';
+                if (err instanceof Error) {
+                    errorMessage = err.message;
+                } else if (typeof err === 'object' && err !== null) {
+                    try { errorMessage = JSON.stringify(err); } catch { errorMessage = String(err); }
+                } else {
                     errorMessage = String(err);
                 }
-            } else {
-                errorMessage = String(err);
+                setError(`Google Login Error: ${errorMessage}`);
             }
-            setError(`Google Login Error: ${errorMessage}`);
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    // Fix #3: Forgot Password implementation using sendPasswordResetEmail
+    const handleForgotPassword = async () => {
+        setError(null)
+        setSuccessMessage(null)
+        if (!email) {
+            setError('Please enter your email address first, then click Forgot Password.')
+            return
+        }
+        setLoading(true)
+        try {
+            await sendPasswordResetEmail(auth, email)
+            setSuccessMessage(`Password reset email sent to ${email}. Check your inbox!`)
+        } catch (err: any) {
+            if (err.code === 'auth/user-not-found') {
+                // Don't reveal if email exists for security
+                setSuccessMessage(`If an account exists for ${email}, a reset email has been sent.`)
+            } else {
+                setError(err.message || 'Failed to send reset email')
+            }
+        } finally {
             setLoading(false)
         }
     }
@@ -153,25 +179,23 @@ export default function Login() {
             </div>
 
             {/* Interactive Cursor Glow */}
-            <div 
+            <div
                 className="fixed inset-0 pointer-events-none z-0"
                 style={{
                     background: `radial-gradient(400px circle at var(--mouse-x) var(--mouse-y), rgba(6, 182, 212, 0.08), transparent 80%)`
                 }}
             />
 
-            {/* Decorative Overlay - Subtler for Background Image */}
+            {/* Decorative Overlay */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
                 <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px]" />
             </div>
 
-
-
-            {/* Login Card - Wider & More Compact */}
+            {/* Login Card */}
             <div className="w-full max-w-[440px] relative z-10 animate-in fade-in zoom-in-95 duration-700">
                 <GlassCard size="lg" className="p-8 md:px-10 md:py-8 ring-1 ring-accent">
-                    
-                    {/* App Logo & Title - Compact Alignment */}
+
+                    {/* App Logo & Title */}
                     <div className="flex items-center justify-center gap-5 mb-8">
                         <div className="relative group shrink-0">
                             <div className="absolute inset-0 bg-cyan-500/20 rounded-2xl blur-xl group-hover:bg-cyan-500/40 transition-all duration-500" />
@@ -196,6 +220,14 @@ export default function Login() {
                         <div className="mb-5 bg-red-500/5 border border-red-500/10 rounded-xl p-3 flex items-center gap-2.5 text-red-400 animate-in slide-in-from-top-1">
                             <AlertCircle className="h-4 w-4 flex-shrink-0" />
                             <span className="text-xs font-medium">{error}</span>
+                        </div>
+                    )}
+
+                    {/* Fix #3: Success Message (for password reset & email verification) */}
+                    {successMessage && (
+                        <div className="mb-5 bg-green-500/5 border border-green-500/10 rounded-xl p-3 flex items-center gap-2.5 text-green-400 animate-in slide-in-from-top-1">
+                            <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                            <span className="text-xs font-medium">{successMessage}</span>
                         </div>
                     )}
 
@@ -251,9 +283,9 @@ export default function Login() {
                             )}
                         </div>
 
-                        {/* Buttons Row - Side by Side for better aspect ratio if possible, or just optimized spacing */}
+                        {/* Buttons Row */}
                         <div className="flex flex-col gap-3 pt-2">
-                             <button
+                            <button
                                 type="submit"
                                 disabled={loading}
                                 className="w-full premium-button text-white font-bold py-3.5 rounded-xl shadow-lg shadow-cyan-900/10 active:scale-[0.98] disabled:opacity-50 text-sm tracking-wide"
@@ -282,16 +314,22 @@ export default function Login() {
                         <div className="flex items-center justify-between pt-5 border-t border-accent">
                             <p className="text-muted-foreground/70 text-xs">
                                 {isSignUp ? "Joined?" : "New here?"}
-                                <button 
+                                <button
                                     type="button"
-                                    onClick={() => setIsSignUp(!isSignUp)}
+                                    onClick={() => { setIsSignUp(!isSignUp); setError(null); setSuccessMessage(null); }}
                                     className="ml-1.5 text-cyan-400 hover:text-cyan-600 font-bold transition-colors"
                                 >
                                     {isSignUp ? 'Sign In' : 'Create One'}
                                 </button>
                             </p>
+                            {/* Fix #3: Forgot Password now has a real handler */}
                             {!isSignUp && (
-                                <button type="button" className="text-[10px] text-muted-foreground/50 hover:text-foreground transition-colors font-medium">
+                                <button
+                                    type="button"
+                                    onClick={handleForgotPassword}
+                                    disabled={loading}
+                                    className="text-[10px] text-muted-foreground/50 hover:text-cyan-400 transition-colors font-medium disabled:opacity-50"
+                                >
                                     Forgot Password?
                                 </button>
                             )}
@@ -302,6 +340,3 @@ export default function Login() {
         </div>
     )
 }
-
-
-

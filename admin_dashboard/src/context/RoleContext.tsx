@@ -1,7 +1,10 @@
 import React, { createContext, useContext } from 'react'
 import { useAuth } from './AuthContext'
 
-export type UserRole = 'viewer' | 'operator' | 'engineer' | 'admin' | 'super_admin'
+// Fix #4: Unified role type — matches AuthContext.tsx and roleGuard.ts exactly.
+// Removed 'operator' and 'engineer' (they don't exist in the database).
+// Added 'field_engineer' with appropriate permissions between viewer and admin.
+export type UserRole = 'viewer' | 'field_engineer' | 'admin' | 'super_admin'
 
 export type Permission =
     | 'view_dashboard'
@@ -29,15 +32,8 @@ const rolePermissions: Record<UserRole, Permission[]> = {
         'view_alerts',
         'view_settings'
     ],
-    operator: [
-        'view_dashboard',
-        'view_devices',
-        'view_map',
-        'view_alerts',
-        'view_settings',
-        'maintenance_mode'
-    ],
-    engineer: [
+    // Fix #4: field_engineer replaces the broken 'operator' and 'engineer' roles
+    field_engineer: [
         'view_dashboard',
         'view_devices',
         'view_map',
@@ -114,7 +110,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         return permissionList.every(p => hasPermission(p))
     }
 
-    const roleHierarchy: UserRole[] = ['viewer', 'operator', 'engineer', 'admin', 'super_admin']
+    // Fix #4: Hierarchy now matches the 4-role canonical set in AuthContext
+    const roleHierarchy: UserRole[] = ['viewer', 'field_engineer', 'admin', 'super_admin']
 
     const isAtLeast = (minimumRole: UserRole): boolean => {
         const currentIndex = roleHierarchy.indexOf(role)

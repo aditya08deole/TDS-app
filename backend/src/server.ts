@@ -17,7 +17,7 @@ import {
     getSchedulerStatus 
 } from './sync/scheduler';
 import { syncFromFirebase } from './services/syncService';
-import { flushSensorData } from './services/telemetryService';
+import { flushSensorData, startTelemetryFlusher, stopTelemetryFlusher } from './services/telemetryService';
 import deviceRoutes from './api/routes/devices';
 import syncRoutes from './api/routes/sync';
 import notificationRoutes from './api/routes/notifications';
@@ -26,6 +26,8 @@ import alertsRoutes from './api/routes/alerts';
 import { TDS_CONFIG } from './config/tdsConfig';
 import { getFrontendPath } from './utils/pathUtils';
 import { startNotificationListeners, warmFCMCache } from './services/notificationService';
+import { sseService } from './services/sseService';
+import { verifyEnvironment } from './scripts/envVerifier';
 
 // Load environment variables
 dotenv.config();
@@ -50,7 +52,11 @@ app.use(cors({
     // Check if origin is in the allowed list
     const isAllowed = allowedOrigins.some(allowed => origin === allowed || origin.startsWith(`${allowed}/`));
     
-    if (isAllowed || NODE_ENV !== 'production') {
+    // Fix #34: CORS bypass requires an explicit CORS_ALL_ORIGINS=true env var.
+    // Previously used NODE_ENV !== 'production' which opens all origins if
+    // NODE_ENV is accidentally left as 'development' on a production server.
+    const allowAll = process.env.CORS_ALL_ORIGINS === 'true';
+    if (isAllowed || allowAll) {
       callback(null, true);
     } else {
       console.warn(`⚠️ CORS blocked request from unauthorized origin: ${origin}`);
@@ -147,14 +153,29 @@ app.get('/api/system/config', (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/events/live
+ * Real-time Server-Sent Events (SSE) stream for live telemetry & alert broadcasts
+ */
+app.get('/api/events/live', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  sseService.addClient(res);
+});
+
+/**
  * GET /health
- * Consolidated health check for API and Redis
+ * Consolidated health check for API, Redis, and scheduler tasks.
+ * Fix #26: Now reports real scheduler status instead of hardcoding 'active'.
  */
 app.get('/health', async (req, res) => {
   try {
     const redis = getRedisClient();
     const ping = await redis.ping();
     const redisStatus = ping === 'PONG' ? 'up' : 'down';
+    const sched = getSchedulerStatus();
 
     res.json({
       status: 'ok',
@@ -162,8 +183,14 @@ app.get('/health', async (req, res) => {
       services: {
         api: 'up',
         redis: redisStatus,
-        scheduler: 'active'
+        scheduler: sched.isRunning ? 'active' : 'stopped',
+        cleanup: sched.cleanupRunning ? 'active' : 'stopped',
+        heartbeat: sched.heartbeatRunning ? 'active' : 'stopped',
+        reminder: sched.reminderRunning ? 'active' : 'stopped',
+        thingspeak_monitor: sched.thingSpeakMonitorRunning ? 'active' : 'stopped',
+        force_engine: sched.forceEngineRunning ? 'active' : 'stopped',
       },
+      scheduler_detail: sched,
       environment: process.env.NODE_ENV || 'development'
     });
   } catch (error) {
@@ -239,6 +266,10 @@ async function start() {
     console.log('🚀 Starting TDS-APP Unified System (Redis Mode)...');
     console.log(`Environment: ${NODE_ENV}`);
 
+    // Pre-flight environment check
+    const { report } = await verifyEnvironment();
+    console.log('\n' + report.join('\n') + '\n');
+
     // Initialize Firebase
     initializeFirebase();
 
@@ -258,7 +289,7 @@ async function start() {
     // Start hourly notification reminders
     startHourlyReminderJob();
 
-    // Start autonomous ThingSpeak monitoring (Ghost Engine)
+    // Start autonomous ThingSpeak monitoring (Ghost Engine — every 2 min)
     startThingSpeakMonitorJob();
 
     try {
@@ -271,9 +302,11 @@ async function start() {
     // Start real-time notification listeners
     startNotificationListeners();
 
-    // FIX #2a: Pre-warm FCM token cache so push notifications work immediately on boot.
-    // Non-blocking — failure is logged and app continues normally.
+    // Pre-warm FCM token cache so push notifications work immediately on boot
     warmFCMCache().catch(e => console.warn('⚠️ FCM cache warm-up error:', e));
+
+    // Fix #11: Start telemetry flush AFTER Redis is confirmed initialized
+    startTelemetryFlusher();
 
     // Start server
     app.listen(PORT, () => {
@@ -296,6 +329,7 @@ async function start() {
 process.on('SIGTERM', async () => {
   console.log('📭 SIGTERM received, shutting down gracefully...');
   stopScheduler();
+  stopTelemetryFlusher(); // Fix #11
   try {
     console.log('💾 Flushing telemetry buffer to Firestore...');
     await flushSensorData();
@@ -309,6 +343,7 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   console.log('📭 SIGINT received, shutting down gracefully...');
   stopScheduler();
+  stopTelemetryFlusher(); // Fix #11
   try {
     console.log('💾 Flushing telemetry buffer to Firestore...');
     await flushSensorData();

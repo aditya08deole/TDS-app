@@ -4,9 +4,15 @@ import { ApiResponse, Device } from '../../types';
 
 const router = Router();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPORTANT: All static/named routes MUST be declared BEFORE parameterized
+// routes like /:id to prevent Express from matching "search", "stats",
+// "system" etc. as device IDs. (Fix #12, #13)
+// ═══════════════════════════════════════════════════════════════════════════
+
 /**
  * GET /api/devices
- * Get all devices from local Redis mirror
+ * Get all devices from Firestore (via device service)
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -24,6 +30,181 @@ router.get('/', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch devices',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * GET /api/devices/search?q=query
+ * Search devices — MUST be before /:id
+ */
+router.get('/search', async (req: Request, res: Response) => {
+  try {
+    const q = req.query.q as string;
+
+    if (!q || q.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'Search query must be at least 2 characters',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const devices = await deviceService.searchDevices(q);
+
+    res.json({
+      success: true,
+      data: devices,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error searching devices:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to search devices',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * GET /api/devices/stats/all
+ * Get device statistics — MUST be before /:id
+ */
+router.get('/stats/all', async (req: Request, res: Response) => {
+  try {
+    const stats = await deviceService.getDeviceStats();
+
+    res.json({
+      success: true,
+      data: stats,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error fetching device stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch device statistics',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * GET /api/devices/system/health
+ * Get historical system health logs — MUST be before /:id
+ */
+router.get('/system/health', async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 100;
+    const data = await deviceService.getSystemHealthLogs(limit);
+
+    res.json({
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error fetching system health logs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch system health logs',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * GET /api/devices/system/uptime
+ * Get uptime stats — MUST be before /:id
+ */
+router.get('/system/uptime', async (req: Request, res: Response) => {
+  try {
+    const deviceId = req.query.deviceId as string;
+    const data = await deviceService.getUptimeStats(deviceId);
+
+    res.json({
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error fetching uptime stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch uptime stats',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * GET /api/devices/status/:status
+ * Get devices by status — MUST be before /:id
+ */
+router.get('/status/:status', async (req: Request, res: Response) => {
+  try {
+    const validStatuses = ['online', 'offline', 'critical', 'maintenance'];
+    const status = req.params.status.toLowerCase();
+
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const devices = await deviceService.getDevicesByStatus(status);
+
+    res.json({
+      success: true,
+      data: devices,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error fetching devices by status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch devices',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARAMETERIZED ROUTES — declared after all static routes
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/devices
+ * Create a new device
+ */
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const deviceData = req.body;
+
+    if (!deviceData.name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Device name is required',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const device = await deviceService.createDevice(deviceData);
+
+    res.status(201).json({
+      success: true,
+      data: device,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error creating device:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create device',
       timestamp: new Date().toISOString(),
     });
   }
@@ -61,90 +242,48 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/devices/search?q=query
- * Search devices
+ * GET /api/devices/:id/sensor-data
+ * Get historical sensor readings from Redis
  */
-router.get('/search', async (req: Request, res: Response) => {
+router.get('/:id/sensor-data', async (req: Request, res: Response) => {
   try {
-    const q = req.query.q as string;
-
-    if (!q || q.length < 2) {
-      return res.status(400).json({
-        success: false,
-        error: 'Search query must be at least 2 characters',
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    const devices = await deviceService.searchDevices(q);
+    const limit = parseInt(req.query.limit as string) || 100;
+    const data = await deviceService.getDeviceSensorHistory(req.params.id, limit);
 
     res.json({
       success: true,
-      data: devices,
+      data,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('Error searching devices:', error);
+    console.error('Error fetching sensor data:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to search devices',
+      error: 'Failed to fetch sensor data',
       timestamp: new Date().toISOString(),
     });
   }
 });
 
 /**
- * GET /api/devices/status/:status
- * Get devices by status
+ * GET /api/devices/:id/health-events
+ * Get historical health events (alerts) from Firestore
  */
-router.get('/status/:status', async (req: Request, res: Response) => {
+router.get('/:id/health-events', async (req: Request, res: Response) => {
   try {
-    const validStatuses = ['online', 'offline', 'critical', 'maintenance'];
-    const status = req.params.status.toLowerCase();
-
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    const devices = await deviceService.getDevicesByStatus(status);
+    const limit = parseInt(req.query.limit as string) || 50;
+    const data = await deviceService.getDeviceHealthEvents(req.params.id, limit);
 
     res.json({
       success: true,
-      data: devices,
+      data,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('Error fetching devices by status:', error);
+    console.error('Error fetching health events:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch devices',
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
-
-/**
- * GET /api/devices/stats/all
- * Get device statistics
- */
-router.get('/stats/all', async (req: Request, res: Response) => {
-  try {
-    const stats = await deviceService.getDeviceStats();
-
-    res.json({
-      success: true,
-      data: stats,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Error fetching device stats:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch device statistics',
+      error: 'Failed to fetch health events',
       timestamp: new Date().toISOString(),
     });
   }
@@ -226,39 +365,6 @@ router.put('/:id/status', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/devices
- * Create a new device
- */
-router.post('/', async (req: Request, res: Response) => {
-  try {
-    const deviceData = req.body;
-    
-    if (!deviceData.name) {
-      return res.status(400).json({
-        success: false,
-        error: 'Device name is required',
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    const device = await deviceService.createDevice(deviceData);
-
-    res.status(201).json({
-      success: true,
-      data: device,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Error creating device:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create device',
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
-
-/**
  * PATCH /api/devices/:id
  * Update an existing device
  */
@@ -302,102 +408,6 @@ router.delete('/:id', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to delete device',
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
-
-/**
- * GET /api/devices/:id/sensor-data
- * Get historical sensor readings from Redis
- */
-router.get('/:id/sensor-data', async (req: Request, res: Response) => {
-  try {
-    const limit = parseInt(req.query.limit as string) || 100;
-    const data = await deviceService.getDeviceSensorHistory(req.params.id, limit);
-
-    res.json({
-      success: true,
-      data,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Error fetching sensor data:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch sensor data',
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
-
-/**
- * GET /api/devices/:id/health-events
- * Get historical health events (alerts) from Redis
- */
-router.get('/:id/health-events', async (req: Request, res: Response) => {
-  try {
-    const limit = parseInt(req.query.limit as string) || 50;
-    const data = await deviceService.getDeviceHealthEvents(req.params.id, limit);
-
-    res.json({
-      success: true,
-      data,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Error fetching health events:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch health events',
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
-
-/**
- * GET /api/devices/system/health
- * Get historical system health logs from Redis
- */
-router.get('/system/health', async (req: Request, res: Response) => {
-  try {
-    const limit = parseInt(req.query.limit as string) || 100;
-    const data = await deviceService.getSystemHealthLogs(limit);
-
-    res.json({
-      success: true,
-      data,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Error fetching system health logs:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch system health logs',
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
-
-/**
- * GET /api/devices/system/uptime
- * Get uptime stats from Redis
- */
-router.get('/system/uptime', async (req: Request, res: Response) => {
-  try {
-    const deviceId = req.query.deviceId as string;
-    const data = await deviceService.getUptimeStats(deviceId);
-
-    res.json({
-      success: true,
-      data,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Error fetching uptime stats:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch uptime stats',
       timestamp: new Date().toISOString(),
     });
   }

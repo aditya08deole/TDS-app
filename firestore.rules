@@ -1,40 +1,106 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper: Check if user is authenticated
+
+    // ─── Helpers ────────────────────────────────────────────────────────────
+
+    // Is the user authenticated at all?
     function isAuth() {
       return request.auth != null;
     }
 
-    // Helper: Check if user has admin role
+    // Is the user an admin OR super_admin?
+    // Fix #35: Original only checked 'admin' — super_admin was blocked.
     function isAdmin() {
-      return isAuth() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return isAuth() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+          in ['admin', 'super_admin'];
     }
 
-    // Devices: Read for all users, Write only for admins
+    // Is the request from the document's own user?
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    // ─── Core Collections ────────────────────────────────────────────────────
+
+    // Devices: Read for all authenticated users, Write only for admins
     match /devices/{deviceId} {
       allow read: if isAuth();
       allow write: if isAdmin();
     }
 
-    // Sensor Data: Read for all users, No direct writes (only via system/functions)
+    // Sensor Data: Read for authenticated users.
+    // NOTE: Writes are performed ONLY via Firebase Admin SDK (backend telemetry
+    // service) which bypasses client-side rules entirely. The client SDK never
+    // writes here directly. 'write: if false' enforces this boundary for any
+    // future client-side code. (Architecture note: Fix #8)
     match /sensor_data/{docId} {
       allow read: if isAuth();
-      allow write: if false; 
+      allow write: if false;
     }
 
-    // Alerts: Read for all users, Write only for system/admins (or status updates for users)
+    // Alerts: Read for all authenticated users, Write only for admins
+    // (Backend Admin SDK creates/updates alerts — this covers direct client writes)
     match /alerts/{alertId} {
       allow read: if isAuth();
-      allow update: if isAdmin(); // Only admins can acknowledge/close alerts (prevents unauthorized acknowledgement)
-      allow create, delete: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
-    // Users Collection: Users can read/write their own profiles
+    // Users: Anyone authenticated can read profiles.
+    // Users can write their own profile; admins can write anyone's.
     match /users/{userId} {
       allow read: if isAuth();
-      allow write: if request.auth.uid == userId || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    // ─── Previously Missing Collections (Fix #7) ────────────────────────────
+
+    // Notification Subscriptions: Each authenticated user manages their own tokens.
+    // Admins can read all (for the token management page).
+    match /notification_subscriptions/{docId} {
+      allow read: if isAdmin() || (isAuth() && resource.data.user_id == request.auth.uid);
+      allow create: if isAuth();
+      allow update: if isAuth() && resource.data.user_id == request.auth.uid;
+      allow delete: if isAdmin() || (isAuth() && resource.data.user_id == request.auth.uid);
+    }
+
+    // Notification Recipients (WhatsApp list): Only admins can manage this
+    match /notification_recipients/{docId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Delivery Logs: Readonly for admins. Written only by Admin SDK (backend).
+    match /notification_delivery_logs/{docId} {
+      allow read: if isAdmin();
+      allow write: if false; // Backend Admin SDK only
+    }
+
+    // System Health Logs: Readonly for admins. Written only by Admin SDK.
+    match /system_health_logs/{docId} {
+      allow read: if isAdmin();
+      allow write: if false; // Backend Admin SDK only
+    }
+
+    // Uptime Stats: Read for all authenticated users. Written only by Admin SDK.
+    match /uptime_stats/{docId} {
+      allow read: if isAuth();
+      allow write: if false; // Backend Admin SDK only
+    }
+
+    // App Config (admin emails, thresholds etc.): Read by anyone, write by admins.
+    match /app_config/{docId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // Sync Logs: Admin-only read. Written only by Admin SDK.
+    match /sync_logs/{docId} {
+      allow read: if isAdmin();
+      allow write: if false; // Backend Admin SDK only
     }
   }
 }

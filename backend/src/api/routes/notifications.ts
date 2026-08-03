@@ -1,10 +1,12 @@
 import express, { Request, Response } from 'express';
+import twilio from 'twilio';
 import {
     handleWhatsAppWebhook,
     triggerForceDeviceAlert,
     listWhatsAppRecipients,
     addWhatsAppRecipient,
     removeWhatsAppRecipient,
+    FCM_TOKEN_CACHE_KEY,
 } from '../../services/notificationService';
 import { requireRole } from '../middleware/roleGuard';
 
@@ -13,17 +15,57 @@ const router = express.Router();
 /**
  * POST /api/notifications/whatsapp
  * Webhook for Twilio WhatsApp Sandbox
+ *
+ * Fix #15: Validates the Twilio request signature before processing.
+ * Forged POST requests are rejected with 403.
+ * Set PUBLIC_URL in your .env to the full public URL of this server.
  */
-router.post('/whatsapp', async (req: Request, res: Response) => {
-    try {
-        const twimlResponse = await handleWhatsAppWebhook(req.body);
-        res.set('Content-Type', 'text/xml');
-        res.send(twimlResponse);
-    } catch (error) {
-        console.error('❌ WhatsApp Webhook Error:', error);
-        res.status(500).send('Error processing webhook');
+router.post('/whatsapp',
+    // Twilio sends application/x-www-form-urlencoded — parse it before validation
+    express.urlencoded({ extended: false }),
+    // Signature validation middleware
+    (req: Request, res: Response, next: any) => {
+        const authToken = process.env.TWILIO_AUTH_TOKEN;
+        const publicUrl = process.env.PUBLIC_URL;
+
+        // Skip validation if env vars are missing (graceful degradation in dev)
+        if (!authToken || !publicUrl) {
+            if (process.env.NODE_ENV === 'production') {
+                console.error('❌ [Twilio] TWILIO_AUTH_TOKEN or PUBLIC_URL not set — rejecting webhook in production');
+                return res.status(500).send('Server configuration error');
+            }
+            console.warn('⚠️ [Twilio] Skipping signature validation — set TWILIO_AUTH_TOKEN + PUBLIC_URL in .env');
+            return next();
+        }
+
+        const webhookUrl = `${publicUrl}/api/notifications/whatsapp`;
+        const twilioSignature = req.headers['x-twilio-signature'] as string;
+
+        const isValid = twilio.validateRequest(
+            authToken,
+            twilioSignature || '',
+            webhookUrl,
+            req.body
+        );
+
+        if (!isValid) {
+            console.warn(`⚠️ [Twilio] Invalid signature from ${req.ip} — rejecting webhook`);
+            return res.status(403).send('Forbidden — invalid Twilio signature');
+        }
+
+        next();
+    },
+    async (req: Request, res: Response) => {
+        try {
+            const twimlResponse = await handleWhatsAppWebhook(req.body);
+            res.set('Content-Type', 'text/xml');
+            res.send(twimlResponse);
+        } catch (error) {
+            console.error('❌ WhatsApp Webhook Error:', error);
+            res.status(500).send('Error processing webhook');
+        }
     }
-});
+);
 
 /**
  * POST /api/notifications/test
@@ -148,7 +190,7 @@ router.post('/register-token', async (req: Request, res: Response) => {
                     await batch.commit();
 
                     // Update Redis: remove token from global set and re-add under real user
-                    await redis.sRem('cache:fcm_tokens', cleanToken);
+                    await redis.sRem(FCM_TOKEN_CACHE_KEY, cleanToken);
                     await redis.sAdd(`cache:user_tokens:${safeUserId}`, cleanToken);
                     await redis.expire(`cache:user_tokens:${safeUserId}`, 86400);
                     console.log(`🔁 [FCM-REGISTER] Migrated ${anonSnap.size} anonymous token(s) to user ${safeUserId}`);
@@ -167,8 +209,8 @@ router.post('/register-token', async (req: Request, res: Response) => {
             created_at: new Date().toISOString(),
         }, { merge: true });
 
-        // Update Redis immediately so new token is available without waiting for Firestore listener
-        await redis.sAdd('cache:fcm_tokens', cleanToken);
+        // Update Redis immediately — Fix #16: use FCM_TOKEN_CACHE_KEY constant (not string literal)
+        await redis.sAdd(FCM_TOKEN_CACHE_KEY, cleanToken);
         if (safeUserId !== 'anonymous') {
             await redis.sAdd(`cache:user_tokens:${safeUserId}`, cleanToken);
             await redis.expire(`cache:user_tokens:${safeUserId}`, 86400);

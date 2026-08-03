@@ -28,12 +28,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null)
     const [profile, setProfile] = useState<Profile | null>(null)
     const [loading, setLoading] = useState(true)
-    const [adminEmails, setAdminEmails] = useState<string[]>([
-        'adityadeole08@gmail.com',
-        'ritik@evaratech.com',
-        'yasha@evaratech.com',
-        'aditya@evaratech.com'
-    ])
+    // Fix #17: Removed hardcoded admin emails from source code.
+    // Previously: ['adityadeole08@gmail.com', 'ritik@evaratech.com', ...] — visible in compiled JS.
+    // Now: empty by default; populated exclusively from Firestore app_config/admin_emails.
+    // IMPORTANT: Ensure app_config/admin_emails exists in Firestore before deploying.
+    const [adminEmails, setAdminEmails] = useState<string[]>([])
 
     const fetchAdminConfig = React.useCallback(async () => {
         try {
@@ -45,9 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     console.log('🛡️ Admin config loaded from Firestore')
                     setAdminEmails(data.emails.map((e: string) => e.toLowerCase()))
                 }
+            } else {
+                console.warn('⚠️ app_config/admin_emails not found in Firestore. No hardcoded admin fallback.')
             }
         } catch (err) {
-            console.warn('⚠️ Failed to fetch admin config, using code fallbacks', err)
+            console.warn('⚠️ Failed to fetch admin config from Firestore:', err)
         }
     }, [])
 
@@ -97,14 +98,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(firebaseUser)
             
             if (firebaseUser) {
-                // Fix #11: Initialize token refresh on login
+                // Initialize token refresh on login
                 await initTokenRefresh(firebaseUser);
-                
-                // Fetch config and profile in parallel
-                Promise.all([
-                    fetchProfile(firebaseUser.uid, firebaseUser.email),
-                    fetchAdminConfig()
-                ]).catch(err => console.error('Auth post-processing failed:', err));
+
+                // Fix #18: Sequential fetch — load admin config FIRST so fetchProfile
+                // reads the correct adminEmails list when determining the new user's role.
+                // Previously ran in parallel (Promise.all) — fetchProfile could finish
+                // before fetchAdminConfig set the emails, giving new admins 'viewer' role.
+                try {
+                    await fetchAdminConfig();
+                    await fetchProfile(firebaseUser.uid, firebaseUser.email);
+                } catch (err) {
+                    console.error('Auth post-processing failed:', err);
+                    setLoading(false);
+                }
             } else {
                 // Fix #11: Clear session on logout
                 await clearSession();

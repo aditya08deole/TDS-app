@@ -1,5 +1,9 @@
 import { NextFunction, Request, Response } from 'express';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 
+// ─── Role Hierarchy ────────────────────────────────────────────────────────
+// Canonical roles — MUST match AuthContext.tsx and RoleContext.tsx (Fix #4)
 type UserRole = 'viewer' | 'field_engineer' | 'admin' | 'super_admin';
 
 const roleRank: Record<UserRole, number> = {
@@ -9,24 +13,82 @@ const roleRank: Record<UserRole, number> = {
   super_admin: 3,
 };
 
-function normalizeRole(roleHeader: unknown): UserRole {
-  const role = String(roleHeader || '').toLowerCase();
-  if (role === 'field_engineer' || role === 'admin' || role === 'super_admin') {
-    return role;
+function normalizeRole(role: unknown): UserRole {
+  const r = String(role || '').toLowerCase();
+  if (r === 'field_engineer' || r === 'admin' || r === 'super_admin') {
+    return r as UserRole;
   }
   return 'viewer';
 }
 
+/**
+ * Looks up the user's role from Firestore users/{uid} document.
+ * Returns 'viewer' if the document doesn't exist or role is unset.
+ */
+async function getUserRoleFromFirestore(uid: string): Promise<UserRole> {
+  try {
+    const snap = await getFirestore().collection('users').doc(uid).get();
+    if (snap.exists) {
+      return normalizeRole(snap.data()?.role);
+    }
+  } catch (err) {
+    console.warn(`[roleGuard] Could not read role for uid ${uid}:`, err);
+  }
+  return 'viewer';
+}
+
+/**
+ * requireRole — Firebase-verified role middleware (Fix #5)
+ *
+ * BEFORE: Trusted the x-user-role header — any client could spoof admin access.
+ * AFTER:  Validates Firebase ID token from Authorization header, then reads the
+ *         user's actual role from Firestore. Completely spoofing-resistant.
+ *
+ * Usage:  router.post('/admin-action', requireRole('admin'), handler)
+ *
+ * Frontend must send: Authorization: Bearer <firebase_id_token>
+ */
 export function requireRole(minRole: UserRole) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const role = normalizeRole(req.headers['x-user-role']);
-    if (roleRank[role] < roleRank[minRole]) {
-      return res.status(403).json({
+  return async (req: Request, res: Response, next: NextFunction) => {
+    // ── 1. Extract Bearer token ──────────────────────────────────────────
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+    if (!token) {
+      return res.status(401).json({
         success: false,
-        error: `Forbidden: ${minRole} role required`,
+        error: 'Unauthorized — missing Authorization: Bearer <token> header',
         timestamp: new Date().toISOString(),
       });
     }
-    next();
+
+    try {
+      // ── 2. Verify token with Firebase ──────────────────────────────────
+      const decoded = await getAuth().verifyIdToken(token);
+
+      // ── 3. Read actual role from Firestore ────────────────────────────
+      const role = await getUserRoleFromFirestore(decoded.uid);
+
+      // ── 4. Check rank ─────────────────────────────────────────────────
+      if (roleRank[role] < roleRank[minRole]) {
+        return res.status(403).json({
+          success: false,
+          error: `Forbidden — ${minRole} role required, current role: ${role}`,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // ── 5. Attach verified identity to request ─────────────────────────
+      (req as any).user = { uid: decoded.uid, role, email: decoded.email };
+      next();
+    } catch (err: any) {
+      // Firebase will throw if token is expired, malformed, or revoked
+      console.warn('[roleGuard] Token verification failed:', err.code || err.message);
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized — invalid or expired token',
+        timestamp: new Date().toISOString(),
+      });
+    }
   };
 }

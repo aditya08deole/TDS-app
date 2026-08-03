@@ -30,6 +30,32 @@ const memoryStrings = new Map<string, string>();
 const memoryHashes = new Map<string, Map<string, string>>();
 const memorySets = new Map<string, Set<string>>();
 const memoryLists = new Map<string, string[]>();
+// Fix #19: Track expiry timers so keys actually expire in in-memory mode
+const memoryExpiries = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Clears a key from all storage maps and its expiry timer */
+function memoryDelete(key: string): number {
+  let removed = 0;
+  if (memoryStrings.delete(key)) removed += 1;
+  if (memoryHashes.delete(key)) removed += 1;
+  if (memorySets.delete(key)) removed += 1;
+  if (memoryLists.delete(key)) removed += 1;
+  const timer = memoryExpiries.get(key);
+  if (timer) { clearTimeout(timer); memoryExpiries.delete(key); }
+  return removed;
+}
+
+/** Schedules or resets a TTL for a key */
+function memoryExpire(key: string, seconds: number): boolean {
+  // Clear any existing timer for this key
+  const existingTimer = memoryExpiries.get(key);
+  if (existingTimer) clearTimeout(existingTimer);
+  const timer = setTimeout(() => {
+    memoryDelete(key);
+  }, seconds * 1000);
+  memoryExpiries.set(key, timer);
+  return true;
+}
 
 function createMemoryRedis(): RedisLike {
   return {
@@ -39,20 +65,17 @@ function createMemoryRedis(): RedisLike {
     async get(key: string) {
       return memoryStrings.has(key) ? memoryStrings.get(key)! : null;
     },
-    async set(key: string, value: string) {
+    // Fix #19: set() now honours the EX option to schedule expiry
+    async set(key: string, value: string, opts?: { EX?: number }) {
       memoryStrings.set(key, value);
+      if (opts?.EX) memoryExpire(key, opts.EX);
       return 'OK';
     },
     async exists(key: string) {
       return memoryStrings.has(key) || memoryHashes.has(key) || memorySets.has(key) || memoryLists.has(key) ? 1 : 0;
     },
     async del(key: string) {
-      let removed = 0;
-      if (memoryStrings.delete(key)) removed += 1;
-      if (memoryHashes.delete(key)) removed += 1;
-      if (memorySets.delete(key)) removed += 1;
-      if (memoryLists.delete(key)) removed += 1;
-      return removed;
+      return memoryDelete(key);
     },
     async hSet(key: string, data: Record<string, string>) {
       const hash = memoryHashes.get(key) || new Map<string, string>();
@@ -90,8 +113,9 @@ function createMemoryRedis(): RedisLike {
     async sCard(key: string) {
       return (memorySets.get(key) || new Set()).size;
     },
+    // Fix #19: expire() now schedules a real setTimeout — keys actually expire in dev mode
     async expire(key: string, seconds: number) {
-      return true; // Mocked success
+      return memoryExpire(key, seconds);
     },
     async lPush(key: string, ...values: string[]) {
       const list = memoryLists.get(key) || [];
@@ -173,6 +197,7 @@ export async function initializeRedis(): Promise<any> {
     await client.connect();
   } catch (error) {
     console.warn('⚠️ Redis unavailable, using in-memory fallback for local dev');
+    try { await client.disconnect(); } catch {}
     client = createMemoryRedis();
   }
 

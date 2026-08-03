@@ -48,7 +48,16 @@ function normalizeIndianNumber(phone: string): string {
     return trimmed;
 }
 
-// Fix #6: Recipient cache TTL
+// Fix #16: Exported so notifications.ts and any other module imports this constant
+// instead of using the string literal 'cache:fcm_tokens' (prevents divergence)
+export const FCM_TOKEN_CACHE_KEY = 'cache:fcm_tokens';
+const PHANTOM_DEBOUNCE_KEY = (deviceId: string) => `notif:debounce:${deviceId}`;
+// Fix #25: Increased from 5s to 30s — 5s was too aggressive and dropped real alerts
+// during rapid successive breaches on the same device.
+const PHANTOM_DEBOUNCE_TTL = 30; // seconds (was 5)
+const LAST_SEVERITY_KEY = (deviceId: string) => `notif:last_severity:${deviceId}`;
+
+// WhatsApp recipient cache
 const RECIPIENT_CACHE_KEY = 'cache:wa_recipients';
 const RECIPIENT_CACHE_TTL = 60; // 1 minute
 
@@ -76,7 +85,6 @@ async function getWhatsAppRecipientsForDelivery(): Promise<string[]> {
     });
 
     const result = Array.from(recipients);
-    // Cache for 60s
     await redis.set(RECIPIENT_CACHE_KEY, JSON.stringify(result), { EX: RECIPIENT_CACHE_TTL });
     return result;
 }
@@ -112,6 +120,8 @@ export async function addWhatsAppRecipient(phone: string, addedBy: string) {
             updated_at: new Date().toISOString(),
             updated_by: addedBy,
         }, { merge: true });
+        // Fix #24: Bust cache immediately so next alert blast uses the updated list
+        await getRedis().del(RECIPIENT_CACHE_KEY);
         return { id: docRef.id, phone_e164: normalized, active: true };
     }
 
@@ -123,6 +133,8 @@ export async function addWhatsAppRecipient(phone: string, addedBy: string) {
         created_by: addedBy,
     });
 
+    // Fix #24: Bust cache immediately
+    await getRedis().del(RECIPIENT_CACHE_KEY);
     return { id: created.id, phone_e164: normalized, active: true };
 }
 
@@ -145,6 +157,8 @@ export async function removeWhatsAppRecipient(phone: string, removedBy: string) 
         updated_at: new Date().toISOString(),
         updated_by: removedBy,
     }, { merge: true });
+    // Fix #24: Bust cache immediately so removed recipients don't receive next blast
+    await getRedis().del(RECIPIENT_CACHE_KEY);
     return true;
 }
 
@@ -165,10 +179,6 @@ if (twilioSid && twilioAuthToken) {
 const RATE_LIMIT_TTL = 3600; // 1 hour in seconds
 const RATE_LIMIT_KEY = (deviceId: string, channel = 'global') => `notif:rate:${deviceId}:${channel}`;
 const DELIVERY_DEDUPE_TTL_SEC = 10 * 60;
-const FCM_TOKEN_CACHE_KEY = 'cache:fcm_tokens';
-const PHANTOM_DEBOUNCE_KEY = (deviceId: string) => `notif:debounce:${deviceId}`;
-const PHANTOM_DEBOUNCE_TTL = 5; // seconds
-const LAST_SEVERITY_KEY = (deviceId: string) => `notif:last_severity:${deviceId}`;
 
 const ESCALATION_INTERVALS = {
     whatsapp: [
@@ -339,8 +349,11 @@ export function startNotificationListeners() {
     const db = getDb();
     const redis = getRedis();
 
+    // Fix #6: Replace forEach(async ...) with for...of to properly await each
+    // change. The old forEach ignored async callbacks, causing race conditions
+    // where multiple changes wrote to Redis simultaneously without coordination.
     db.collection('alerts').onSnapshot(async (snapshot) => {
-        snapshot.docChanges().forEach(async (change) => {
+        for (const change of snapshot.docChanges()) {
             const alertData = change.doc.data() as Alert;
             const alertId = change.doc.id;
             const deviceId = typeof alertData.device_id === 'object' && alertData.device_id !== null
@@ -368,13 +381,12 @@ export function startNotificationListeners() {
                         const exists = await deviceExists(deviceId);
                         if (!exists) {
                             console.warn(`⚠️ [PHANTOM GUARD] Alert ${alertId} references non-existent device ${deviceId}.`);
-                            return;
+                            continue;
                         }
 
                         const debounced = await isPhantomDebounced(deviceId);
-                        if (debounced) return;
+                        if (debounced) continue;
 
-                        const channels: Array<'push' | 'whatsapp' | 'ntfy' | 'ifttt'> = ['push', 'whatsapp', 'ntfy', 'ifttt'];
                         const dispatchers = [
                             { channel: 'push' as const,     fn: () => sendPushNotification(alertId, alertData) },
                             { channel: 'whatsapp' as const, fn: () => sendWhatsAppNotification(alertId, alertData) },
@@ -402,17 +414,17 @@ export function startNotificationListeners() {
                 await redis.sRem(`device:${deviceId}:alerts`, alertId);
                 await redis.sRem(`device:${deviceId}:alerts:open`, alertId);
 
-                // Clean up channel deduplication keys
                 const channels = ['global', 'push', 'whatsapp', 'ntfy', 'ifttt'];
                 for (const channel of channels) {
                     await redis.del(`notif:dedupe:${channel}:${alertId}`);
                 }
             }
-        });
+        }
     }, (error) => { console.error('❌ Firestore Alert Listener Error:', error); });
 
+    // Fix #6: Same for-of fix applied to devices listener
     db.collection('devices').onSnapshot(async (snapshot) => {
-        snapshot.docChanges().forEach(async (change) => {
+        for (const change of snapshot.docChanges()) {
             const deviceData = change.doc.data() as Device;
             const deviceId = change.doc.id;
             if (change.type === 'added' || change.type === 'modified') {
@@ -421,9 +433,7 @@ export function startNotificationListeners() {
                     await redis.sAdd('devices:all', deviceId);
                 }
             } else if (change.type === 'removed') {
-                // ── FIX #1: AUTO-RESOLVE ORPHANED ALERTS ──
-                // When a device is deleted, immediately resolve all its open alerts in Firestore.
-                // This prevents "phantom" alert badges on the dashboard after device removal.
+                // Auto-resolve orphaned alerts when device is deleted
                 try {
                     const openAlertsSnap = await getDb()
                         .collection('alerts')
@@ -467,15 +477,16 @@ export function startNotificationListeners() {
                 await Promise.all(keysToDelete.map(key => redis.del(key)));
                 await redis.sRem('devices:all', deviceId);
             }
-        });
+        }
     }, (error) => { console.error('❌ Firestore Device Listener Error:', error); });
-    
+
+    // Fix #6: Same for-of fix for subscriptions listener
     db.collection('notification_subscriptions').onSnapshot(async (snapshot) => {
-        snapshot.docChanges().forEach(async (change) => {
+        for (const change of snapshot.docChanges()) {
             const data = change.doc.data();
             const token = data.token;
             const userId = data.user_id;
-            if (!token) return;
+            if (!token) continue;
             if (change.type === 'added' || change.type === 'modified') {
                 await redis.sAdd(FCM_TOKEN_CACHE_KEY, token);
                 if (userId) {
@@ -486,7 +497,7 @@ export function startNotificationListeners() {
                 await redis.sRem(FCM_TOKEN_CACHE_KEY, token);
                 if (userId) await redis.sRem(`cache:user_tokens:${userId}`, token);
             }
-        });
+        }
         const count = await redis.sCard(FCM_TOKEN_CACHE_KEY);
         if (count === 0 && !snapshot.empty) {
             console.log(`🚀 Initializing FCM token caches in Redis from ${snapshot.size} subscriptions...`);

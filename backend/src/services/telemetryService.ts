@@ -233,5 +233,26 @@ export async function flushSensorData() {
     }
 }
 
-// Start periodic flush
-setInterval(flushSensorData, FLUSH_INTERVAL);
+// ─── Telemetry Auto-Flush ────────────────────────────────────────────────────
+// Fix #11: setInterval was previously called at module import time, before
+// Firebase/Redis were initialized. On slow startups this caused:
+// "Redis client not initialized. Call initializeRedis() first."
+//
+// Now the interval is started explicitly by server.ts AFTER all services init.
+let flushInterval: ReturnType<typeof setInterval> | null = null;
+
+export function startTelemetryFlusher(): void {
+    if (flushInterval) return; // already running
+    flushInterval = setInterval(() => {
+        flushSensorData().catch(e => console.error('❌ Periodic telemetry flush failed:', e));
+    }, FLUSH_INTERVAL);
+    console.log(`✅ Telemetry auto-flush started (every ${FLUSH_INTERVAL / 60000} min).`);
+}
+
+export function stopTelemetryFlusher(): void {
+    if (flushInterval) {
+        clearInterval(flushInterval);
+        flushInterval = null;
+        console.log('⏹️ Telemetry auto-flush stopped.');
+    }
+}
