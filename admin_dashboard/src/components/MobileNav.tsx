@@ -1,8 +1,9 @@
-import { LayoutDashboard, Map as MapIcon, Smartphone, Bell, MoreHorizontal } from "lucide-react"
+import { LayoutDashboard, Map as MapIcon, Smartphone, Bell, Settings } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { useAlerts } from "../context/AlertContext"
 import { useViewport } from "../hooks/useViewport"
+import { CurvedBottomNav } from "./CurvedBottomNav"
 
 export function MobileNav() {
     const location = useLocation()
@@ -14,60 +15,41 @@ export function MobileNav() {
         { title: "Map", url: "/map", icon: MapIcon },
         { title: "Devices", url: "/devices", icon: Smartphone },
         { title: "Alerts", url: "/alerts", icon: Bell, badge: alertCount },
+        { title: "Settings", url: "/settings", icon: Settings },
     ]
 
     return (
-        <nav className={cn(
-            "fixed left-1/2 -translate-x-1/2 z-[100] flex md:hidden items-center gap-0.5 p-0.5 transition-all duration-500",
-            // Perfect Fit: Tighter positioning for mobile landscape
-            isLandscape ? "bottom-2 w-[96%] max-w-[500px]" : "bottom-4 w-[92%] max-w-[400px]",
-            // Safe area support for iPhone X+ devices
-            "pb-[env(safe-area-inset-bottom)]",
-            "glass-nav-unified shadow-[0_15px_40px_rgba(0,0,0,0.3)] rounded-2xl border border-border/40 backdrop-blur-3xl overflow-hidden"
-        )}>
-            {navItems.map((item) => {
-                const isActive = location.pathname === item.url
-                return (
-                    <Link
-                        key={item.url}
-                        to={item.url}
-                        className={cn(
-                            "relative flex flex-col items-center justify-center flex-1 rounded-xl transition-all duration-300 min-h-[42px]",
-                            isLandscape ? "py-0" : "py-0.5",
-                            isActive 
-                                ? "glass-system-active text-foreground" 
-                                : "text-muted-foreground hover:text-foreground"
-                        )}
-                        aria-label={item.title}
-                    >
-                        <item.icon className={cn(isLandscape ? "size-[16px]" : "size-[20px]", isActive && "animate-in zoom-in duration-300")} strokeWidth={isActive ? 2.5 : 2} />
-                        <span className={cn("font-black tracking-tight leading-none", isLandscape ? "text-[8px] mt-0.5" : "text-[10px] mt-1")}>{item.title}</span>
-                        
-                        {item.badge && item.badge > 0 && (
-                            <span 
-                                className="absolute top-1 right-1/4 min-w-[12px] h-[12px] px-0.5 bg-red-500 text-white text-[7px] font-black flex items-center justify-center rounded-full border border-border shadow-lg animate-pulse pointer-events-none"
-                                aria-label={`${item.badge} alerts`}
-                            >
-                                {item.badge > 9 ? '9+' : item.badge}
-                            </span>
-                        )}
-                    </Link>
-                )
-            })}
-            
-            {/* More / Settings Link */}
-            <Link
-                to="/settings"
-                className={cn(
-                    "flex flex-col items-center justify-center flex-1 rounded-xl text-muted-foreground transition-all duration-300 min-h-[42px]",
-                    isLandscape ? "py-0" : "py-0.5",
-                    location.pathname === "/settings" && "glass-system-active text-foreground"
-                )}
-                aria-label="Settings"
-            >
-                <MoreHorizontal className={isLandscape ? "size-[16px]" : "size-[20px]"} />
-                <span className={cn("font-black tracking-tight leading-none", isLandscape ? "text-[8px] mt-0.5" : "text-[10px] mt-1")}>More</span>
-            </Link>
-        </nav>
+        <div className="block md:hidden">
+            <CurvedBottomNav>
+                {navItems.map((item) => {
+                    const isActive = location.pathname === item.url
+                    return (
+                        <Link
+                            key={item.url}
+                            to={item.url}
+                            className={cn(
+                                "relative flex flex-col items-center justify-center flex-1 py-1.5 rounded-2xl transition-all duration-300 min-h-[44px]",
+                                isActive 
+                                    ? "text-cyan-400 bg-cyan-500/15 border border-cyan-400/30 shadow-md shadow-cyan-500/10 scale-105" 
+                                    : "text-muted-foreground/70 hover:text-foreground hover:bg-white/5"
+                            )}
+                            aria-label={item.title}
+                        >
+                            <item.icon className={cn(isLandscape ? "size-[16px]" : "size-[20px]", isActive && "animate-in zoom-in duration-300")} strokeWidth={isActive ? 2.5 : 2} />
+                            <span className={cn("font-bold tracking-tight leading-none", isLandscape ? "text-[8px] mt-0.5" : "text-[10px] mt-1")}>{item.title}</span>
+                            
+                            {item.badge !== undefined && item.badge > 0 && (
+                                <span 
+                                    className="absolute -top-1 right-2 min-w-[14px] h-[14px] px-1 bg-red-500 text-white text-[8px] font-black flex items-center justify-center rounded-full border border-slate-900 shadow-md animate-pulse pointer-events-none"
+                                    aria-label={`${item.badge} alerts`}
+                                >
+                                    {item.badge > 9 ? '9+' : item.badge}
+                                </span>
+                            )}
+                        </Link>
+                    )
+                })}
+            </CurvedBottomNav>
+        </div>
     )
 }

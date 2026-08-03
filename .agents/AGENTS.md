@@ -1,8 +1,8 @@
-# UI/UX Guidelines: Liquid Glass Asymmetric Popups & Rounded Cards
+# UI/UX Guidelines: Liquid Glass Asymmetric Popups, Curved Navigation & Inverted Corner Cutouts
 
 ## Design Philosophy
 
-The EvaraTDS interface uses a state-of-the-art **Liquid Glass Aesthetic** combined with **Selective/Asymmetric Corner Rounding** to create a high-density, luxury IoT command center experience.
+The EvaraTDS interface uses a state-of-the-art **Liquid Glass Aesthetic** combined with **Selective/Asymmetric Corner Rounding** and **Inverted Curve Cutouts** to create a high-density, luxury IoT command center experience.
 
 ---
 
@@ -10,8 +10,9 @@ The EvaraTDS interface uses a state-of-the-art **Liquid Glass Aesthetic** combin
 
 ### 1. Selective / Asymmetric Corner Rounding
 Standard four-sided uniform rounding is replaced or enhanced with intentional directional corner radii:
-- **Liquid Header Popups / Top Cards**: Rounded ONLY on the bottom corners (`rounded-b-[2.5rem] rounded-t-none`). Creates the illusion of fluid dripping down from the status bar.
-- **Liquid Bottom Sheets / Slide Modals**: Rounded ONLY on the top corners (`rounded-t-[2.5rem] rounded-b-none`). Slides up gracefully from the bottom viewport.
+- **Curved Top Header Panels**: Rounded ONLY on the bottom corners (`rounded-b-[2.5rem] rounded-t-none`). Creates the illusion of fluid dripping down from the status bar.
+- **Curved Bottom Navigation Bar**: Rounded ONLY on the top corners (`rounded-t-[2.5rem] rounded-b-none`). Slides up gracefully from the bottom viewport.
+- **Inverted Curved Tab Cutouts**: Asymmetric tab selectors featuring smooth concave transition curves between active and inactive tabs (modeled after Screen 3 in the reference UI).
 - **Asymmetric Feature Popups**: Asymmetric diagonal radius pairings (e.g., `rounded-tl-[2.5rem] rounded-br-[2.5rem] rounded-tr-xl rounded-bl-xl`). Directs user eye flow diagonally across key KPIs.
 
 ### 2. Liquid Glass Material Stack
