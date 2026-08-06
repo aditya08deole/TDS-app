@@ -31,6 +31,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - SYNC_INTERVAL_HOURS=1
       - CORS_ALL_ORIGINS=true
+      - AUTO_TUNNEL=true
     depends_on:
       redis:
         condition: service_healthy
@@ -49,6 +50,24 @@ services:
       - "8080:80"
     depends_on:
       - backend
+
+  # ─── 4. Public HTTPS Cloudflare Tunnel Service ───
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: tds-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://backend:5000
+    depends_on:
+      - backend
+
+  # ─── 5. Automated Watchtower Zero-Downtime Auto-Updater ───
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: tds-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 --cleanup
 
 volumes:
   redis_data:

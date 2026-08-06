@@ -2,15 +2,34 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { getRedisClient, hset, hgetall } from '../db/redis';
 import { Device, Alert } from '../types';
-import twilio from 'twilio';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 // Lazy getters — called only after Firebase is initialized, never at import time
 function getDb() { return getFirestore(); }
 function getMsg() { return getMessaging(); }
 function getRedis() { return getRedisClient(); }
+
+// ─── Redis Key Patterns ───────────────────────────────────────────────────────
+
+// Cache of all registered FCM tokens
+export const FCM_TOKEN_CACHE_KEY = 'cache:fcm_tokens';
+
+// Per-device 30-minute suppression key — set when first alert fires
+// Prevents notification spam for the same device within 30 minutes
+const SUPPRESSION_KEY = (deviceId: string) => `notif:suppressed:${deviceId}`;
+const SUPPRESSION_TTL = 30 * 60; // 30 minutes in seconds
+
+// Per-device 30-minute resolved cooldown — set when admin/maintenance resolves an alert
+// Prevents re-notification even if TDS is still breaching, for 30 minutes post-resolution
+export const RESOLVED_COOLDOWN_KEY = (deviceId: string) => `notif:resolved_cooldown:${deviceId}`;
+export const RESOLVED_COOLDOWN_TTL = 30 * 60; // 30 minutes in seconds
+
+// ─── Delivery Deduplication (per alert per channel, 10 min TTL) ──────────────
+// Prevents the onSnapshot listener from sending duplicate FCM for the same alertId
+// in the rare case of Firestore double-firing or race conditions
+const DELIVERY_DEDUPE_KEY = (alertId: string) => `notif:dedupe:push:${alertId}`;
+const DELIVERY_DEDUPE_TTL = 10 * 60; // 10 minutes
+
+// ─── Formatting Helpers ───────────────────────────────────────────────────────
 
 const IST_FORMATTER = new Intl.DateTimeFormat('en-IN', {
     timeZone: 'Asia/Kolkata',
@@ -40,211 +59,7 @@ function formatAlertContext(alertData: any) {
     return { location, ppm, time };
 }
 
-function normalizeIndianNumber(phone: string): string {
-    const trimmed = phone.trim();
-    if (!/^\+91\d{10}$/.test(trimmed)) {
-        throw new Error('Phone must be in +91XXXXXXXXXX format');
-    }
-    return trimmed;
-}
-
-// Fix #16: Exported so notifications.ts and any other module imports this constant
-// instead of using the string literal 'cache:fcm_tokens' (prevents divergence)
-export const FCM_TOKEN_CACHE_KEY = 'cache:fcm_tokens';
-const PHANTOM_DEBOUNCE_KEY = (deviceId: string) => `notif:debounce:${deviceId}`;
-// Fix #25: Increased from 5s to 30s — 5s was too aggressive and dropped real alerts
-// during rapid successive breaches on the same device.
-const PHANTOM_DEBOUNCE_TTL = 30; // seconds (was 5)
-const LAST_SEVERITY_KEY = (deviceId: string) => `notif:last_severity:${deviceId}`;
-
-// WhatsApp recipient cache
-const RECIPIENT_CACHE_KEY = 'cache:wa_recipients';
-const RECIPIENT_CACHE_TTL = 60; // 1 minute
-
-async function getWhatsAppRecipientsForDelivery(): Promise<string[]> {
-    const redis = getRedis();
-    // Try cache
-    const cached = await redis.get(RECIPIENT_CACHE_KEY);
-    if (cached) return JSON.parse(cached);
-
-    const recipients = new Set<string>();
-    if (adminPhone && /^\+\d{8,15}$/.test(adminPhone)) {
-        recipients.add(adminPhone);
-    }
-
-    const snapshot = await getDb()
-        .collection('notification_recipients')
-        .where('channel', '==', 'whatsapp')
-        .get();
-
-    snapshot.docs.forEach((doc) => {
-        const data = doc.data() as any;
-        if (data.active !== false && data.phone_e164 && /^\+\d{8,15}$/.test(String(data.phone_e164))) {
-            recipients.add(String(data.phone_e164));
-        }
-    });
-
-    const result = Array.from(recipients);
-    await redis.set(RECIPIENT_CACHE_KEY, JSON.stringify(result), { EX: RECIPIENT_CACHE_TTL });
-    return result;
-}
-
-export async function listWhatsAppRecipients() {
-    const snapshot = await getDb()
-        .collection('notification_recipients')
-        .where('channel', '==', 'whatsapp')
-        .get();
-
-    const recipients = snapshot.docs
-        .map((doc) => ({ id: doc.id, ...(doc.data() as any) }))
-        .sort((a: any, b: any) => String(a.phone_e164 || '').localeCompare(String(b.phone_e164 || '')));
-    return recipients;
-}
-
-export async function addWhatsAppRecipient(phone: string, addedBy: string) {
-    const normalized = normalizeIndianNumber(phone);
-    const db = getDb();
-    const existing = await db
-        .collection('notification_recipients')
-        .where('phone_e164', '==', normalized)
-        .limit(10)
-        .get();
-
-    if (!existing.empty) {
-        const match = existing.docs.find((doc) => (doc.data() as any).channel === 'whatsapp') || existing.docs[0];
-        const docRef = match.ref;
-        await docRef.set({
-            channel: 'whatsapp',
-            phone_e164: normalized,
-            active: true,
-            updated_at: new Date().toISOString(),
-            updated_by: addedBy,
-        }, { merge: true });
-        // Fix #24: Bust cache immediately so next alert blast uses the updated list
-        await getRedis().del(RECIPIENT_CACHE_KEY);
-        return { id: docRef.id, phone_e164: normalized, active: true };
-    }
-
-    const created = await db.collection('notification_recipients').add({
-        channel: 'whatsapp',
-        phone_e164: normalized,
-        active: true,
-        created_at: new Date().toISOString(),
-        created_by: addedBy,
-    });
-
-    // Fix #24: Bust cache immediately
-    await getRedis().del(RECIPIENT_CACHE_KEY);
-    return { id: created.id, phone_e164: normalized, active: true };
-}
-
-export async function removeWhatsAppRecipient(phone: string, removedBy: string) {
-    const normalized = normalizeIndianNumber(phone);
-    const db = getDb();
-    const snapshot = await db
-        .collection('notification_recipients')
-        .where('phone_e164', '==', normalized)
-        .limit(10)
-        .get();
-
-    if (snapshot.empty) return false;
-
-    const match = snapshot.docs.find((doc) => (doc.data() as any).channel === 'whatsapp') || snapshot.docs[0];
-    await match.ref.set({
-        channel: 'whatsapp',
-        phone_e164: normalized,
-        active: false,
-        updated_at: new Date().toISOString(),
-        updated_by: removedBy,
-    }, { merge: true });
-    // Fix #24: Bust cache immediately so removed recipients don't receive next blast
-    await getRedis().del(RECIPIENT_CACHE_KEY);
-    return true;
-}
-
-// Twilio Config
-const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioFrom = (process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886').trim();
-const adminPhone = process.env.ADMIN_WHATSAPP_TO?.trim();
-
-let twilioClient: any = null;
-if (twilioSid && twilioAuthToken) {
-    twilioClient = twilio(twilioSid, twilioAuthToken);
-    console.log('✅ Twilio initialized in Notification Service');
-}
-
-// ─── Rate Limiting & Configuration ────────────────────────────────────────────
-
-const RATE_LIMIT_TTL = 3600; // 1 hour in seconds
-const RATE_LIMIT_KEY = (deviceId: string, channel = 'global') => `notif:rate:${deviceId}:${channel}`;
-const DELIVERY_DEDUPE_TTL_SEC = 10 * 60;
-
-const ESCALATION_INTERVALS = {
-    whatsapp: [
-        0,              // T0: immediate
-        30 * 60,        // T30: 30 minutes later
-        120 * 60        // T120: 2 hours later
-    ]
-};
-
-/**
- * Optimized Delivery Logging (Nested in Alert Doc)
- * - Updates the Alert document directly with delivery info (low cost)
- * - Only writes to technical logs on FAILURE.
- */
-async function writeDeliveryLog(entry: Record<string, any>) {
-    const { status, channel, reason, alert_id, error } = entry;
-    const db = getDb();
-
-    // 1. Filter out Virtual IDs that don't exist as documents in Firestore
-    if (!alert_id || alert_id.startsWith('test-') || alert_id.startsWith('report-')) {
-        console.log(`ℹ️ [LOG:INTERNAL] Skipping Firestore nested log for virtual alert: ${alert_id}`);
-        return;
-    }
-
-    // 2. Update the Alert document with the last delivery attempt
-    try {
-        const alertRef = db.collection('alerts').doc(alert_id);
-        const alertSnap = await alertRef.get();
-        
-        if (!alertSnap.exists) {
-            console.log(`ℹ️ [LOG:SKIP] Alert doc ${alert_id} not found — skipping nested log.`);
-            return;
-        }
-
-        const updateData: any = {
-            last_notified_at: new Date().toISOString(),
-        };
-        updateData[`delivery_history.${channel}`] = {
-            status,
-            timestamp: new Date().toISOString(),
-            reason: reason || error || 'Processed',
-            success: status === 'success' || status === 'partial'
-        };
-
-        await alertRef.update(updateData);
-        console.log(`📝 [NESTED LOG] Updated Alert ${alert_id} with ${channel} status.`);
-    } catch (err) {
-        console.warn(`⚠️ [NESTED LOG] Could not update Alert ${alert_id}:`, (err as any).message);
-    }
-
-    // 2. Write every attempt to the technical logs collection so the Alerts page
-    // can show success, partial, failed, and skipped deliveries consistently.
-    try {
-        await db.collection('notification_delivery_logs').add({
-            ...entry,
-            created_at: new Date().toISOString(),
-        });
-        if (status === 'failed' || status === 'partial') {
-            console.error(`❌ [LOG:ERROR] ${channel} for ${alert_id}: ${error || 'Unknown error'}`);
-        } else {
-            console.log(`✅ [LOG:${status.toUpperCase()}] ${channel} for ${alert_id}`);
-        }
-    } catch (err) {
-        console.error('❌ Failed to write technical log:', err);
-    }
-}
+// ─── Retry Helper ─────────────────────────────────────────────────────────────
 
 async function withRetry<T>(operation: () => Promise<T>, retries = 1): Promise<T> {
     let lastError: unknown;
@@ -258,279 +73,318 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 1): Promise<T
     throw lastError;
 }
 
-// Fix: Decouple delivery from rate-limiting to ensure Escalations (30m, 120m) work
-// even if the 1-hour global safety lock is active.
-async function isRateLimited(deviceId: string, channel = 'global'): Promise<boolean> {
-    // For WhatsApp, we rely on the specific Tier state logic in shouldSkipByDedupe
-    // so we return false here to let the Tier logic decide.
-    if (channel === 'whatsapp') return false;
-    
-    const exists = await getRedis().exists(RATE_LIMIT_KEY(deviceId, channel));
-    return exists === 1;
-}
-
-async function setRateLimitKey(deviceId: string, channel = 'global'): Promise<void> {
-    await getRedis().set(RATE_LIMIT_KEY(deviceId, channel), '1', { EX: RATE_LIMIT_TTL });
-}
-
-async function isPhantomDebounced(deviceId: string): Promise<boolean> {
-    const redis = getRedis();
-    const key = PHANTOM_DEBOUNCE_KEY(deviceId);
-    const exists = await redis.exists(key);
-    if (exists === 1) return true;
-    await redis.set(key, '1', { EX: PHANTOM_DEBOUNCE_TTL });
-    return false;
-}
-
-async function deviceExists(deviceId: string): Promise<boolean> {
-    const snap = await getDb().collection('devices').doc(deviceId).get();
-    return snap.exists;
-}
+// ─── Suppression Check ────────────────────────────────────────────────────────
 
 /**
- * Enhanced Deduplication & Escalation Logic
- * Fix #5: WhatsApp now uses strict time-intervals for tiers.
- * Fix #8: Escalation to 'critical' always bypasses dedupe.
+ * Industry-standard per-device circuit breaker.
+ * Returns true if we should SKIP sending a notification for this device.
+ *
+ * Two suppression sources:
+ * 1. Recent alert already sent (30-min cooldown after first notification)
+ * 2. Alert was manually resolved (30-min grace period post-resolution)
  */
-async function shouldSkipByDedupe(alertId: string, channel: string, deviceId?: string, currentSeverity?: string): Promise<boolean> {
+export async function isDeviceSuppressed(deviceId: string): Promise<boolean> {
     const redis = getRedis();
 
-    // ── Fix #8: Severity Escalation Bypass ──
-    if (deviceId && currentSeverity === 'critical') {
-        const lastSev = await redis.get(LAST_SEVERITY_KEY(deviceId));
-        if (lastSev && lastSev !== 'critical') {
-            console.log(`🚀 [ESCALATION] Bypassing dedupe for ${deviceId} (escalated to critical)`);
-            await redis.set(LAST_SEVERITY_KEY(deviceId), 'critical', { EX: 86400 });
-            return false;
-        }
-    }
-    if (deviceId && currentSeverity) {
-        await redis.set(LAST_SEVERITY_KEY(deviceId), currentSeverity, { EX: 86400 });
-    }
-
-    // ── Fix #5: WhatsApp Escalation Tiering (Time-based) ──
-    if (channel === 'whatsapp' && deviceId) {
-        const dataKey = `notif:wa_tier_state:${deviceId}`;
-        const rawState = await redis.get(dataKey);
-        const now = Math.floor(Date.now() / 1000);
-        
-        let state = rawState ? JSON.parse(rawState) : { lastSent: 0, tierIndex: -1 };
-
-        if (now - state.lastSent > 86400) state = { lastSent: 0, tierIndex: -1 };
-
-        const nextTierIndex = state.tierIndex + 1;
-        if (nextTierIndex >= ESCALATION_INTERVALS.whatsapp.length) return true;
-
-        const requiredInterval = ESCALATION_INTERVALS.whatsapp[nextTierIndex];
-        const timeSinceLast = now - state.lastSent;
-
-        if (timeSinceLast >= requiredInterval) {
-            state.lastSent = now;
-            state.tierIndex = nextTierIndex;
-            await redis.set(dataKey, JSON.stringify(state), { EX: 86400 });
-            console.log(`📡 [WHATSAPP TIER] Advancing to tier ${nextTierIndex} for device ${deviceId}`);
-            return false;
-        }
+    // Check 1: Was a notification already sent recently for this device?
+    const suppressed = await redis.exists(SUPPRESSION_KEY(deviceId));
+    if (suppressed === 1) {
+        console.log(`🔕 [SUPPRESSED] Device ${deviceId} is in 30-min alert cooldown — skipping`);
         return true;
     }
 
-    const key = `notif:dedupe:${channel}:${alertId}`;
-    const exists = await redis.exists(key);
-    if (exists === 1) return true;
-    await redis.set(key, '1', { EX: DELIVERY_DEDUPE_TTL_SEC });
+    // Check 2: Was this device's alert manually resolved recently?
+    const resolvedCooldown = await redis.exists(RESOLVED_COOLDOWN_KEY(deviceId));
+    if (resolvedCooldown === 1) {
+        console.log(`🔕 [RESOLVED COOLDOWN] Device ${deviceId} was recently resolved — skipping for 30min`);
+        return true;
+    }
+
     return false;
 }
 
 /**
- * Starts real-time listeners for Firestore collections
+ * Mark a device as "notified" — suppresses further alerts for 30 minutes.
+ * Called immediately after a notification is successfully dispatched.
  */
-export function startNotificationListeners() {
-    console.log('📡 Starting real-time Firestore listeners...');
-    const db = getDb();
-    const redis = getRedis();
-
-    // Fix #6: Replace forEach(async ...) with for...of to properly await each
-    // change. The old forEach ignored async callbacks, causing race conditions
-    // where multiple changes wrote to Redis simultaneously without coordination.
-    db.collection('alerts').onSnapshot(async (snapshot) => {
-        for (const change of snapshot.docChanges()) {
-            const alertData = change.doc.data() as Alert;
-            const alertId = change.doc.id;
-            const deviceId = typeof alertData.device_id === 'object' && alertData.device_id !== null
-                ? (alertData.device_id as any).id
-                : String(alertData.device_id);
-
-            if (change.type === 'added' || change.type === 'modified') {
-                const fullAlert = { ...alertData, id: alertId, device_id: deviceId };
-                await hset(`alert:${alertId}`, fullAlert);
-                await redis.sAdd('alerts:all', alertId);
-                await redis.sAdd(`device:${deviceId}:alerts`, alertId);
-
-                if (alertData.status === 'open') {
-                    await redis.sAdd(`device:${deviceId}:alerts:open`, alertId);
-                } else {
-                    await redis.sRem(`device:${deviceId}:alerts:open`, alertId);
-                }
-
-                if (change.type === 'added') {
-                    const createdAtRaw = alertData.created_at as any;
-                    const createdAt = createdAtRaw?.toDate ? createdAtRaw.toDate() : new Date(alertData.created_at);
-                    const isRecent = (Date.now() - createdAt.getTime()) < 60000;
-
-                    if (alertData.status === 'open' && isRecent) {
-                        const exists = await deviceExists(deviceId);
-                        if (!exists) {
-                            console.warn(`⚠️ [PHANTOM GUARD] Alert ${alertId} references non-existent device ${deviceId}.`);
-                            continue;
-                        }
-
-                        const debounced = await isPhantomDebounced(deviceId);
-                        if (debounced) continue;
-
-                        const dispatchers = [
-                            { channel: 'push' as const,     fn: () => sendPushNotification(alertId, alertData) },
-                            { channel: 'whatsapp' as const, fn: () => sendWhatsAppNotification(alertId, alertData) },
-                            { channel: 'ntfy' as const,     fn: () => sendNTFYNotification(alertId, alertData) },
-                            { channel: 'ifttt' as const,    fn: () => triggerIFTTTWebhook(alertId, alertData) },
-                        ];
-
-                        console.log(`🚨 [ALERT] New alert for device ${deviceId}: ${alertData.message}`);
-                        await Promise.all(
-                            dispatchers.map(async ({ channel, fn }) => {
-                                const limited = await isRateLimited(deviceId, channel);
-                                if (limited) {
-                                    await writeDeliveryLog({ alert_id: alertId, channel, status: 'skipped', reason: `rate_limited_${channel}` });
-                                    return;
-                                }
-                                await fn();
-                                await setRateLimitKey(deviceId, channel);
-                            })
-                        );
-                    }
-                }
-            } else if (change.type === 'removed') {
-                await redis.del(`alert:${alertId}`);
-                await redis.sRem('alerts:all', alertId);
-                await redis.sRem(`device:${deviceId}:alerts`, alertId);
-                await redis.sRem(`device:${deviceId}:alerts:open`, alertId);
-
-                const channels = ['global', 'push', 'whatsapp', 'ntfy', 'ifttt'];
-                for (const channel of channels) {
-                    await redis.del(`notif:dedupe:${channel}:${alertId}`);
-                }
-            }
-        }
-    }, (error) => { console.error('❌ Firestore Alert Listener Error:', error); });
-
-    // Fix #6: Same for-of fix applied to devices listener
-    db.collection('devices').onSnapshot(async (snapshot) => {
-        for (const change of snapshot.docChanges()) {
-            const deviceData = change.doc.data() as Device;
-            const deviceId = change.doc.id;
-            if (change.type === 'added' || change.type === 'modified') {
-                if (deviceData.name) {
-                    await hset(`device:${deviceId}`, { ...deviceData, id: deviceId });
-                    await redis.sAdd('devices:all', deviceId);
-                }
-            } else if (change.type === 'removed') {
-                // Auto-resolve orphaned alerts when device is deleted
-                try {
-                    const openAlertsSnap = await getDb()
-                        .collection('alerts')
-                        .where('device_id', '==', deviceId)
-                        .where('status', '==', 'open')
-                        .get();
-
-                    if (!openAlertsSnap.empty) {
-                        const batch = getDb().batch();
-                        const resolvedAt = new Date().toISOString();
-                        openAlertsSnap.docs.forEach(doc => {
-                            batch.update(doc.ref, {
-                                status: 'resolved',
-                                resolved_at: resolvedAt,
-                                resolution_note: 'Auto-resolved: device was deleted',
-                            });
-                        });
-                        await batch.commit();
-                        console.log(`🧹 [ORPHAN CLEANUP] Resolved ${openAlertsSnap.size} open alert(s) for deleted device ${deviceId}`);
-                    }
-                } catch (cleanupErr) {
-                    console.error(`❌ [ORPHAN CLEANUP] Failed for device ${deviceId}:`, cleanupErr);
-                }
-
-                const keysToDelete = [
-                    `device:${deviceId}`,
-                    `sensors:${deviceId}`,
-                    `device:${deviceId}:alerts`,
-                    `device:${deviceId}:alerts:open`,
-                    `device:${deviceId}:uptime_records`,
-                    `notif:debounce:${deviceId}`,
-                    `notif:last_severity:${deviceId}`,
-                    `notif:wa_tier_state:${deviceId}`
-                ];
-
-                const channels = ['global', 'push', 'whatsapp', 'ntfy', 'ifttt'];
-                channels.forEach(channel => {
-                    keysToDelete.push(`notif:rate:${deviceId}:${channel}`);
-                });
-
-                await Promise.all(keysToDelete.map(key => redis.del(key)));
-                await redis.sRem('devices:all', deviceId);
-            }
-        }
-    }, (error) => { console.error('❌ Firestore Device Listener Error:', error); });
-
-    // Fix #6: Same for-of fix for subscriptions listener
-    db.collection('notification_subscriptions').onSnapshot(async (snapshot) => {
-        for (const change of snapshot.docChanges()) {
-            const data = change.doc.data();
-            const token = data.token;
-            const userId = data.user_id;
-            if (!token) continue;
-            if (change.type === 'added' || change.type === 'modified') {
-                await redis.sAdd(FCM_TOKEN_CACHE_KEY, token);
-                if (userId) {
-                    await redis.sAdd(`cache:user_tokens:${userId}`, token);
-                    await redis.expire(`cache:user_tokens:${userId}`, 86400);
-                }
-            } else if (change.type === 'removed') {
-                await redis.sRem(FCM_TOKEN_CACHE_KEY, token);
-                if (userId) await redis.sRem(`cache:user_tokens:${userId}`, token);
-            }
-        }
-        const count = await redis.sCard(FCM_TOKEN_CACHE_KEY);
-        if (count === 0 && !snapshot.empty) {
-            console.log(`🚀 Initializing FCM token caches in Redis from ${snapshot.size} subscriptions...`);
-            const batch = redis.multi();
-            let total = 0;
-            snapshot.docs.forEach(doc => {
-                const d = doc.data();
-                if (d.token) {
-                    batch.sAdd(FCM_TOKEN_CACHE_KEY, d.token);
-                    if (d.user_id) batch.sAdd(`cache:user_tokens:${d.user_id}`, d.token);
-                    total++;
-                }
-            });
-            await batch.exec();
-            console.log(`✅ Pre-cached ${total} FCM tokens in memory.`);
-        }
-    }, (error) => { console.error('❌ Firestore Subscription Listener Error:', error); });
+export async function setDeviceSuppression(deviceId: string): Promise<void> {
+    await getRedis().set(SUPPRESSION_KEY(deviceId), '1', { EX: SUPPRESSION_TTL });
+    console.log(`🔒 [SUPPRESSION SET] Device ${deviceId} suppressed for 30 minutes`);
 }
 
 /**
- * FIX #2a: Warm the FCM token Redis cache on backend startup.
- * Ensures push notifications work immediately — even on first boot before any Firestore events.
- * Call this once from server.ts after initializeRedis().
+ * Check whether this specific alertId already had FCM dispatched (within 10 min).
+ * Protects against Firestore onSnapshot double-firing the same event.
+ */
+async function isAlertAlreadyDispatched(alertId: string): Promise<boolean> {
+    const redis = getRedis();
+    const key = DELIVERY_DEDUPE_KEY(alertId);
+    const exists = await redis.exists(key);
+    if (exists === 1) return true;
+    await redis.set(key, '1', { EX: DELIVERY_DEDUPE_TTL });
+    return false;
+}
+
+// ─── Delivery Logging ─────────────────────────────────────────────────────────
+
+/**
+ * Writes notification delivery results into the alert document and a delivery log.
+ * Skips writing for virtual/internal alert IDs (test-, report-).
+ */
+async function writeDeliveryLog(entry: Record<string, any>) {
+    const { status, channel, reason, alert_id, error } = entry;
+    const db = getDb();
+
+    if (!alert_id || alert_id.startsWith('test-') || alert_id.startsWith('report-')) {
+        console.log(`ℹ️ [LOG:INTERNAL] Skipping delivery log for virtual alert: ${alert_id}`);
+        return;
+    }
+
+    // Update the alert document with delivery history
+    try {
+        const alertRef = db.collection('alerts').doc(alert_id);
+        const alertSnap = await alertRef.get();
+
+        if (!alertSnap.exists) {
+            console.log(`ℹ️ [LOG:SKIP] Alert doc ${alert_id} not found — skipping log.`);
+            return;
+        }
+
+        const updateData: any = { last_notified_at: new Date().toISOString() };
+        updateData[`delivery_history.${channel}`] = {
+            status,
+            timestamp: new Date().toISOString(),
+            reason: reason || error || 'Processed',
+            success: status === 'success' || status === 'partial'
+        };
+
+        await alertRef.update(updateData);
+    } catch (err) {
+        console.warn(`⚠️ [LOG] Could not update Alert ${alert_id}:`, (err as any).message);
+    }
+
+    // Write to delivery logs collection
+    try {
+        await db.collection('notification_delivery_logs').add({
+            ...entry,
+            created_at: new Date().toISOString(),
+        });
+        if (status === 'failed' || status === 'partial') {
+            console.error(`❌ [PUSH LOG:${status.toUpperCase()}] Alert ${alert_id}: ${error || 'Unknown error'}`);
+        } else {
+            console.log(`✅ [PUSH LOG:${status.toUpperCase()}] Alert ${alert_id}`);
+        }
+    } catch (err) {
+        console.error('❌ Failed to write delivery log:', err);
+    }
+}
+
+// ─── FCM Push Notification ────────────────────────────────────────────────────
+
+/**
+ * Sends an FCM multicast push notification to ALL registered device tokens.
+ *
+ * Industry-grade approach:
+ * - Reads tokens from Redis cache first (sub-millisecond), falls back to Firestore
+ * - Sends a single multicast call for all tokens (efficient, one API call)
+ * - Automatically removes stale/invalid tokens from Firestore + Redis on failure
+ * - Retries once on transient errors
+ *
+ * @param alertId - Firestore alert document ID
+ * @param alertData - Alert data object (device_id, message, severity, etc.)
+ * @param isReminder - true for hourly reminder notifications (skips dedupe check)
+ */
+export async function sendPushNotification(alertId: string, alertData: any, isReminder = false): Promise<void> {
+    try {
+        const deviceId = alertData.device_id || '';
+
+        // ── MANDATORY PER-DEVICE SUPPRESSION & RESOLVED COOLDOWN GATE ──
+        if (deviceId) {
+            const redis = getRedis();
+            // 1. HARD STOP: If device was manually resolved in last 30 min, BLOCK ALL DISPATCH (reminders included)
+            const resolvedCooldown = await redis.exists(RESOLVED_COOLDOWN_KEY(deviceId));
+            if (resolvedCooldown === 1) {
+                console.log(`🔒 [FCM GATE] Device ${deviceId} was recently RESOLVED — hard stop active for 30min`);
+                return;
+            }
+
+            // 2. Alert Cooldown: If notification sent in last 30 min, block repeat dispatches
+            if (!isReminder) {
+                const suppressed = await redis.exists(SUPPRESSION_KEY(deviceId));
+                if (suppressed === 1) {
+                    console.log(`🔕 [FCM GATE] Device ${deviceId} is in 30-min alert cooldown — DISPATCH BLOCKED`);
+                    return;
+                }
+            }
+        }
+
+        // Dedupe guard: don't fire twice for the same alert within 10 min
+        // Reminder calls bypass this since they are intentional repeat sends
+        if (!isReminder) {
+            const alreadySent = await isAlertAlreadyDispatched(alertId);
+            if (alreadySent) {
+                console.log(`⚡ [FCM] Alert ${alertId} already dispatched (dedupe) — skipping`);
+                await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'dedupe' });
+                return;
+            }
+        }
+
+        const messaging = getMsg();
+        const redis = getRedis();
+        const db = getDb();
+
+        // ── Token Collection: Redis Cache → Firestore Fallback ──
+        const tokenSet = new Set<string>();
+        const allCached = await redis.sMembers(FCM_TOKEN_CACHE_KEY);
+        allCached.forEach((t: string) => tokenSet.add(t));
+
+        if (tokenSet.size === 0) {
+            // Cold-start: query Firestore directly
+            console.log(`[FCM] Cache cold — loading tokens from Firestore...`);
+            const allSnap = await db.collection('notification_subscriptions').get();
+            allSnap.docs.forEach(doc => {
+                const t = doc.data().token;
+                if (t) tokenSet.add(t);
+            });
+        }
+
+        const tokens = Array.from(tokenSet);
+
+        if (tokens.length === 0) {
+            await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'no_tokens_found' });
+            console.warn(`[FCM] ❌ No FCM tokens found for alert ${alertId}`);
+            return;
+        }
+
+        const { location, ppm, time } = formatAlertContext(alertData);
+
+        const title = isReminder
+            ? `⏰ Reminder: TDS Alert at ${location}`
+            : `🚨 Critical TDS Alert: ${location}`;
+
+        const body = `${ppm} ppm detected at ${time}`;
+
+        // ── FCM Multicast Payload ──
+        const message = {
+            notification: { title, body },
+            data: {
+                alertId,
+                deviceId: String(deviceId),
+                severity: alertData.severity || 'critical',
+                location_name: String(location),
+                ppm: String(ppm),
+                recorded_at: String(time),
+                isReminder: String(isReminder),
+                url: '/alerts',
+                click_action: 'FLUTTER_NOTIFICATION_CLICK', // Android compatibility
+            },
+            android: {
+                priority: 'high' as const,
+                notification: {
+                    channelId: 'tds_alerts',
+                    sound: 'default',
+                    priority: 'high' as const,
+                    defaultVibrateTimings: true,
+                    visibility: 'public' as const,
+                },
+            },
+            apns: {
+                headers: { 'apns-priority': '10' },
+                payload: {
+                    aps: {
+                        sound: 'default',
+                        badge: 1,
+                        contentAvailable: true,
+                    },
+                },
+            },
+            webpush: {
+                headers: { Urgency: 'high' },
+                notification: {
+                    icon: '/pwa-192x192.png',
+                    badge: '/pwa-192x192.png',
+                    requireInteraction: !isReminder, // Keep critical alerts persistent on screen
+                },
+            },
+            tokens,
+        };
+
+        console.log(`[FCM] 🚀 Sending ${isReminder ? 'REMINDER' : 'ALERT'} to ${tokens.length} token(s) — Alert: ${alertId}`);
+        const response = await withRetry(() => messaging.sendEachForMulticast(message), 1);
+
+        await writeDeliveryLog({
+            alert_id: alertId,
+            channel: 'push',
+            status: response.failureCount > 0 ? 'partial' : 'success',
+            success_count: response.successCount,
+            failure_count: response.failureCount,
+            is_reminder: isReminder,
+            token_count: tokens.length,
+        });
+
+        console.log(`[FCM] ✅ Alert ${alertId}: ${response.successCount}/${tokens.length} delivered, ${response.failureCount} failed`);
+
+        // ── Stale Token Cleanup ──
+        // If a token is invalid, remove it from Firestore and Redis cache immediately
+        if (response.failureCount > 0) {
+            const staleTokens: string[] = [];
+            response.responses.forEach((resp, idx) => {
+                if (!resp.success) {
+                    const code = resp.error?.code ?? '';
+                    const isStale =
+                        code === 'messaging/registration-token-not-registered' ||
+                        code === 'messaging/invalid-registration-token';
+                    if (isStale) {
+                        staleTokens.push(tokens[idx]);
+                        console.warn(`[FCM] Stale token detected — scheduling removal: ...${tokens[idx].slice(-8)}`);
+                    }
+                }
+            });
+
+            if (staleTokens.length > 0) {
+                // Fire-and-forget cleanup — don't block the main flow
+                (async () => {
+                    for (const staleToken of staleTokens) {
+                        try {
+                            const snap = await db.collection('notification_subscriptions')
+                                .where('token', '==', staleToken)
+                                .get();
+                            const batch = db.batch();
+                            snap.docs.forEach(d => batch.delete(d.ref));
+                            await batch.commit();
+                            await redis.sRem(FCM_TOKEN_CACHE_KEY, staleToken);
+                            console.log(`🗑️ [FCM] Removed stale token from Firestore and Redis cache`);
+                        } catch (cleanupErr) {
+                            console.warn('[FCM] Stale token cleanup error:', cleanupErr);
+                        }
+                    }
+                })().catch(() => {});
+            }
+        }
+    } catch (error) {
+        console.error('❌ [FCM] Error sending push notification:', error);
+        await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'failed', error: String(error) });
+    }
+}
+
+// ─── FCM Token Cache Management ───────────────────────────────────────────────
+
+/**
+ * Pre-warm the FCM token Redis cache on backend startup.
+ * Ensures push notifications work immediately even on first boot,
+ * before any Firestore onSnapshot events have fired.
  */
 export async function warmFCMCache(): Promise<void> {
     try {
         const db = getDb();
         const redis = getRedis();
         const snapshot = await db.collection('notification_subscriptions').get();
+
         if (snapshot.empty) {
             console.log('ℹ️ [FCM WARM] No subscriptions found — cache stays empty.');
             return;
         }
+
         const batch = redis.multi();
         let total = 0;
         snapshot.docs.forEach(doc => {
@@ -551,329 +405,284 @@ export async function warmFCMCache(): Promise<void> {
     }
 }
 
-// ─── Notification Channels ────────────────────────────────────────────────────
+// ─── Real-Time Firestore Listeners ────────────────────────────────────────────
 
-async function sendPushNotification(alertId: string, alertData: any, isReminder = false) {
-    try {
-        if (!isReminder && await shouldSkipByDedupe(alertId, 'push', alertData.device_id, alertData.severity)) {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'dedupe' });
-            return;
-        }
+/**
+ * Starts real-time Firestore listeners for alerts, devices, and subscriptions.
+ *
+ * Alert Listener:
+ * - On new open alert → sends FCM push immediately (sub-100ms after Firestore write)
+ * - Validates device exists before dispatching (phantom guard)
+ * - Uses delivery dedupe to prevent double-firing
+ *
+ * Device Listener:
+ * - Keeps Redis device cache in sync
+ * - Auto-resolves orphaned alerts when a device is deleted
+ *
+ * Subscription Listener:
+ * - Keeps FCM token Redis cache in sync as users subscribe/unsubscribe
+ */
+export function startNotificationListeners(): void {
+    console.log('📡 Starting real-time Firestore notification listeners...');
+    const db = getDb();
+    const redis = getRedis();
 
-        const messaging = getMsg();
-        const redis = getRedis();
-        const db = getDb();
-        const deviceId = alertData.device_id;
+    // ── Alert Listener ──
+    db.collection('alerts').onSnapshot(async (snapshot) => {
+        for (const change of snapshot.docChanges()) {
+            const alertData = change.doc.data() as Alert;
+            const alertId = change.doc.id;
+            const deviceId = typeof alertData.device_id === 'object' && alertData.device_id !== null
+                ? (alertData.device_id as any).id
+                : String(alertData.device_id);
 
-        // Broadcast every push notification to every registered token so it reaches
-        // all logged-in web and app users, regardless of role.
-        let tokens: string[] = [];
-        const tokenSet = new Set<string>();
+            if (change.type === 'added' || change.type === 'modified') {
+                // Sync to Redis cache
+                const fullAlert = { ...alertData, id: alertId, device_id: deviceId };
+                await hset(`alert:${alertId}`, fullAlert);
+                await redis.sAdd('alerts:all', alertId);
+                await redis.sAdd(`device:${deviceId}:alerts`, alertId);
 
-        const allCached = await redis.sMembers(FCM_TOKEN_CACHE_KEY);
-        allCached.forEach((t: string) => tokenSet.add(t));
-        if (tokenSet.size === 0) {
-            // Cold-start fallback: query Firestore directly
-            const allSnap = await db.collection('notification_subscriptions').get();
-            allSnap.docs.forEach(doc => {
-                const t = doc.data().token;
-                if (t) tokenSet.add(t);
-            });
-            console.log(`[FCM-PUSH] Broadcast loaded ${tokenSet.size} tokens from Firestore`);
-        } else {
-            console.log(`[FCM-PUSH] Broadcast loaded ${tokenSet.size} tokens from Redis cache`);
-        }
+                if (alertData.status === 'open') {
+                    await redis.sAdd(`device:${deviceId}:alerts:open`, alertId);
+                } else {
+                    await redis.sRem(`device:${deviceId}:alerts:open`, alertId);
+                }
 
-        tokens = Array.from(tokenSet);
+                // ── Dispatch FCM on NEW open alerts only ──
+                if (change.type === 'added' && alertData.status === 'open') {
+                    const createdAtRaw = alertData.created_at as any;
+                    const createdAt = createdAtRaw?.toDate ? createdAtRaw.toDate() : new Date(alertData.created_at);
+                    const isRecent = (Date.now() - createdAt.getTime()) < 60000; // Must be within last 60 seconds
 
-        if (tokens.length === 0) {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'skipped', reason: 'no_tokens_found' });
-            console.warn(`[FCM-PUSH] ❌ No tokens found for alert ${alertId}`);
-            return;
-        }
-
-        const { location, ppm, time } = formatAlertContext(alertData);
-        const message = {
-            notification: {
-                title: `${isReminder ? '⏰ Reminder: ' : '🚨 '}TDS Alert: ${location}`,
-                body: `${ppm} ppm recorded at ${time}`,
-            },
-            data: {
-                alertId, deviceId, severity: alertData.severity || 'critical',
-                location_name: String(location), ppm: String(ppm), recorded_at: String(time),
-                isReminder: String(isReminder), url: '/alerts'
-            },
-            tokens,
-        };
-
-        console.log(`[FCM-PUSH] Sending to ${tokens.length} tokens for alert ${alertId}`);
-        const response = await withRetry(() => messaging.sendEachForMulticast(message), 1);
-        await writeDeliveryLog({
-            alert_id: alertId, channel: 'push', status: response.failureCount > 0 ? 'partial' : 'success',
-            success_count: response.successCount, failure_count: response.failureCount, is_reminder: isReminder
-        });
-        
-        console.log(`[FCM-PUSH] ✅ Alert ${alertId}: ${response.successCount} success, ${response.failureCount} failed`);
-
-        if (response.failureCount > 0) {
-            response.responses.forEach((resp, idx) => {
-                if (!resp.success) {
-                    const code = resp.error?.code ?? '';
-                    if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token') {
-                        const staleToken = tokens[idx];
-                        db.collection('notification_subscriptions').where('token', '==', staleToken).get().then((snap) => {
-                            const b = db.batch();
-                            snap.docs.forEach(d => b.delete(d.ref));
-                            redis.sRem(FCM_TOKEN_CACHE_KEY, staleToken);
-                            b.commit();
-                        });
+                    if (!isRecent) {
+                        console.log(`[LISTENER] Alert ${alertId} is stale (>60s old) — skipping FCM dispatch`);
+                        continue;
                     }
+
+                    // Phantom Guard: verify device actually exists
+                    const deviceSnap = await db.collection('devices').doc(deviceId).get();
+                    if (!deviceSnap.exists) {
+                        console.warn(`⚠️ [PHANTOM GUARD] Alert ${alertId} references non-existent device ${deviceId} — skipping`);
+                        continue;
+                    }
+
+                    // Check per-device suppression & resolution cooldown before listener dispatch
+                    if (deviceId) {
+                        const suppressed = await isDeviceSuppressed(deviceId);
+                        if (suppressed) {
+                            console.log(`🔕 [LISTENER] Device ${deviceId} is currently in 30-min cooldown — skipping FCM dispatch`);
+                            continue;
+                        }
+                    }
+
+                    // ── INSTANT FCM DISPATCH ──
+                    console.log(`🚨 [LISTENER] New alert for device ${deviceId}: ${alertData.message}`);
+                    await sendPushNotification(alertId, { ...alertData, device_id: deviceId });
+                }
+
+            } else if (change.type === 'removed') {
+                // Clean up Redis on alert deletion
+                await redis.del(`alert:${alertId}`);
+                await redis.sRem('alerts:all', alertId);
+                await redis.sRem(`device:${deviceId}:alerts`, alertId);
+                await redis.sRem(`device:${deviceId}:alerts:open`, alertId);
+                await redis.del(DELIVERY_DEDUPE_KEY(alertId));
+            }
+        }
+    }, (error) => { console.error('❌ Firestore Alert Listener Error:', error); });
+
+    // ── Device Listener ──
+    db.collection('devices').onSnapshot(async (snapshot) => {
+        for (const change of snapshot.docChanges()) {
+            const deviceData = change.doc.data() as Device;
+            const deviceId = change.doc.id;
+
+            if (change.type === 'added' || change.type === 'modified') {
+                if (deviceData.name) {
+                    await hset(`device:${deviceId}`, { ...deviceData, id: deviceId });
+                    await redis.sAdd('devices:all', deviceId);
+                }
+            } else if (change.type === 'removed') {
+                // Auto-resolve orphaned alerts when device is deleted
+                try {
+                    const openAlertsSnap = await db.collection('alerts')
+                        .where('device_id', '==', deviceId)
+                        .where('status', '==', 'open')
+                        .get();
+
+                    if (!openAlertsSnap.empty) {
+                        const batch = db.batch();
+                        const resolvedAt = new Date().toISOString();
+                        openAlertsSnap.docs.forEach(doc => {
+                            batch.update(doc.ref, {
+                                status: 'resolved',
+                                resolved_at: resolvedAt,
+                                resolution_note: 'Auto-resolved: device was deleted',
+                            });
+                        });
+                        await batch.commit();
+                        console.log(`🧹 [ORPHAN CLEANUP] Resolved ${openAlertsSnap.size} alert(s) for deleted device ${deviceId}`);
+                    }
+                } catch (cleanupErr) {
+                    console.error(`❌ [ORPHAN CLEANUP] Failed for device ${deviceId}:`, cleanupErr);
+                }
+
+                // Clean all device-related Redis keys
+                const keysToDelete = [
+                    `device:${deviceId}`,
+                    `sensors:${deviceId}`,
+                    `device:${deviceId}:alerts`,
+                    `device:${deviceId}:alerts:open`,
+                    `device:${deviceId}:uptime_records`,
+                    SUPPRESSION_KEY(deviceId),
+                    RESOLVED_COOLDOWN_KEY(deviceId),
+                ];
+
+                await Promise.all(keysToDelete.map(key => redis.del(key)));
+                await redis.sRem('devices:all', deviceId);
+            }
+        }
+    }, (error) => { console.error('❌ Firestore Device Listener Error:', error); });
+
+    // ── Subscription / FCM Token Listener ──
+    db.collection('notification_subscriptions').onSnapshot(async (snapshot) => {
+        for (const change of snapshot.docChanges()) {
+            const data = change.doc.data();
+            const token = data.token;
+            const userId = data.user_id;
+            if (!token) continue;
+
+            if (change.type === 'added' || change.type === 'modified') {
+                await redis.sAdd(FCM_TOKEN_CACHE_KEY, token);
+                if (userId) {
+                    await redis.sAdd(`cache:user_tokens:${userId}`, token);
+                    await redis.expire(`cache:user_tokens:${userId}`, 86400);
+                }
+            } else if (change.type === 'removed') {
+                await redis.sRem(FCM_TOKEN_CACHE_KEY, token);
+                if (userId) await redis.sRem(`cache:user_tokens:${userId}`, token);
+            }
+        }
+
+        // Seed cache if it is empty but we have subscriptions
+        const count = await redis.sCard(FCM_TOKEN_CACHE_KEY);
+        if (count === 0 && !snapshot.empty) {
+            console.log(`🚀 Seeding FCM token cache from ${snapshot.size} subscriptions...`);
+            const batch = redis.multi();
+            let total = 0;
+            snapshot.docs.forEach(doc => {
+                const d = doc.data();
+                if (d.token) {
+                    batch.sAdd(FCM_TOKEN_CACHE_KEY, d.token);
+                    if (d.user_id) batch.sAdd(`cache:user_tokens:${d.user_id}`, d.token);
+                    total++;
                 }
             });
+            await batch.exec();
+            console.log(`✅ Pre-cached ${total} FCM tokens in Redis.`);
         }
-    } catch (error) {
-        console.error('❌ Error sending push notification:', error);
-        await writeDeliveryLog({ alert_id: alertId, channel: 'push', status: 'failed', error: String(error) });
-    }
+    }, (error) => { console.error('❌ Firestore Subscription Listener Error:', error); });
 }
 
-async function sendWhatsAppNotification(alertId: string, alertData: any, isReminder = false) {
-    if (!twilioClient) {
-        await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'skipped', reason: 'missing_config' });
-        return;
-    }
-    try {
-        if (!isReminder && await shouldSkipByDedupe(alertId, 'whatsapp', alertData.device_id, alertData.severity)) {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'skipped', reason: 'dedupe' });
-            return;
-        }
-        const recipients = await getWhatsAppRecipientsForDelivery();
-        if (recipients.length === 0) {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'skipped', reason: 'no_recipients' });
-            return;
-        }
-        const { location, ppm, time } = formatAlertContext(alertData);
-        for (const recipient of recipients) {
-            try {
-                const body = isReminder 
-                    ? `⏰ *Hourly Reminder: EvaraTDS Alert*\n\n*Location:* ${location}\n*TDS:* ${ppm} ppm\n*Time:* ${time}\n*Status:* Still Critical`
-                    : `🚨 *EvaraTDS Alert*\n\n*Location:* ${location}\n*TDS:* ${ppm} ppm\n*Time:* ${time}\n*Severity:* ${String(alertData.severity || 'critical').toUpperCase()}\n\n_Reply STATUS for real-time update._`;
-                await withRetry(() => twilioClient.messages.create({ from: twilioFrom, body, to: `whatsapp:${recipient}` }), 1);
-                await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'success', recipient, is_reminder: isReminder });
-            } catch (err: any) {
-                await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'failed', recipient, error: String(err?.message || err) });
-            }
-        }
-    } catch (error: any) {
-        await writeDeliveryLog({ alert_id: alertId, channel: 'whatsapp', status: 'failed', error: String(error?.message || error) });
-    }
-}
+// ─── Hourly Reminder Job ──────────────────────────────────────────────────────
 
-async function sendNTFYNotification(alertId: string, alertData: any, isReminder = false) {
-    const deviceId = alertData.device_id;
-    let topic = process.env.NTFY_TOPIC?.trim();
-    try {
-        const deviceSnap = await getDb().collection('devices').doc(deviceId).get();
-        const customTopic = deviceSnap.data()?.ntfy_topic;
-        if (customTopic) topic = customTopic;
-    } catch (e) {}
-    if (!topic) {
-        await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'skipped', reason: 'missing_topic' });
-        return;
-    }
-    try {
-        if (!isReminder && await shouldSkipByDedupe(alertId, 'ntfy', deviceId, alertData.severity)) {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'skipped', reason: 'dedupe' });
-            return;
-        }
-        const { location, ppm, time } = formatAlertContext(alertData);
-        const prefix = isReminder ? '[REMINDER] ' : '[CRITICAL ALERT] ';
-        const response = await fetch(`https://ntfy.sh/${topic}`, {
-            method: 'POST',
-            body: `${prefix}Location: ${location} | TDS: ${ppm} ppm | Time: ${time} | Severity: ${String(alertData.severity || 'critical').toUpperCase()}\n\nMessage: ${alertData.message}`,
-            headers: {
-                'Title': `${isReminder ? 'Reminder: ' : ''}TDS ALERT: ${String(location).replace(/[^\x00-\xFF]/g, '')}`,
-                'Priority': 'urgent',
-                'Tags': isReminder ? 'alarm_clock' : 'rotating_light,skull'
-            }
-        });
-        if (response.ok) {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'success', topic, is_reminder: isReminder });
-        } else {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'failed', error: `HTTP ${response.status}` });
-        }
-    } catch (error) {
-        await writeDeliveryLog({ alert_id: alertId, channel: 'ntfy', status: 'failed', error: String(error) });
-    }
-}
-
-async function fetchWithBackoff(url: string, options: RequestInit, maxAttempts = 3): Promise<Response> {
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            const res = await fetch(url, options);
-            if (res.ok || res.status < 500) return res;
-            throw new Error(`HTTP ${res.status}`);
-        } catch (err) {
-            lastError = err;
-            if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
-        }
-    }
-    throw lastError;
-}
-
-async function triggerIFTTTWebhook(alertId: string, alertData: any, isReminder = false) {
-    const key = process.env.IFTTT_WEBHOOK_KEY;
-    const event = process.env.IFTTT_EVENT_NAME || 'tds_alert';
-    if (!key) {
-        await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'skipped', reason: 'missing_key' });
-        return;
-    }
-    try {
-        if (!isReminder && await shouldSkipByDedupe(alertId, 'ifttt', alertData.device_id, alertData.severity)) {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'skipped', reason: 'dedupe' });
-            return;
-        }
-        const response = await fetchWithBackoff(`https://maker.ifttt.com/trigger/${event}/with/key/${key}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                value1: alertData.device_name || alertData.device_id,
-                value2: isReminder ? 'reminder' : alertData.severity,
-                value3: alertData.message,
-            }),
-        });
-        if (response.ok) {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'success', event, is_reminder: isReminder });
-        } else {
-            await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'failed', error: `HTTP ${response.status}`, reason: 'bad_status' });
-        }
-    } catch (error) {
-        await writeDeliveryLog({ alert_id: alertId, channel: 'ifttt', status: 'failed', error: String(error), reason: 'exception_after_retry' });
-    }
-}
-
-export async function sendHourlyReminders() {
-    console.log('⏰ [REMINDER JOB] Starting hourly reminder dispatch...');
+/**
+ * Sends FCM reminder notifications for all devices that still have open critical alerts.
+ * Runs every hour via the scheduler cron job.
+ *
+ * Algorithm:
+ * 1. Scan all device IDs in Redis
+ * 2. For each device with open alert(s), verify the alert is still open in Firestore
+ * 3. Refresh PPM from the device's latest Firestore reading (not stale cache)
+ * 4. Send FCM reminder (isReminder = true → skips delivery dedupe)
+ */
+export async function sendHourlyReminders(): Promise<void> {
+    console.log('⏰ [REMINDER JOB] Starting hourly FCM reminder scan...');
     const redis = getRedis();
     const db = getDb();
     const deviceIds = await redis.sMembers('devices:all');
-    if (!deviceIds || deviceIds.length === 0) return;
+
+    if (!deviceIds || deviceIds.length === 0) {
+        console.log('ℹ️ [REMINDER JOB] No devices in Redis — nothing to remind.');
+        return;
+    }
+
     let dispatchCount = 0;
+
     for (const id of deviceIds) {
         try {
             const device = await hgetall<Device>(`device:${id}`);
             if (!device) continue;
-            const deviceSeverity = String((device as any).severity || device.status || '').toLowerCase();
-            const isEscalated = deviceSeverity === 'critical' || deviceSeverity === 'high' || device.status === 'critical';
-            if (!isEscalated) continue;
+
+            // Only remind for devices actively in critical state
+            const deviceStatus = String((device as any).status || '').toLowerCase();
+            if (deviceStatus !== 'critical') continue;
+
             const openAlertIds = await redis.sMembers(`device:${id}:alerts:open`);
             if (!openAlertIds || openAlertIds.length === 0) continue;
+
             const alertId = openAlertIds[0];
-            const alertData: any = await hgetall<Alert>(`alert:${alertId}`);
-            if (!alertData) continue;
+
+            // Verify alert is still open in Firestore (source of truth)
             const fsAlert = await db.collection('alerts').doc(alertId).get();
             if (!fsAlert.exists || fsAlert.data()?.status !== 'open') {
+                // Alert was resolved externally — clean up stale Redis tracking
                 await redis.sRem(`device:${id}:alerts:open`, alertId);
                 continue;
             }
 
-            // ── FIX RC-2/RC-7: Refresh PPM and timestamp from the device's latest reading ──
-            // The cached alertData has the original breach time frozen in it.
-            // We always want to show the most current reading in the reminder.
+            // Build alert data with FRESH PPM from the device's latest reading
+            // (cached alertData has the original breach time frozen — we want current)
+            const alertData: any = { ...fsAlert.data() };
             try {
                 const deviceDoc = await db.collection('devices').doc(id).get();
                 if (deviceDoc.exists) {
-                    const fresh = deviceDoc.data();
-                    if (fresh?.last_tds != null)      alertData.value_at_time = fresh.last_tds;
-                    if (fresh?.last_reading_at)       alertData.recorded_at   = fresh.last_reading_at;
-                    if (fresh?.tds_value != null)     alertData.tds_value     = fresh.last_tds;
-                    console.log(`🔄 [REMINDER JOB] Refreshed: device=${device.name || id}, ppm=${fresh?.last_tds}, ts=${fresh?.last_reading_at}`);
+                    const fresh = deviceDoc.data()!;
+                    if (fresh.last_tds != null)    alertData.value_at_time = fresh.last_tds;
+                    if (fresh.last_reading_at)     alertData.recorded_at   = fresh.last_reading_at;
+                    console.log(`🔄 [REMINDER JOB] Refreshed device ${device.name || id}: ppm=${fresh.last_tds}`);
                 }
             } catch (refreshErr) {
-                console.warn(`⚠️ [REMINDER JOB] Could not refresh device data for ${id}:`, refreshErr);
+                console.warn(`⚠️ [REMINDER JOB] Could not refresh device ${id}:`, refreshErr);
             }
 
-            console.log(`🔔 [REMINDER JOB] Dispatching hourly reminder for device: ${device.name || id}`);
-            await Promise.all([
-                sendPushNotification(alertId, alertData, true),
-                sendWhatsAppNotification(alertId, alertData, true),
-                sendNTFYNotification(alertId, alertData, true),
-                triggerIFTTTWebhook(alertId, alertData, true)
-            ]);
+            console.log(`🔔 [REMINDER JOB] Sending FCM hourly reminder for device: ${device.name || id}`);
+            await sendPushNotification(alertId, alertData, true); // isReminder = true
             dispatchCount++;
-        } catch (error) { console.error(`❌ [REMINDER JOB] Failed for device ${id}:`, error); }
-    }
-    console.log(`✅ [REMINDER JOB] Finished for ${dispatchCount} devices.`);
-}
 
-/**
- * Forceful Notification Engine (Ghost Mode)
- * Triggers a consolidated report of all critical devices directly from ThingSpeak data.
- */
-export async function sendForceConsolidatedReport(criticalDevices: any[]) {
-    if (criticalDevices.length === 0) return;
-
-    console.log(`🔥 [GHOST ENGINE] Forcing consolidated report for ${criticalDevices.length} devices...`);
-
-    let report = `🚨 *EvaraTDS: Critical System Report*\n\n`;
-    criticalDevices.forEach(d => {
-        report += `📍 *${d.name}* (${d.location || 'N/A'})\n`;
-        report += `💧 TDS: *${d.tds} PPM* | 🕒 ${toIST(d.time)}\n\n`;
-    });
-    report += `_Immediate action required on all above devices._`;
-
-    // 1. Create a "Virtual Alert" ID for logging
-    const reportId = `report-${Date.now()}`;
-
-    // 2. Dispatch WhatsApp consolidated report
-    // For consolidated reports, we bypass device-specific dedupe as this is a master admin blast
-    const recipients = await getWhatsAppRecipientsForDelivery();
-    if (recipients.length > 0) {
-        for (const recipient of recipients) {
-            try {
-                await withRetry(() => twilioClient.messages.create({
-                    from: twilioFrom,
-                    body: report,
-                    to: `whatsapp:${recipient}`
-                }), 1);
-                console.log(`✅ [GHOST] Consolidated report sent to WhatsApp: ${recipient}`);
-            } catch (err) {
-                console.error(`❌ [GHOST] WhatsApp failed for ${recipient}`);
-            }
+        } catch (error) {
+            console.error(`❌ [REMINDER JOB] Failed for device ${id}:`, error);
         }
     }
 
-    // 3. FIX RC-1: Send Push with real aggregated PPM & timestamp so it shows meaningful data
-    // Use the most critical device's TDS and timestamp instead of empty fields that cause "N/A".
-    const worstDevice = criticalDevices.reduce((a, b) => (b.tds > a.tds ? b : a), criticalDevices[0]);
-    const consolidatedAlertData = {
-        message: `${criticalDevices.length} device(s) in critical state! Highest: ${worstDevice.tds} PPM`,
-        severity: 'critical',
-        device_id: 'SYSTEM_REPORT',
-        location_name: criticalDevices.length === 1
-            ? (worstDevice.location || worstDevice.name)
-            : `${criticalDevices.length} Critical Devices`,
-        value_at_time: worstDevice.tds,       // ← real PPM — prevents "N/A"
-        recorded_at:   worstDevice.time || new Date().toISOString(), // ← real timestamp
-        tds_value:     worstDevice.tds,
-    };
-    await sendPushNotification(reportId, consolidatedAlertData, true);
+    console.log(`✅ [REMINDER JOB] Completed. Reminded ${dispatchCount} device(s).`);
 }
 
+// ─── Force Critical Alert (Ghost Engine / ThingSpeak) ────────────────────────
+
 /**
- * Triggered by the Ghost Engine for a single device escalation
+ * Triggered by the ThingSpeak Ghost Engine for a single device.
+ * Uses a stable per-device alert ID to update the same Firestore card
+ * and fires an FCM notification if it's been more than 1 hour since last notify.
  */
-export async function triggerForceDeviceAlert(deviceId: string, tds: number, timestamp: string) {
+export async function triggerForceDeviceAlert(deviceId: string, tds: number, timestamp: string): Promise<void> {
+    // ── Per-Device Suppression & Cooldown Gate ──
+    // Check if device is in 30-min alert cooldown OR 30-min resolved cooldown.
+    // Respects operator resolution: if resolved, wait 30 min before allowing new alerts for this device.
+    const suppressed = await isDeviceSuppressed(deviceId);
+    if (suppressed) {
+        console.log(`⏱️ [GHOST] Device ${deviceId} is currently suppressed/in cooldown (30-min window). Skipping alert update & push.`);
+        return;
+    }
+
     const db = getDb();
     const deviceSnap = await db.collection('devices').doc(deviceId).get();
     if (!deviceSnap.exists) return;
-    const deviceData = deviceSnap.data() as any;
 
-    // Use a STABLE alert ID for this device so we update the SAME card in the APK
-    const alertId = `active-alert-${deviceId}`;
-    
-    // Check if an open alert already exists
+    const deviceData = deviceSnap.data() as any;
+    const alertId = `active-alert-${deviceId}`; // Stable ID for this device
+
     const existingAlert = await db.collection('alerts').doc(alertId).get();
     const isNew = !existingAlert.exists || existingAlert.data()?.status !== 'open';
 
@@ -885,65 +694,32 @@ export async function triggerForceDeviceAlert(deviceId: string, tds: number, tim
         severity: 'critical',
         status: 'open',
         value_at_time: tds,
-        // FIX RC-4: Always store recorded_at as the current ThingSpeak reading's timestamp.
-        // This is what formatAlertContext() checks FIRST — previously it was missing, causing
-        // the fallback to created_at (the original breach time = frozen "02:33").
         recorded_at: timestamp,
         created_at: isNew ? timestamp : existingAlert.data()?.created_at,
         updated_at: timestamp,
-        type: 'AUTO_SCAN'
+        type: 'AUTO_SCAN',
     };
 
-    // 1. Persist to Firestore (Updates existing card or creates new)
+    // Persist to Firestore
     try {
         await db.collection('alerts').doc(alertId).set(alertData, { merge: true });
-        console.log(`📡 [GHOST] Updated Firestore Alert document: ${alertId} | TDS=${tds} PPM | ts=${timestamp}`);
+        console.log(`📡 [GHOST] Updated alert: ${alertId} | TDS=${tds} PPM`);
     } catch (e) {
-        console.error('Failed to update ghost alert record', e);
+        console.error('[GHOST] Failed to update ghost alert record', e);
     }
 
-    // 2. Fire notifications forcefully if it's been more than 1 hour (or if brand new)
+    // Fire FCM if brand new or last notify was >1 hour ago
     const lastNotified = existingAlert.data()?.last_notified_at
         ? new Date(existingAlert.data()!.last_notified_at).getTime()
         : 0;
-    const now = Date.now();
-    const ONE_HOUR = 60 * 60 * 1000;
+    const ONE_HOUR_MS = 60 * 60 * 1000;
 
-    if (isNew || (now - lastNotified >= ONE_HOUR)) {
-        console.log(`🔥 [GHOST] Forcing notification blast for ${deviceId} | TDS=${tds} PPM | ts=${timestamp}`);
-        await Promise.all([
-            sendPushNotification(alertId, alertData, true),
-            sendWhatsAppNotification(alertId, alertData, true),
-            sendNTFYNotification(alertId, alertData, true),
-            triggerIFTTTWebhook(alertId, alertData, true)
-        ]);
+    if (isNew || (Date.now() - lastNotified >= ONE_HOUR_MS)) {
+        console.log(`🔥 [GHOST] FCM notification for device ${deviceId} | TDS=${tds} PPM`);
+        await sendPushNotification(alertId, alertData, false);
+        await setDeviceSuppression(deviceId);
     }
 }
 
-// Expose these for the scheduler
-export { sendPushNotification, sendWhatsAppNotification, sendNTFYNotification, triggerIFTTTWebhook };
-
-export async function handleWhatsAppWebhook(reqBody: any) {
-    const body = reqBody.Body ? reqBody.Body.trim().toUpperCase() : "";
-    const from = reqBody.From;
-    console.log(`📩 Received WhatsApp from ${from}: ${body}`);
-    let reply = "Hello! I am the EvaraTDS Monitor Bot. \n\nCommands:\n- STATUS: Get latest readings\n- HELP: List commands";
-    if (body === "STATUS") {
-        try {
-            const db = getDb();
-            const devicesSnap = await db.collection("devices").limit(5).get();
-            if (devicesSnap.empty) {
-                reply = "No devices found in the system.";
-            } else {
-                reply = "📊 *Latest TDS Readings:*\n";
-                devicesSnap.forEach(doc => {
-                    const d = doc.data();
-                    reply += `\n📍 *${d.location_name || d.name}*\nTDS: ${d.last_tds || "N/A"} PPM\nStatus: ${d.status === "online" ? "🟢" : "🔴"} ${d.status.toUpperCase()}\n`;
-                });
-            }
-        } catch (err) { reply = "Sorry, I had trouble fetching the status."; }
-    }
-    const twiml = new twilio.twiml.MessagingResponse();
-    twiml.message(reply);
-    return twiml.toString();
-}
+// Export sendPushNotification for use by the scheduler's force engine
+export { sendPushNotification as sendForcePushNotification };

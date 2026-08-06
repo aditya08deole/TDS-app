@@ -2,14 +2,12 @@
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
-import twilio from 'twilio';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 
 dotenv.config();
 
-// Re-implement the formatting logic to verify the fix
 const IST_FORMATTER = new Intl.DateTimeFormat('en-IN', {
     timeZone: 'Asia/Kolkata',
     day: '2-digit',
@@ -33,13 +31,12 @@ function toIST(dateInput: any): string {
 function formatAlertContext(alertData: any) {
     const location = alertData.location_name || alertData.device_name || alertData.device_id || 'Unknown location';
     const ppm = alertData.value_at_time ?? alertData.tds_value ?? 'N/A';
-    // THIS IS THE FIX WE ARE TESTING:
     const time = toIST(alertData.recorded_at || alertData.created_at || new Date().toISOString());
     return { location, ppm, time };
 }
 
 async function runDirectTest() {
-    console.log('🏁 Starting Direct Notification Test (Bypassing Redis)...');
+    console.log('🏁 Starting Direct FCM Push Test (Bypassing Redis)...');
 
     // 1. Firebase Setup
     let serviceAccount: any = null;
@@ -62,12 +59,7 @@ async function runDirectTest() {
     const db = getFirestore();
     const messaging = getMessaging();
 
-    // 2. Twilio Setup
-    const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    const twilioFrom = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
-    const adminPhone = process.env.ADMIN_WHATSAPP_TO;
-
-    // 3. Get Data
+    // 2. Get Device Data
     const deviceId = 'kjZQSqeeo9OAm3NPNkkw';
     const deviceSnap = await db.collection('devices').doc(deviceId).get();
     const deviceData = deviceSnap.data();
@@ -79,18 +71,18 @@ async function runDirectTest() {
         device_id: deviceId,
         location_name: deviceData?.location_name || 'Main Lab',
         value_at_time: tds,
-        recorded_at: timestamp, // Using the new field
+        recorded_at: timestamp,
     };
 
     const { location, ppm, time } = formatAlertContext(alertData);
     console.log(`\n📢 Notification Content:\n📍 Location: ${location}\n💧 TDS: ${ppm} PPM\n🕒 Time: ${time}\n`);
 
-    // 4. Send Push
+    // 3. Send FCM Push
     const tokensSnap = await db.collection('notification_subscriptions').limit(5).get();
     const tokens = tokensSnap.docs.map(d => d.data().token).filter(Boolean);
 
     if (tokens.length > 0) {
-        console.log(`📲 Sending Push to ${tokens.length} tokens...`);
+        console.log(`📲 Sending FCM Push to ${tokens.length} tokens...`);
         try {
             await messaging.sendEachForMulticast({
                 notification: { title: `🚨 TDS Alert: ${location}`, body: `${ppm} ppm recorded at ${time}` },
@@ -100,21 +92,6 @@ async function runDirectTest() {
         } catch (e) { console.error('❌ Push failed:', e); }
     } else {
         console.log('⚠️ No FCM tokens found in Firestore.');
-    }
-
-    // 5. Send WhatsApp
-    if (adminPhone) {
-        console.log(`💬 Sending WhatsApp to ${adminPhone}...`);
-        try {
-            await twilioClient.messages.create({
-                from: twilioFrom,
-                to: `whatsapp:${adminPhone}`,
-                body: `🚨 *EvaraTDS Alert*\n\n*Location:* ${location}\n*TDS:* ${ppm} ppm\n*Time:* ${time}\n\n_Bypassed Redis for this test._`
-            });
-            console.log('✅ WhatsApp sent successfully.');
-        } catch (e) { console.error('❌ WhatsApp failed:', e); }
-    } else {
-        console.log('⚠️ ADMIN_WHATSAPP_TO not set in .env');
     }
 
     console.log('\n✨ Test finished.');

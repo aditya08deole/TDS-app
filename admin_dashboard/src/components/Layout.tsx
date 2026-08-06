@@ -5,7 +5,6 @@ import { MobileNav } from './MobileNav'
 import PremiumBackground from './PremiumBackground'
 import CommandPalette from './CommandPalette'
 import DeviceInspector from './DeviceInspector'
-import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
 import { useViewport } from '../hooks/useViewport'
 
@@ -15,14 +14,16 @@ export default function Layout() {
     const isMapPage = location.pathname === '/map'
 
     return (
-        <div className="min-h-dvh bg-transparent flex flex-col">
+        <div className={cn("bg-transparent flex flex-col", isMapPage ? "h-dvh overflow-hidden" : "min-h-dvh")}>
             {/* Premium Three.js + Anime atmosphere */}
             <PremiumBackground />
 
-            {/* Unified Top Navigation Header (Desktop Only) */}
-            <div className="hidden md:block">
-                <TopBar />
-            </div>
+            {/* Unified Top Navigation Header (Desktop Only, hidden on Map page for 0px top gap) */}
+            {!isMapPage && (
+                <div className="hidden md:block">
+                    <TopBar />
+                </div>
+            )}
 
             {/* Mobile Bottom Navigation Bar (Mobile Only) */}
             <div className="md:hidden">
@@ -31,11 +32,10 @@ export default function Layout() {
 
             {/* Main Content Area */}
             <main className={cn(
-                "flex-1 overflow-auto animate-fade-in relative z-10 transition-all duration-500",
-                // Map page: no top padding, bottom padding for MobileNav on mobile
+                "flex-1 relative z-10 transition-all duration-500",
                 isMapPage 
-                    ? "pb-0 md:pb-0 pt-safe" 
-                    : cn(
+                    ? "p-0 m-0 h-full w-full overflow-hidden flex flex-col fixed inset-0 max-h-screen" 
+                    : "overflow-auto animate-fade-in " + cn(
                         // Desktop: use TopBar height offset
                         isDesktop && "pt-28 pb-8",
                         // Landscape phone: reduce vertical padding
@@ -50,7 +50,6 @@ export default function Layout() {
             {/* Global Overlays */}
             <CommandPalette />
             <DeviceInspector />
-            <Toaster />
         </div>
     )
 }

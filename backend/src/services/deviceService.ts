@@ -291,7 +291,7 @@ export async function deleteDevice(deviceId: string): Promise<void> {
     ];
 
     // Delete channel rate limit keys
-    const channels = ['global', 'push', 'whatsapp', 'ntfy', 'ifttt'];
+    const channels = ['global', 'push'];
     channels.forEach(channel => {
       keysToDelete.push(`notif:rate:${deviceId}:${channel}`);
     });

@@ -2,6 +2,7 @@ import { type Device, type SystemHealthLog, type UptimeStat } from '../types'
 import { getApiBaseUrl } from './remoteConfig'
 import { isOnline, getCachedDevices, cacheDevices } from './offlineStorage'
 import { dedupFetch, invalidateCache } from './caching'
+import { apiFetch } from './apiClient'
 
 // Dynamic URL getter — reads from Firebase Remote Config at runtime.
 // Falls back to env variable or localhost if Remote Config is unavailable.
@@ -27,25 +28,18 @@ export interface AlertRecord {
   expiresAt?: string
 }
 
-export interface DeliveryLogRecord {
-  id: string
-  alert_id: string
-  channel: 'push' | 'whatsapp' | 'ntfy' | 'ifttt'
-  status: 'success' | 'partial' | 'failed' | 'skipped'
-  reason?: string
-  error?: string
-  recipient?: string
-  success_count?: number
-  failure_count?: number
-  created_at: string
-}
 
-export interface WhatsAppRecipient {
+
+export interface InviteToken {
   id: string
-  phone_e164: string
-  active: boolean
-  created_at?: string
-  updated_at?: string
+  token_preview: string
+  role: 'field_engineer' | 'viewer' | 'admin'
+  created_by: string
+  created_at: string
+  expires_at: string
+  status: 'pending' | 'used' | 'expired'
+  used_by?: string
+  used_at?: string
 }
 
 export async function fetchDevices(): Promise<Device[]> {
@@ -309,107 +303,106 @@ export async function getUptimeStats(deviceId?: string): Promise<UptimeStat[]> {
 }
 
 export async function fetchAlerts(limit: number = 50): Promise<AlertRecord[]> {
-  const endpoint = `${getBase()}/api/alerts?limit=${limit}`;
+  const endpoint = `/api/alerts?limit=${limit}`;
   return dedupFetch(endpoint, async () => {
-    const response = await fetch(endpoint)
+    const response = await apiFetch(endpoint)
     if (!response.ok) throw new Error('Failed to fetch alerts')
     const result: ApiResponse<AlertRecord[]> = await response.json()
     return Array.isArray(result.data) ? result.data : []
   }, { useSwrPattern: true });
 }
 
-export async function acknowledgeAlertApi(alertId: string, userId: string, role: string): Promise<void> {
-  const response = await fetch(`${getBase()}/api/alerts/${alertId}/ack`, {
+export async function acknowledgeAlertApi(alertId: string, _userId: string, _role: string): Promise<void> {
+  // Uses apiFetch which injects Firebase Bearer token — role enforced server-side
+  const response = await apiFetch(`/api/alerts/${alertId}/ack`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': userId,
-      'x-user-role': role,
-    },
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({}),
   })
   if (!response.ok) throw new Error('Failed to acknowledge alert')
-  
-  // Invalidate alert caches
   invalidateCache('/api/alerts');
 }
 
-export async function resolveAlertApi(alertId: string, userId: string, role: string): Promise<void> {
-  const response = await fetch(`${getBase()}/api/alerts/${alertId}/resolve`, {
+export async function resolveAlertApi(alertId: string, _userId: string, _role: string, note?: string): Promise<void> {
+  // Uses apiFetch which injects Firebase Bearer token — role enforced server-side
+  const response = await apiFetch(`/api/alerts/${alertId}/resolve`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': userId,
-      'x-user-role': role,
-    },
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({ note }),
   })
-  if (!response.ok) throw new Error('Failed to resolve alert')
-  
-  // Invalidate alert caches
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.error || 'Failed to resolve alert')
+  }
   invalidateCache('/api/alerts');
 }
 
-export async function fetchDeliveryLogs(limit: number, role: string): Promise<DeliveryLogRecord[]> {
-  const endpoint = `${getBase()}/api/alerts/delivery-logs/list?limit=${limit}`;
-  return dedupFetch(endpoint, async () => {
-    const response = await fetch(endpoint, {
-      headers: {
-        'x-user-role': role,
-      },
-    })
-    if (!response.ok) throw new Error('Failed to fetch delivery logs')
-    const result: ApiResponse<DeliveryLogRecord[]> = await response.json()
-    return Array.isArray(result.data) ? result.data : []
-  }, { useSwrPattern: true });
-}
 
-export async function fetchWhatsAppRecipients(role: string): Promise<WhatsAppRecipient[]> {
-  const endpoint = `${getBase()}/api/notifications/recipients/whatsapp`;
-  return dedupFetch(endpoint, async () => {
-    const response = await fetch(endpoint, {
-      headers: { 'x-user-role': role },
-    })
-    if (!response.ok) throw new Error('Failed to fetch WhatsApp recipients')
-    const result: ApiResponse<WhatsAppRecipient[]> = await response.json()
-    return result.data || []
-  }, { useSwrPattern: false }); // Don't SWR - user-initiated
-}
 
-export async function addWhatsAppRecipientApi(phone: string, userId: string, role: string): Promise<void> {
-  const response = await fetch(`${getBase()}/api/notifications/recipients/whatsapp`, {
+// ─── Invite Token API ─────────────────────────────────────────────────────────
+
+/** Generate an invite link for a specific role (admin/super_admin only) */
+export async function generateInviteApi(role: 'field_engineer' | 'viewer' | 'admin'): Promise<{
+  token: string;
+  invite_link: string;
+  role: string;
+  expires_at: string;
+}> {
+  const response = await apiFetch('/api/users/invite', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': userId,
-      'x-user-role': role,
-    },
-    body: JSON.stringify({ phone, userId }),
+    body: JSON.stringify({ role }),
   })
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}))
-    throw new Error(err.error || 'Failed to add WhatsApp recipient')
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.error || 'Failed to generate invite')
   }
-  
-  // Invalidate recipients cache
-  invalidateCache('/api/notifications/recipients/whatsapp');
+  return response.json()
 }
 
-export async function removeWhatsAppRecipientApi(phone: string, userId: string, role: string): Promise<void> {
-  const response = await fetch(`${getBase()}/api/notifications/recipients/whatsapp`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': userId,
-      'x-user-role': role,
-    },
-    body: JSON.stringify({ phone, userId }),
+/** List all invite tokens (admin/super_admin only) */
+export async function listInvitesApi(): Promise<InviteToken[]> {
+  const endpoint = `/api/users/invites`;
+  return dedupFetch(endpoint, async () => {
+    const response = await apiFetch(endpoint)
+    if (!response.ok) throw new Error('Failed to fetch invites')
+    const result: ApiResponse<InviteToken[]> = await response.json()
+    return Array.isArray(result.data) ? result.data : []
+  }, { useSwrPattern: false });
+}
+
+/** Redeem an invite token after Firebase signup */
+export async function redeemInviteApi(token: string, uid: string): Promise<{ success: boolean; role: string }> {
+  // This is a public endpoint — no auth header needed (user just registered)
+  const response = await fetch(`${getApiBaseUrl()}/api/users/redeem-invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, uid }),
   })
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}))
-    throw new Error(err.error || 'Failed to remove WhatsApp recipient')
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.error || 'Failed to redeem invite')
   }
-  
-  // Invalidate recipients cache
-  invalidateCache('/api/notifications/recipients/whatsapp');
+  return response.json()
+}
+
+/** Set default viewer role for new users who signed up without an invite */
+export async function setDefaultRoleApi(uid: string): Promise<{ success: boolean; role: string }> {
+  const response = await fetch(`${getApiBaseUrl()}/api/users/set-default-role`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uid }),
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.error || 'Failed to set default role')
+  }
+  return response.json()
+}
+
+/** Revoke a pending invite token (admin only) */
+export async function revokeInviteApi(token: string): Promise<void> {
+  const response = await apiFetch(`/api/users/invites/${token}`, { method: 'DELETE' })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.error || 'Failed to revoke invite')
+  }
+  invalidateCache('/api/users/invites');
 }

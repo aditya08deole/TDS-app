@@ -4,6 +4,7 @@ import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../lib/firebase'
 import { initTokenRefresh, clearSession } from '../lib/tokenRefresh'
+import { redeemInviteApi, setDefaultRoleApi } from '../lib/api'
 
 export type Profile = {
     id: string
@@ -60,22 +61,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (docSnap.exists()) {
                 setProfile(docSnap.data() as Profile)
             } else if (email) {
-                // Determine role: Use local admin list as source of truth for auto-profile
+                // New user — check if there's an invite token in the URL
+                const urlToken = new URLSearchParams(window.location.search).get('token') ||
+                    new URLSearchParams(window.location.search).get('invite');
+
+                // Determine role: hardcoded admin emails always get super_admin
                 const isHardcoded = adminEmails.includes(email.toLowerCase())
-                const role = isHardcoded ? 'super_admin' : 'viewer'
-                
-                console.log(`🆕 Creating auto-profile for ${email} as ${role}`)
-                
+                let assignedRole: Profile['role'] = isHardcoded ? 'super_admin' : 'viewer'
+
+                if (!isHardcoded) {
+                    if (urlToken) {
+                        // Attempt to redeem the invite token to get the correct role
+                        try {
+                            const result = await redeemInviteApi(urlToken, userId)
+                            if (result.success && result.role) {
+                                assignedRole = result.role as Profile['role']
+                                console.log(`🎫 [INVITE REDEEMED] uid=${userId} role=${result.role}`)
+                                // Clean token from URL without reload
+                                const url = new URL(window.location.href)
+                                url.searchParams.delete('token')
+                                url.searchParams.delete('invite')
+                                window.history.replaceState({}, '', url.toString())
+                            }
+                        } catch (inviteErr) {
+                            console.warn('⚠️ [INVITE] Failed to redeem invite token (defaulting to viewer):', inviteErr)
+                            // Fall through to setDefaultRole
+                            try { await setDefaultRoleApi(userId) } catch (_) {}
+                        }
+                    } else {
+                        // No invite token — assign default viewer role in backend
+                        try { await setDefaultRoleApi(userId) } catch (_) {}
+                    }
+                }
+
+                console.log(`🆕 Creating profile for ${email} as ${assignedRole}`)
+
                 const newProfile: Profile = {
                     id: userId,
                     email: email,
                     name: email.split('@')[0],
-                    role: role as Profile['role'],
+                    role: assignedRole,
                     created_at: new Date().toISOString()
                 }
-                
+
                 setProfile(newProfile)
-                
+
                 import('firebase/firestore').then(({ setDoc, serverTimestamp }) => {
                     setDoc(docRef, {
                         ...newProfile,
@@ -166,7 +196,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export const useAuth = () => {
     const context = useContext(AuthContext)
     if (context === undefined) {
-        throw new Error('useAuth must be used within an AuthProvider')
+        console.warn('⚠️ useAuth was invoked outside AuthProvider — returning safe context fallback.')
+        return {
+            user: null,
+            profile: null,
+            loading: true,
+            isHardcodedAdmin: false,
+            isAdmin: false,
+            signOut: async () => {},
+            setSessionExpired: () => {},
+        }
     }
     return context
 }

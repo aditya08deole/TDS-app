@@ -4,12 +4,9 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { getRedisClient } from '../db/redis';
 import {
     sendHourlyReminders,
-    sendForceConsolidatedReport,
     triggerForceDeviceAlert,
-    sendPushNotification,
-    sendWhatsAppNotification,
-    sendNTFYNotification,
-    triggerIFTTTWebhook,
+    sendForcePushNotification,
+    isDeviceSuppressed,
 } from '../services/notificationService';
 import { getAllDevices, updateDevice } from '../services/deviceService';
 import { getLatestThingSpeakReading } from '../services/thingSpeakService';
@@ -32,8 +29,8 @@ let forceEngineTask: any = null; // Fix #10: Was untracked — leaked after stop
  * First breach fires immediately; subsequent blasts throttled to 1 per hour.
  */
 export function startThingSpeakMonitorJob(): void {
-    // Fix #9: Was '*/15 * * * *' — up to 15 minute delay on new alerts.
-    thingSpeakTask = cron.schedule('*/2 * * * *', async () => {
+    // Polls ThingSpeak every 10 minutes for threshold breaches
+    thingSpeakTask = cron.schedule('*/10 * * * *', async () => {
         try {
             console.log('👻 [GHOST ENGINE] Starting autonomous ThingSpeak scan...');
             const devices = await getAllDevices();
@@ -58,6 +55,13 @@ export function startThingSpeakMonitorJob(): void {
                 });
 
                 if (isCritical) {
+                    // Check if device is in 30-min alert or resolved cooldown window
+                    const suppressed = await isDeviceSuppressed(device.id);
+                    if (suppressed) {
+                        console.log(`⏱️ [GHOST ENGINE] Device ${device.id} is in 30-min cooldown/resolution window — excluding from critical report.`);
+                        continue;
+                    }
+
                     criticalDevices.push({
                         id: device.id,
                         name: device.name,
@@ -79,11 +83,25 @@ export function startThingSpeakMonitorJob(): void {
                 const lastSent = await redis.get(FORCE_TIMER_KEY);
                 const lastSentTime = lastSent ? parseInt(lastSent) : 0;
 
-                // Fix #9: Fire immediately on first breach (lastSentTime === 0), then throttle to 1hr
+                // Fire immediately on first breach (lastSentTime === 0), then throttle to 1hr
                 if (now - lastSentTime >= ONE_HOUR_MS) {
-                    await sendForceConsolidatedReport(criticalDevices);
+                    // Send FCM push for the most critical device as a consolidated report
+                    const worstDevice = criticalDevices.reduce((a, b) => (b.tds > a.tds ? b : a), criticalDevices[0]);
+                    const reportId = `report-${Date.now()}`;
+                    const consolidatedAlertData = {
+                        message: `${criticalDevices.length} device(s) in critical state! Highest: ${worstDevice.tds} PPM`,
+                        severity: 'critical',
+                        device_id: 'SYSTEM_REPORT',
+                        location_name: criticalDevices.length === 1
+                            ? (worstDevice.location || worstDevice.name)
+                            : `${criticalDevices.length} Critical Devices`,
+                        value_at_time: worstDevice.tds,
+                        recorded_at: worstDevice.time || new Date().toISOString(),
+                        tds_value: worstDevice.tds,
+                    };
+                    await sendForcePushNotification(reportId, consolidatedAlertData, true);
                     await redis.set(FORCE_TIMER_KEY, String(now));
-                    console.log('🔥 [GHOST ENGINE] Forceful consolidated report dispatched.');
+                    console.log('🔥 [GHOST ENGINE] FCM consolidated report dispatched.');
                 } else {
                     console.log(`⏱️ [GHOST ENGINE] Force-timer active. Next report in ${Math.round((ONE_HOUR_MS - (now - lastSentTime)) / 60000)} mins.`);
                 }
@@ -95,7 +113,7 @@ export function startThingSpeakMonitorJob(): void {
         }
     });
 
-    console.log('✅ ThingSpeak Ghost Engine active — polling every 2 mins (was 15).');
+    console.log('✅ ThingSpeak Ghost Engine active — polling every 10 mins.');
 }
 
 export function startScheduler(): void {
@@ -138,20 +156,24 @@ export function startAlertCleanupJob(): void {
       const cutoffISO = cutoffDate.toISOString();
 
       // Only delete alerts that are BOTH resolved AND older than 24 hours
-      const oldAlerts = await db
+      const resolvedSnapshot = await db
         .collection('alerts')
         .where('status', '==', 'resolved')
-        .where('resolved_at', '<=', cutoffISO)
         .get();
 
-      if (oldAlerts.empty) return;
+      const oldAlerts = resolvedSnapshot.docs.filter(doc => {
+        const resolvedAt = doc.data().resolved_at;
+        return resolvedAt && new Date(resolvedAt) <= cutoffDate;
+      });
 
-      console.log(`🧹 [CLEANUP] Deleting ${oldAlerts.size} resolved alert(s) older than ${RESOLVED_TTL_HOURS}h...`);
+      if (oldAlerts.length === 0) return;
+
+      console.log(`🧹 [CLEANUP] Deleting ${oldAlerts.length} resolved alert(s) older than ${RESOLVED_TTL_HOURS}h...`);
 
       const batch = db.batch();
       let deleteCount = 0;
 
-      for (const doc of oldAlerts.docs) {
+      for (const doc of oldAlerts) {
         const alertData = doc.data();
 
         // Safety guard: never delete open alerts
@@ -278,10 +300,19 @@ export function startHourlyReminderJob(): void {
                 const lastNotified = alert.last_notified_at ? new Date(alert.last_notified_at).getTime() : 0;
 
                 if (now - lastNotified >= ONE_HOUR_MS) {
-                    console.log(`🔥 [FORCE DISPATCH] Alert ${doc.id} still OPEN after 1hr. Forcing re-delivery...`);
-
                     const alertData: any = { ...doc.data() };
                     const deviceId: string = alertData.device_id;
+
+                    // Check if device is currently in 30-min resolved cooldown
+                    if (deviceId) {
+                        const suppressed = await isDeviceSuppressed(deviceId);
+                        if (suppressed) {
+                            console.log(`⏱️ [FORCE ENGINE] Device ${deviceId} is in 30-min cooldown/resolution — skipping re-delivery.`);
+                            continue;
+                        }
+                    }
+
+                    console.log(`🔥 [FORCE DISPATCH] Alert ${doc.id} still OPEN after 1hr. Forcing re-delivery...`);
 
                     // Refresh with latest device reading
                     if (deviceId && deviceId !== 'SYSTEM_REPORT') {
@@ -298,13 +329,8 @@ export function startHourlyReminderJob(): void {
                         }
                     }
 
-                    // Fix #22: Use statically imported functions — NOT require()
-                    await Promise.all([
-                        sendPushNotification(doc.id, alertData, true),
-                        sendWhatsAppNotification(doc.id, alertData, true),
-                        sendNTFYNotification(doc.id, alertData, true),
-                        triggerIFTTTWebhook(doc.id, alertData, true)
-                    ]);
+                    // Dispatch FCM-only — send push notification reminder
+                    await sendForcePushNotification(doc.id, alertData, true);
                 }
             }
         } catch (error) {

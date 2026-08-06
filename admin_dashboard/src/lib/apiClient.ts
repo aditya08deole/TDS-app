@@ -13,8 +13,9 @@
  */
 
 import { auth } from './firebase';
+import { getApiBaseUrl } from './remoteConfig';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const getBase = () => import.meta.env.VITE_API_URL || getApiBaseUrl();
 
 /**
  * Performs a fetch to the backend API with automatic Firebase ID token injection.
@@ -41,7 +42,7 @@ export async function apiFetch(
         console.warn('[apiClient] Failed to get ID token (proceeding without auth):', tokenErr);
     }
 
-    return fetch(`${API_BASE}${endpoint}`, {
+    return fetch(`${getBase()}${endpoint}`, {
         ...options,
         headers,
     });

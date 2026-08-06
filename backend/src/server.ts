@@ -23,11 +23,13 @@ import syncRoutes from './api/routes/sync';
 import notificationRoutes from './api/routes/notifications';
 import telemetryRoutes from './api/routes/telemetry';
 import alertsRoutes from './api/routes/alerts';
+import usersRoutes from './api/routes/users';
 import { TDS_CONFIG } from './config/tdsConfig';
 import { getFrontendPath } from './utils/pathUtils';
 import { startNotificationListeners, warmFCMCache } from './services/notificationService';
 import { sseService } from './services/sseService';
 import { verifyEnvironment } from './scripts/envVerifier';
+import { startAutoTunnel, stopAutoTunnel } from './services/autoTunnelService';
 
 // Load environment variables
 dotenv.config();
@@ -42,25 +44,23 @@ app.use(helmet());
 // CORS Configuration - Restrict to allowed origins in production
 const allowedOrigins = process.env.CORS_ORIGINS 
   ? process.env.CORS_ORIGINS.split(',') 
-  : ['http://localhost:3000', 'http://localhost:5173'];
+  : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080', 'http://localhost:8081'];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
     
-    // Check if origin is in the allowed list
+    // Check if origin is in explicit allowed list OR is a tunnel subdomain
     const isAllowed = allowedOrigins.some(allowed => origin === allowed || origin.startsWith(`${allowed}/`));
-    
-    // Fix #34: CORS bypass requires an explicit CORS_ALL_ORIGINS=true env var.
-    // Previously used NODE_ENV !== 'production' which opens all origins if
-    // NODE_ENV is accidentally left as 'development' on a production server.
+    const isTunnelDomain = origin.endsWith('.trycloudflare.com') || origin.endsWith('.ngrok-free.app') || origin.endsWith('.loca.lt');
     const allowAll = process.env.CORS_ALL_ORIGINS === 'true';
-    if (isAllowed || allowAll) {
+    
+    if (isAllowed || isTunnelDomain || allowAll) {
       callback(null, true);
     } else {
-      console.warn(`⚠️ CORS blocked request from unauthorized origin: ${origin}`);
-      callback(new Error('Origin not allowed by CORS'));
+      console.warn(`⚠️ [CORS] Rejected request from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
@@ -213,7 +213,7 @@ app.use('/api/devices', deviceRoutes);
 app.use('/api/sync', syncRoutes);
 
 /**
- * Notification routes
+ * Notification routes (FCM subscription management)
  */
 app.use('/api/notifications', notificationRoutes);
 
@@ -226,6 +226,11 @@ app.use('/api/alerts', alertsRoutes);
  * Telemetry routes (Device sensor data submission)
  */
 app.use('/api/telemetry', telemetryRoutes);
+
+/**
+ * Users routes (invite token management, role assignment)
+ */
+app.use('/api/users', usersRoutes);
 
 /**
  * Catch-all route to serve the frontend for SPA routing
@@ -309,7 +314,7 @@ async function start() {
     startTelemetryFlusher();
 
     // Start server
-    app.listen(PORT, () => {
+    app.listen(PORT, async () => {
       if (NODE_ENV !== 'production') {
         console.log(`✅ Server running on port ${PORT}`);
         console.log(`   Health: http://localhost:${PORT}/health`);
@@ -317,6 +322,11 @@ async function start() {
         console.log(`   Frontend: ${frontendPath}`);
       } else {
         console.log(`✅ TDS-APP Backend started on port ${PORT} [${NODE_ENV}]`);
+      }
+
+      // Automatically launch public outbound tunnel unless explicitly disabled
+      if (process.env.AUTO_TUNNEL !== 'false') {
+        await startAutoTunnel(Number(PORT));
       }
     });
   } catch (error) {
@@ -328,6 +338,7 @@ async function start() {
 // ═══ GRACEFUL SHUTDOWN ═══
 process.on('SIGTERM', async () => {
   console.log('📭 SIGTERM received, shutting down gracefully...');
+  stopAutoTunnel();
   stopScheduler();
   stopTelemetryFlusher(); // Fix #11
   try {

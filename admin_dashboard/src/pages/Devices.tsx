@@ -1159,11 +1159,7 @@ export default function Devices() {
                         </div>
                         <h3 className="text-lg lg:text-xl font-bold text-foreground mb-1 truncate">{device.location_name || device.name}</h3>
                         <div className="space-y-3 mt-auto">
-                            <div className="flex justify-between items-center text-xs text-muted-foreground">
-                                <div className="flex gap-2 lg:gap-4 truncate">
-                                    <span>Lat: {device.latitude?.toFixed(2)}</span>
-                                    <span>Lng: {device.longitude?.toFixed(2)}</span>
-                                </div>
+                            <div className="flex justify-end items-center text-xs text-muted-foreground">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase border flex-shrink-0 ${
                                     (device.status === 'maintenance' ? 'maintenance' : getConnectivityStatus(device.last_reading_at || device.last_seen_at)) === 'online' 
                                         ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :

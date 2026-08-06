@@ -46,21 +46,7 @@ export async function verifyEnvironment(): Promise<{ success: boolean; report: s
     report.push(`⚠️ Redis database: Connection failed (${err.message}). System using in-memory fallback.`);
   }
 
-  // 3. Check Twilio Configuration
-  const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-  const twilioToken = process.env.TWILIO_AUTH_TOKEN;
-  const publicUrl = process.env.PUBLIC_URL;
 
-  if (twilioSid && twilioToken) {
-    report.push('✅ Twilio WhatsApp: Credentials present');
-    if (!publicUrl) {
-      report.push('⚠️ Twilio Webhook: PUBLIC_URL missing in .env (signature validation disabled)');
-    } else {
-      report.push(`✅ Twilio Webhook: PUBLIC_URL configured (${publicUrl})`);
-    }
-  } else {
-    report.push('ℹ️ Twilio WhatsApp: Credentials not set (WhatsApp notifications disabled)');
-  }
 
   // 4. Check CORS Flags
   const corsAll = process.env.CORS_ALL_ORIGINS === 'true';

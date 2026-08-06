@@ -3,6 +3,7 @@ import { getRedisClient, hset, hgetall } from '../db/redis';
 import { l1Cache } from '../db/cache';
 import { Device, SensorData } from '../types';
 import { TDS_CONFIG } from '../config/tdsConfig';
+import { isDeviceSuppressed, setDeviceSuppression } from './notificationService';
 
 // Lazy getters — only called after Firebase/Redis are initialized, never at import time
 function getDb() { return getFirestore(); }
@@ -113,11 +114,23 @@ async function checkThresholds(device: Device, reading: any, recordedAt: Date) {
         await getRedis().del(recoveryKey);
 
         console.log(`🚨 Threshold breach for ${device.name}: ${reading.tds} PPM (Range: ${min}-${max})`);
-        
-        // Check if we already have an open alert for this device to avoid spamming
-        const openAlertId = await getRedis().sMembers(`device:${device.id}:alerts:open`);
-        
-        if (openAlertId.length === 0) {
+
+        // ── Per-Device Circuit Breaker ──
+        // Check both suppression keys BEFORE creating any alert or triggering FCM.
+        // This is the primary anti-spam gate — each device has its own independent key.
+        // Devices in cooldown still get their Redis state updated (last_tds, status)
+        // but no new Firestore alert or push notification is created.
+        const suppressed = await isDeviceSuppressed(device.id);
+        if (suppressed) {
+            // Still update device status in Redis so dashboard shows current TDS
+            await hset(`device:${device.id}`, { ...device, status: 'critical', last_tds: reading.tds });
+            return;
+        }
+
+        // Check if we already have an open alert tracked in Redis
+        const openAlertIds = await getRedis().sMembers(`device:${device.id}:alerts:open`);
+
+        if (openAlertIds.length === 0) {
             const locationName = device.location_name || device.name || device.id;
             const recordedAtISO = recordedAt.toISOString();
             const alertData = {
@@ -134,27 +147,25 @@ async function checkThresholds(device: Device, reading: any, recordedAt: Date) {
                 updated_at: recordedAtISO
             };
 
-            // Add to Redis first (immediate response)
-            const alertId = `local_alert_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-            const fullAlert = { ...alertData, id: alertId };
-            await hset(`alert:${alertId}`, fullAlert);
-            await getRedis().sAdd('alerts:all', alertId);
-            await getRedis().sAdd(`device:${device.id}:alerts`, alertId);
-            await getRedis().sAdd(`device:${device.id}:alerts:open`, alertId);
-
-            // Update device status in Redis immediately
+            // Update device status in Redis immediately (before Firestore write)
             await hset(`device:${device.id}`, { ...device, status: 'critical' });
-            
-            // Background / Async Firestore sync
+
+            // Set 30-min suppression key BEFORE Firestore write
+            // This ensures no duplicate alerts even if the onSnapshot fires rapidly
+            await setDeviceSuppression(device.id);
+
+            // Write alert to Firestore — this triggers the onSnapshot listener
+            // which dispatches the FCM push notification
             getDb().collection('alerts').add(alertData).then(alertRef => {
                 getRedis().sAdd('alerts:all', alertRef.id);
                 hset(`alert:${alertRef.id}`, { ...alertData, id: alertRef.id });
                 getRedis().sAdd(`device:${device.id}:alerts`, alertRef.id);
                 getRedis().sAdd(`device:${device.id}:alerts:open`, alertRef.id);
-            }).catch(e => console.error("Firestore alert sync failed", e));
-            
+                console.log(`✅ [ALERT CREATED] Alert ${alertRef.id} for device ${device.id} written to Firestore`);
+            }).catch(e => console.error('Firestore alert sync failed', e));
+
             getDb().collection('devices').doc(device.id).update({ status: 'critical', updated_at: new Date().toISOString() })
-                .catch(e => console.error("Firestore status sync failed", e));
+                .catch(e => console.error('Firestore device status sync failed', e));
         }
     } else {
         // 2. Reading is safe. Check if we need to recover.

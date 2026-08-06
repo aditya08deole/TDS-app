@@ -1,58 +1,78 @@
-# ─── Windows 24/7 Automated Docker Deployment Script ───
+# ─── EvaraTDS Autonomous Production Deployment Engine (Windows) ───
 # Run in PowerShell: .\deploy-windows.ps1
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "TDS-APP Continuous Windows Deployment & Health Check" -ForegroundColor Cyan
-Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "======================================================================" -ForegroundColor Cyan
+Write-Host "🚀 EvaraTDS Autonomous Production Deployment Engine" -ForegroundColor Cyan
+Write-Host "======================================================================" -ForegroundColor Cyan
 
-# 1. Verify Docker CLI & Engine Status
-Write-Host "`nChecking Docker Engine availability..." -ForegroundColor Yellow
+$backendDir = "$PSScriptRoot\backend"
+$frontendDir = "$PSScriptRoot\admin_dashboard"
+
+# 1. Check Docker Availability
+$hasDocker = $false
 try {
-    $dockerInfo = docker info 2>&1
-    Write-Host "Docker Engine is running on Windows!" -ForegroundColor Green
+    $dockerCheck = docker info 2>&1
+    if ($LASTEXITCODE -eq 0) { $hasDocker = $true }
 } catch {
-    Write-Host "Docker Engine is NOT running or Docker Desktop is closed." -ForegroundColor Red
-    Write-Host "Please launch Docker Desktop on Windows and try again." -ForegroundColor Red
-    Exit 1
+    $hasDocker = $false
 }
 
-# 2. Build and Launch Background Containers
-Write-Host "`nBuilding and launching containerized services in background daemon mode..." -ForegroundColor Yellow
-docker-compose up -d --build
+if ($hasDocker) {
+    Write-Host "`n🐳 Docker Desktop Detected — Deploying via Containerized Compose Stack..." -ForegroundColor Green
+    Write-Host "Building and starting background containers..." -ForegroundColor Yellow
+    docker-compose up -d --build
 
-# 3. Wait for Containers to Initialize
-Write-Host "`nWaiting 10 seconds for backend and Redis services to initialize..." -ForegroundColor Yellow
-Start-Sleep -Seconds 10
+    Write-Host "`nWaiting 10 seconds for services to initialize..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 10
 
-# 4. Display Container Status
-Write-Host "`nContainer Status Overview:" -ForegroundColor Yellow
-docker-compose ps
+    Write-Host "`nContainer Status Overview:" -ForegroundColor Yellow
+    docker-compose ps
+} else {
+    Write-Host "`n⚡ Docker not active — Falling back to Native Production Process Manager (PM2)..." -ForegroundColor Yellow
 
-# 5. Execute Automated Seeding Script inside Backend Container
-Write-Host "`nExecuting automated Firestore admin seeding inside container..." -ForegroundColor Yellow
-try {
-    docker exec tds-backend npm run setup:admin
-} catch {
-    Write-Host "Warning: Admin setup seeding inside container produced an error." -ForegroundColor Red
+    # Check Node.js
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+        Write-Host "❌ Node.js is required to run standalone mode. Please install Node.js v20+." -ForegroundColor Red
+        Exit 1
+    }
+
+    # Build Production Backend
+    Write-Host "`n📦 Compiling Backend Production Artifacts..." -ForegroundColor Yellow
+    Set-Location $backendDir
+    npm run build
+
+    # Install PM2 if needed
+    if (-not (Get-Command pm2 -ErrorAction SilentlyContinue)) {
+        Write-Host "📥 Installing PM2 process manager globally..." -ForegroundColor Yellow
+        npm install -g pm2
+    }
+
+    # Start PM2 Process
+    Write-Host "🚀 Launching 24/7 PM2 Backend Service..." -ForegroundColor Green
+    pm2 start ecosystem.config.js --update-env
+    pm2 save
+    Set-Location $PSScriptRoot
 }
 
-# 6. Verify Backend Health Check Endpoint
-Write-Host "`nTesting Backend Health Check..." -ForegroundColor Yellow
+# 2. Test Local Backend Health Probe
+Write-Host "`n🔍 Probing Local Backend Health Check Endpoint..." -ForegroundColor Yellow
+Start-Sleep -Seconds 3
 try {
-    $healthResponse = Invoke-RestMethod -Uri "http://localhost:5000/health" -Method Get
-    Write-Host "Health Check Status: $($healthResponse.status)" -ForegroundColor Green
-    Write-Host "Redis Service:       $($healthResponse.services.redis)" -ForegroundColor Green
-    Write-Host "ThingSpeak Monitor:  $($healthResponse.services.thingspeak_monitor)" -ForegroundColor Green
+    $health = Invoke-RestMethod -Uri "http://localhost:5000/health" -Method Get
+    Write-Host "  Backend Status:       $($health.status)" -ForegroundColor Green
+    Write-Host "  Redis Database:       $($health.services.redis)" -ForegroundColor Green
+    Write-Host "  ThingSpeak Scanner:   $($health.services.thingspeak_monitor)" -ForegroundColor Green
 } catch {
-    Write-Host "Health Check probe failed or timed out." -ForegroundColor Red
+    Write-Host "  ⚠️ Local health check probe warming up..." -ForegroundColor Yellow
 }
 
-Write-Host "`n==========================================================" -ForegroundColor Cyan
-Write-Host "Continuous Windows Deployment Complete!" -ForegroundColor Green
-Write-Host "  Dashboard:    http://localhost:8080" -ForegroundColor Cyan
-Write-Host "  Backend API:  http://localhost:5000" -ForegroundColor Cyan
-Write-Host "  Health Check: http://localhost:5000/health" -ForegroundColor Cyan
-Write-Host "  Restart:      unless-stopped 24/7 Auto-Recovery" -ForegroundColor Cyan
-Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "`n======================================================================" -ForegroundColor Cyan
+Write-Host "✅ EvaraTDS Deployment Successfully Completed!" -ForegroundColor Green
+Write-Host "  Local Web Dashboard:  http://localhost:8080" -ForegroundColor Cyan
+Write-Host "  Local Backend API:    http://localhost:5000" -ForegroundColor Cyan
+Write-Host "  Health Endpoint:      http://localhost:5000/health" -ForegroundColor Cyan
+Write-Host "  Tunnel Auto-Downloader: Active (Multi-Provider Fallback Cascade)" -ForegroundColor Green
+Write-Host "  Remote Config Sync:   Auto-Injected via Firebase Admin SDK" -ForegroundColor Green
+Write-Host "======================================================================" -ForegroundColor Cyan

@@ -45,7 +45,7 @@ export const createWhiteTransparentMarker = (device: DeviceLocation, theme: MapT
     return L.divIcon({
         className: 'neon-glass-marker',
         html: `
-            <div class="relative group flex flex-col items-center" style="pointer-events: none; width: 180px; --marker-glow: ${ppmStatus.glow};">
+            <div class="relative group flex flex-col items-center cursor-pointer" onclick="window.__selectMapDevice && window.__selectMapDevice('${device.id}')" style="pointer-events: auto; width: 180px; --marker-glow: ${ppmStatus.glow};">
                 <div class="relative flex items-center gap-3 px-4 py-2.5 rounded-2xl marker-glass pointer-events-auto marker-float-animation"
                      style="background: ${isDark ? 'rgba(12, 12, 14, 0.45)' : 'rgba(255, 255, 255, 0.45)'}; 
                             backdrop-filter: blur(var(--ultra-blur)) saturate(var(--ultra-saturate));

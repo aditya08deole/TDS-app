@@ -1,4 +1,4 @@
-import { Search, MapPin, Droplets } from 'lucide-react'
+import { Search, MapPin, Droplets, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getDeviceDisplayName } from '../lib/constants'
 import { getPpmStatus } from '../components/MapMarkers'
@@ -18,6 +18,7 @@ interface MapSidebarContentProps {
     filteredDevices: DeviceLocation[];
     selectedDevice: DeviceLocation | null;
     setSelectedDevice: (device: DeviceLocation) => void;
+    onClose?: () => void;
 }
 
 export function MapSidebarContent({
@@ -29,23 +30,34 @@ export function MapSidebarContent({
     finalStats,
     filteredDevices,
     selectedDevice,
-    setSelectedDevice
+    setSelectedDevice,
+    onClose
 }: MapSidebarContentProps) {
     return (
         <div className="flex flex-col h-full overflow-hidden">
             {/* Panel Header */}
             <div className="p-5 flex flex-col gap-4 border-b border-white/10">
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
                             style={{ background: `linear-gradient(135deg, ${theme.status.online.color}, ${theme.chart.tds.stroke})`, boxShadow: `0 8px 20px -5px ${theme.status.online.color}60` }}>
-                            <MapPin className="w-5 h-5 text-white" />
+                            <MapPin className="w-4 h-4 text-white" />
                         </div>
                         <div className="flex flex-col">
-                            <h1 className="text-sm font-black text-foreground tracking-tight leading-none">Map View</h1>
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mt-1">Infrastructure</p>
+                            <h1 className="text-xs font-black text-foreground tracking-tight leading-none">Map Nodes</h1>
+                            <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold mt-0.5">Infrastructure</p>
                         </div>
                     </div>
+
+                    {onClose && (
+                        <button
+                            onClick={onClose}
+                            className="p-1.5 rounded-full bg-secondary hover:bg-destructive text-foreground hover:text-destructive-foreground transition-all shadow-md active:scale-90 border border-border/40"
+                            aria-label="Close Nodes Panel"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    )}
                 </div>
 
                 {/* Search Bar */}

@@ -102,5 +102,17 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false; // Backend Admin SDK only
     }
+
+    // Invite Tokens: Read by admins. Written only by Admin SDK (backend).
+    match /invite_tokens/{tokenId} {
+      allow read: if isAdmin();
+      allow write: if false; // Backend Admin SDK only
+    }
+
+    // Audit Log: Read by admins. Written only by Admin SDK (backend).
+    match /audit_log/{docId} {
+      allow read: if isAdmin();
+      allow write: if false; // Backend Admin SDK only
+    }
   }
 }

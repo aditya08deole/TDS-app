@@ -35,6 +35,7 @@ const AuditLog = lazy(() => import('./pages/AuditLog'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Users = lazy(() => import('./pages/Users'))
+const Register = lazy(() => import('./pages/Register'))
 
 // Loading Component
 const PageLoader = () => (
@@ -100,6 +101,11 @@ function RoutesWrapper() {
             <Route path="/login" element={
                 <Suspense fallback={<PageLoader />}>
                     <Login />
+                </Suspense>
+            } />
+            <Route path="/register" element={
+                <Suspense fallback={<PageLoader />}>
+                    <Register />
                 </Suspense>
             } />
             <Route path="/" element={
@@ -169,13 +175,13 @@ function App() {
         <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => window.location.reload()}>
             <QueryClientProvider client={queryClient}>
                 <ThemeProvider>
-                    <BrowserRouter>
-                        <UIProvider>
-                            <AlertProvider>
-                                <AuthProvider>
-                                    <RoleProvider>
-                                        <NotificationProvider>
-                                            <GlassEffectProvider>
+                    <AuthProvider>
+                        <RoleProvider>
+                            <UIProvider>
+                                <AlertProvider>
+                                    <NotificationProvider>
+                                        <GlassEffectProvider>
+                                            <BrowserRouter>
                                                 <AppWrapper>
                                                     <RoutesWrapper />
                                                     <ReloadPrompt />
@@ -183,14 +189,14 @@ function App() {
                                                     <OfflineBadge />
                                                     <OnlineIndicator />
                                                 </AppWrapper>
-                                            </GlassEffectProvider>
-                                        </NotificationProvider>
-                                    </RoleProvider>
-                                </AuthProvider>
-                            </AlertProvider>
-                        </UIProvider>
-                    </BrowserRouter>
-                    <Toaster richColors position="top-right" />
+                                            </BrowserRouter>
+                                        </GlassEffectProvider>
+                                    </NotificationProvider>
+                                </AlertProvider>
+                            </UIProvider>
+                        </RoleProvider>
+                    </AuthProvider>
+                    <Toaster richColors position="top-center" closeButton />
                 </ThemeProvider>
                 {/* Fix #33: Only render devtools in development mode */}
                 {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
