@@ -158,11 +158,33 @@ export function useAllDevicesThingSpeakData(devices: Device[]) {
         retry: 1,
     });
 
-    // 2. Individual ThingSpeak queries (Fetches direct live feeds from ThingSpeak)
+    // Lookup of the batch endpoint's per-device data, shared by the fallback
+    // gating below and the final enrichment step.
+    const batchMap = useMemo(() => new Map(
+        (batchQuery.data && Array.isArray(batchQuery.data))
+            ? batchQuery.data.map(d => [d.id, d])
+            : []
+    ), [batchQuery.data]);
+
+    // 2. Individual ThingSpeak queries — TRUE fallback only.
+    // Previously these ran unconditionally in parallel with the batched query
+    // above, every 5s, for every device — for N devices that's N+1 requests
+    // every 5 seconds forever, regardless of whether the batch endpoint was
+    // working. They're enabled only when this device actually needs it:
+    // either the batch call itself failed, or it succeeded but came back
+    // without usable live data for this specific device (e.g. the backend's
+    // cache is cold/stale for it) — a plain `batchQuery.isError` check alone
+    // missed this second case, which made every device with no fresh batch
+    // data (not just ones where the request truly failed) show as offline
+    // with no fallback to recover it.
     const fallbackQueries = useQueries({
         queries: normalizedDevices.map(device => {
             const channelId = device.thingspeak_channel_id;
             const readKey = device.thingspeak_read_key;
+
+            const batchEntry = batchMap.get(device.id);
+            const hasFreshBatchData = !!batchEntry && batchEntry.latest_tds != null && !!batchEntry.last_reading_at;
+            const needsFallback = batchQuery.isError || (!batchQuery.isLoading && !hasFreshBatchData);
 
             return {
                 queryKey: ['thingspeak', 'latest', device.id, channelId],
@@ -171,7 +193,7 @@ export function useAllDevicesThingSpeakData(devices: Device[]) {
                     const mapping = getFieldMapping(device);
                     return await fetchLastEntry(channelId, readKey, mapping);
                 },
-                enabled: !!channelId && !!readKey,
+                enabled: !!channelId && !!readKey && needsFallback,
                 staleTime: 0,
                 refetchInterval: 5 * 1000,
                 gcTime: 5 * 60 * 1000,
@@ -180,12 +202,6 @@ export function useAllDevicesThingSpeakData(devices: Device[]) {
     });
 
     const enrichedDevices: EnrichedDevice[] = useMemo(() => {
-        const batchMap = new Map(
-            (batchQuery.data && Array.isArray(batchQuery.data)) 
-                ? batchQuery.data.map(d => [d.id, d]) 
-                : []
-        );
-
         return normalizedDevices.map((device, index) => {
             const live = batchMap.get(device.id);
             const tsData = fallbackQueries[index]?.data;
@@ -208,7 +224,7 @@ export function useAllDevicesThingSpeakData(devices: Device[]) {
                 status: connectivity === 'online' ? (live?.status === 'critical' ? 'critical' : 'online') : 'offline'
             } as EnrichedDevice;
         });
-    }, [normalizedDevices, batchQuery.data, fallbackQueries]);
+    }, [normalizedDevices, batchMap, fallbackQueries]);
 
     const isLoading = useMemo(() => batchQuery.isLoading && fallbackQueries.some(q => q.isLoading), [batchQuery.isLoading, fallbackQueries]);
 

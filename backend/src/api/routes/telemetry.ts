@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import * as telemetryService from '../../services/telemetryService';
 import * as deviceService from '../../services/deviceService';
 import { sseService } from '../../services/sseService';
@@ -7,10 +7,37 @@ import { ApiResponse } from '../../types';
 const router = Router();
 
 /**
+ * Opt-in shared-secret gate for device telemetry submission.
+ *
+ * device_id values are publicly enumerable (GET /api/devices is intentionally
+ * open), so without this, anyone could POST forged readings for any device —
+ * spamming false critical alerts, or worse, masking a real contamination
+ * event by submitting fake safe readings.
+ *
+ * Enforcement only activates once TELEMETRY_API_KEY is set. Left unset by
+ * default so this doesn't brick real devices that haven't been reflashed to
+ * send the header yet — see envVerifier.ts's startup warning when it's unset.
+ */
+function requireTelemetryKey(req: Request, res: Response, next: NextFunction) {
+  const expected = process.env.TELEMETRY_API_KEY;
+  if (!expected) return next();
+
+  const provided = req.headers['x-telemetry-key'];
+  if (provided !== expected) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized — missing or invalid x-telemetry-key header',
+      timestamp: new Date().toISOString(),
+    });
+  }
+  next();
+}
+
+/**
  * POST /api/telemetry
  * Submit sensor data from a device
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireTelemetryKey, async (req: Request, res: Response) => {
   try {
     const { device_id, tds, temperature, voltage, recorded_at } = req.body;
 
@@ -62,7 +89,7 @@ router.post('/', async (req: Request, res: Response) => {
  * POST /api/telemetry/batch
  * Submit multiple sensor readings at once (e.g. from a gateway)
  */
-router.post('/batch', async (req: Request, res: Response) => {
+router.post('/batch', requireTelemetryKey, async (req: Request, res: Response) => {
   try {
     const { readings } = req.body;
 

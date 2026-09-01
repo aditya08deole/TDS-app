@@ -273,6 +273,48 @@ router.post('/set-default-role', async (req: Request, res: Response) => {
     }
 });
 
+// ─── GET /api/users/stats — Real user counts per role (any signed-in role) ────
+/**
+ * Returns the number of registered users per role, read from the `users`
+ * collection. Used by the User Management page instead of hardcoded
+ * placeholder counts. Open to every authenticated role (viewer+) — these are
+ * aggregate counts only, not per-user data, so there's nothing sensitive
+ * gained by restricting it to admin+; maintenance/viewer roles should be able
+ * to see the same team overview admins do.
+ */
+router.get('/stats', requireRole('viewer'), async (req: Request, res: Response) => {
+    try {
+        const snapshot = await getDb().collection('users').get();
+
+        const counts: Record<string, number> = {
+            viewer: 0,
+            field_engineer: 0,
+            admin: 0,
+            super_admin: 0,
+        };
+
+        snapshot.docs.forEach(doc => {
+            const role = String(doc.data()?.role || 'viewer');
+            if (role in counts) counts[role] += 1;
+        });
+
+        return res.json({
+            success: true,
+            data: {
+                total: snapshot.size,
+                viewer: counts.viewer,
+                field_engineer: counts.field_engineer,
+                admin: counts.admin,
+                super_admin: counts.super_admin,
+            },
+            timestamp: new Date().toISOString(),
+        });
+    } catch (error) {
+        console.error('Error fetching user stats:', error);
+        return res.status(500).json({ success: false, error: 'Failed to fetch user stats' });
+    }
+});
+
 // ─── DELETE /api/users/invites/:token — Revoke an invite (admin+) ─────────────
 router.delete('/invites/:token', requireRole('admin'), async (req: Request, res: Response) => {
     try {

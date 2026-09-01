@@ -16,7 +16,6 @@ export interface PersistedAlert {
   created_at: string;
   acknowledged_at?: string;
   resolved_at?: string;
-  escalation_level?: number;
   savedAt: number; // When saved to phone storage
   read: boolean; // Whether user has seen it
 }
@@ -98,7 +97,6 @@ export async function loadAlerts(): Promise<PersistedAlert[]> {
           created_at: a.created_at || new Date().toISOString(),
           acknowledged_at: a.acknowledged_at,
           resolved_at: a.resolved_at,
-          escalation_level: a.escalation_level,
           savedAt: Date.now(),
           read: false, // Mark as unread since user is seeing them for first time
         }));

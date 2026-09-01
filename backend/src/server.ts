@@ -39,7 +39,14 @@ const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // ═══ MIDDLEWARE ═══
-app.use(helmet());
+// crossOriginOpenerPolicy defaults to 'same-origin' in helmet, which blocks the
+// window.opener postMessage handshake that Firebase's signInWithPopup (Google
+// login) relies on to resolve after the popup completes — the popup closes but
+// the promise never resolves, so login silently hangs. 'same-origin-allow-popups'
+// keeps the COOP protection while allowing that handshake.
+app.use(helmet({
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+}));
 
 // CORS Configuration - Restrict to allowed origins in production
 const allowedOrigins = process.env.CORS_ORIGINS 
@@ -115,7 +122,18 @@ function initializeFirebase() {
       databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`,
     });
 
-    console.log('✅ Firebase Admin initialized successfully');
+    // The credential's own project_id is what actually determines which
+    // Firestore/Auth project this Admin SDK talks to — NOT the
+    // FIREBASE_PROJECT_ID env var (that's only used above for databaseURL).
+    // If this doesn't match the frontend's VITE_FIREBASE_PROJECT_ID, every
+    // requireRole()-gated request will fail with 401 "invalid or expired
+    // token" — verifyIdToken() rejects tokens whose issuer/audience doesn't
+    // match the project this SDK was initialized for.
+    const actualProjectId = (serviceAccount as any)?.project_id || 'UNKNOWN';
+    console.log(`✅ Firebase Admin initialized successfully — connected to project: "${actualProjectId}"`);
+    if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PROJECT_ID !== actualProjectId) {
+      console.warn(`⚠️ FIREBASE_PROJECT_ID env var ("${process.env.FIREBASE_PROJECT_ID}") does not match the service account's project_id ("${actualProjectId}"). This is usually harmless (that env var is only used for the Realtime DB URL above), but if API calls are failing with 401 "invalid or expired token", it's a strong sign the service account itself is for the WRONG Firebase project relative to your frontend.`);
+    }
   } catch (error) {
     console.error('❌ Firebase initialization failed:', error);
     throw error;
@@ -186,9 +204,8 @@ app.get('/health', async (req, res) => {
         scheduler: sched.isRunning ? 'active' : 'stopped',
         cleanup: sched.cleanupRunning ? 'active' : 'stopped',
         heartbeat: sched.heartbeatRunning ? 'active' : 'stopped',
-        reminder: sched.reminderRunning ? 'active' : 'stopped',
         thingspeak_monitor: sched.thingSpeakMonitorRunning ? 'active' : 'stopped',
-        force_engine: sched.forceEngineRunning ? 'active' : 'stopped',
+        force_engine: sched.forceEngineRunning ? 'active' : 'stopped', // sole reminder mechanism for still-open critical alerts
       },
       scheduler_detail: sched,
       environment: process.env.NODE_ENV || 'development'
@@ -285,7 +302,7 @@ async function start() {
     // Start scheduler
     startScheduler();
 
-    // Start alert auto-cleanup (deletes alerts older than 10 min every minute)
+    // Start alert auto-cleanup (deletes resolved alerts older than 24h, every 5 min — never touches open alerts)
     startAlertCleanupJob();
     
     // Start device heartbeat monitoring (every 5 min)
@@ -324,9 +341,17 @@ async function start() {
         console.log(`✅ TDS-APP Backend started on port ${PORT} [${NODE_ENV}]`);
       }
 
-      // Automatically launch public outbound tunnel unless explicitly disabled
-      if (process.env.AUTO_TUNNEL !== 'false') {
+      // Opt-in only: this spins up a public tunnel AND overwrites the api_url
+      // that every deployed mobile app reads from Firebase Remote Config.
+      // Previously this ran by default on every boot (opt-OUT via AUTO_TUNNEL=false),
+      // meaning starting the backend on any machine — a dev laptop, a test box —
+      // would silently repoint production mobile clients at that machine's tunnel.
+      // Only intended for local dev when you deliberately want the deployed app to
+      // reach your machine; never needed on Railway, which already has a public URL.
+      if (process.env.AUTO_TUNNEL === 'true') {
         await startAutoTunnel(Number(PORT));
+      } else {
+        console.log('ℹ️ Auto-tunnel disabled (default). Set AUTO_TUNNEL=true to enable for local dev.');
       }
     });
   } catch (error) {

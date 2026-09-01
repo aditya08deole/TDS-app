@@ -82,8 +82,22 @@ export function requireRole(minRole: UserRole) {
       (req as any).user = { uid: decoded.uid, role, email: decoded.email };
       next();
     } catch (err: any) {
-      // Firebase will throw if token is expired, malformed, or revoked
-      console.warn('[roleGuard] Token verification failed:', err.code || err.message);
+      // Firebase throws for expired/malformed/revoked tokens, but ALSO for a
+      // token issued by a different Firebase project than this Admin SDK is
+      // initialized for (wrong service account) — that case looks identical
+      // to a normal 401 here, so flag it explicitly to save the next person
+      // a debugging session: check the "connected to project" log line this
+      // process printed on startup (see initializeFirebase in server.ts)
+      // against the frontend's VITE_FIREBASE_PROJECT_ID.
+      const code = err.code || '';
+      const looksLikeProjectMismatch = code === 'auth/argument-error' ||
+        /audience|project|aud claim/i.test(String(err.message || ''));
+      console.warn(
+        `[roleGuard] Token verification failed: ${code || err.message}` +
+        (looksLikeProjectMismatch
+          ? ' — this error shape usually means the token was issued by a DIFFERENT Firebase project than this backend is initialized for. Check the "Firebase Admin initialized... connected to project" log line at startup against the frontend project ID.'
+          : '')
+      );
       return res.status(401).json({
         success: false,
         error: 'Unauthorized — invalid or expired token',

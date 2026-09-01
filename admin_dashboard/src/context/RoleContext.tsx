@@ -123,8 +123,14 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     const role: UserRole = (profile?.role as UserRole) || 'viewer'
     const permissions = rolePermissions[role] || []
 
+    // NOTE: Permissions are derived strictly from `role` and the matrix above.
+    // AuthContext already resolves hardcoded-admin-email users to role
+    // 'super_admin' before this point, so there is no need (and it would be
+    // a bug) to also fall back to a blanket `isFirebaseAdmin` override here —
+    // isFirebaseAdmin is true for plain 'admin' too, which previously granted
+    // regular admins every super_admin-only permission (e.g. 'manage_users').
     const hasPermission = (permission: Permission): boolean => {
-        return permissions.includes(permission) || isFirebaseAdmin
+        return permissions.includes(permission)
     }
 
     const hasAnyPermission = (permissionList: Permission[]): boolean => {
@@ -140,7 +146,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     const isAtLeast = (minimumRole: UserRole): boolean => {
         const currentIndex = roleHierarchy.indexOf(role)
         const requiredIndex = roleHierarchy.indexOf(minimumRole)
-        return currentIndex >= requiredIndex || isFirebaseAdmin
+        return currentIndex >= requiredIndex
     }
 
     return (

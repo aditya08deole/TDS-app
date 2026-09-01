@@ -1,6 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
-import { getRedisClient, hset, hgetall } from '../db/redis';
+import { getRedisClient, hset } from '../db/redis';
 import { Device, Alert } from '../types';
 
 // Lazy getters — called only after Firebase is initialized, never at import time
@@ -583,80 +583,6 @@ export function startNotificationListeners(): void {
             console.log(`✅ Pre-cached ${total} FCM tokens in Redis.`);
         }
     }, (error) => { console.error('❌ Firestore Subscription Listener Error:', error); });
-}
-
-// ─── Hourly Reminder Job ──────────────────────────────────────────────────────
-
-/**
- * Sends FCM reminder notifications for all devices that still have open critical alerts.
- * Runs every hour via the scheduler cron job.
- *
- * Algorithm:
- * 1. Scan all device IDs in Redis
- * 2. For each device with open alert(s), verify the alert is still open in Firestore
- * 3. Refresh PPM from the device's latest Firestore reading (not stale cache)
- * 4. Send FCM reminder (isReminder = true → skips delivery dedupe)
- */
-export async function sendHourlyReminders(): Promise<void> {
-    console.log('⏰ [REMINDER JOB] Starting hourly FCM reminder scan...');
-    const redis = getRedis();
-    const db = getDb();
-    const deviceIds = await redis.sMembers('devices:all');
-
-    if (!deviceIds || deviceIds.length === 0) {
-        console.log('ℹ️ [REMINDER JOB] No devices in Redis — nothing to remind.');
-        return;
-    }
-
-    let dispatchCount = 0;
-
-    for (const id of deviceIds) {
-        try {
-            const device = await hgetall<Device>(`device:${id}`);
-            if (!device) continue;
-
-            // Only remind for devices actively in critical state
-            const deviceStatus = String((device as any).status || '').toLowerCase();
-            if (deviceStatus !== 'critical') continue;
-
-            const openAlertIds = await redis.sMembers(`device:${id}:alerts:open`);
-            if (!openAlertIds || openAlertIds.length === 0) continue;
-
-            const alertId = openAlertIds[0];
-
-            // Verify alert is still open in Firestore (source of truth)
-            const fsAlert = await db.collection('alerts').doc(alertId).get();
-            if (!fsAlert.exists || fsAlert.data()?.status !== 'open') {
-                // Alert was resolved externally — clean up stale Redis tracking
-                await redis.sRem(`device:${id}:alerts:open`, alertId);
-                continue;
-            }
-
-            // Build alert data with FRESH PPM from the device's latest reading
-            // (cached alertData has the original breach time frozen — we want current)
-            const alertData: any = { ...fsAlert.data() };
-            try {
-                const deviceDoc = await db.collection('devices').doc(id).get();
-                if (deviceDoc.exists) {
-                    const fresh = deviceDoc.data()!;
-                    if (fresh.last_tds != null)    alertData.value_at_time = fresh.last_tds;
-                    if (fresh.last_reading_at)     alertData.recorded_at   = fresh.last_reading_at;
-                    console.log(`🔄 [REMINDER JOB] Refreshed device ${device.name || id}: ppm=${fresh.last_tds}`);
-                }
-            } catch (refreshErr) {
-                console.warn(`⚠️ [REMINDER JOB] Could not refresh device ${id}:`, refreshErr);
-            }
-
-            console.log(`🔔 [REMINDER JOB] Sending FCM hourly reminder for device: ${device.name || id}`);
-            await sendPushNotification(alertId, alertData, true); // isReminder = true
-            dispatchCount++;
-
-        } catch (error) {
-            console.error(`❌ [REMINDER JOB] Failed for device ${id}:`, error);
-        }
-    }
-
-    console.log(`✅ [REMINDER JOB] Completed. Reminded ${dispatchCount} device(s).`);
 }
 
 // ─── Force Critical Alert (Ghost Engine / ThingSpeak) ────────────────────────

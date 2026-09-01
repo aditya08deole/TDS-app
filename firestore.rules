@@ -1,9 +1,137 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Enable full read and write access for all Smart Valve app collections
+
+    // ─── Helpers ──────────────────────────────────────────────────────────
+    // NOTE: The backend (backend/src/**) talks to Firestore via the Firebase
+    // Admin SDK, which always bypasses these rules. Everything below only
+    // constrains direct client (browser/app) access via the Firebase JS SDK.
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function hasRoleAtLeast(minRoles) {
+      return isSignedIn() && myRole() in minRoles;
+    }
+
+    // field_engineer, admin, super_admin
+    function isFieldEngineerPlus() {
+      return hasRoleAtLeast(['field_engineer', 'admin', 'super_admin']);
+    }
+
+    // admin, super_admin
+    function isAdminPlus() {
+      return hasRoleAtLeast(['admin', 'super_admin']);
+    }
+
+    function isHardcodedAdminEmail() {
+      return isSignedIn() && request.auth.token.email != null &&
+        request.auth.token.email in
+          get(/databases/$(database)/documents/app_config/admin_emails).data.emails;
+    }
+
+    // ─── users/{uid} — profile + role ────────────────────────────────────
+    // Role assignment is only ever authoritative via the backend (invite
+    // redemption / default-role endpoints), which uses the Admin SDK and so
+    // bypasses these rules entirely. Client writes are restricted so a
+    // signed-in user can never grant themselves (or anyone else) a role.
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdminPlus());
+
+      // Bootstrap: a user may create their own profile doc, but only as
+      // 'viewer' unless their email is in the server-controlled admin list.
+      allow create: if isSignedIn() && request.auth.uid == uid &&
+        (request.resource.data.role == 'viewer' ||
+         (request.resource.data.role == 'super_admin' && isHardcodedAdminEmail()));
+
+      // Update own profile (settings, name, avatar, etc.) but never change role.
+      allow update: if isSignedIn() && request.auth.uid == uid &&
+        request.resource.data.role == resource.data.role;
+
+      allow delete: if false;
+    }
+
+    // ─── alerts/{alertId} ────────────────────────────────────────────────
+    // Reads are public to match the backend's open GET /api/alerts.
+    // Any signed-in user may raise a new alert (matches the frontend's
+    // client-side "backup" detector), but only field_engineer+ may change
+    // an alert's status (ack/resolve/auto-recovery) — this mirrors the
+    // requireRole('field_engineer') gate on PUT /api/alerts/:id/ack|resolve.
+    match /alerts/{alertId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update: if isFieldEngineerPlus();
+      allow delete: if isAdminPlus();
+    }
+
+    // ─── devices/{deviceId} ──────────────────────────────────────────────
+    // Reads are public (dashboard/map need this pre-login in places).
+    // Create/delete restricted to admin+ (matches add_device/delete_device
+    // permissions); status/threshold edits restricted to field_engineer+
+    // (matches edit_device/maintenance_mode permissions).
+    match /devices/{deviceId} {
+      allow read: if true;
+      allow create, delete: if isAdminPlus();
+      allow update: if isFieldEngineerPlus();
+    }
+
+    // ─── maintenance_logs/{logId} ────────────────────────────────────────
+    match /maintenance_logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isFieldEngineerPlus();
+      allow update, delete: if isAdminPlus();
+    }
+
+    // ─── sensor_data/{id} — historical readings, backend-written ─────────
+    match /sensor_data/{id} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ─── notification_subscriptions/{id} — FCM token registration ───────
+    match /notification_subscriptions/{id} {
+      allow read: if isSignedIn() &&
+        (resource.data.user_id == request.auth.uid || isAdminPlus());
+      allow create: if isSignedIn() &&
+        (request.resource.data.user_id == request.auth.uid ||
+         request.resource.data.user_id == 'anonymous');
+      allow update, delete: if isSignedIn() &&
+        (resource.data.user_id == request.auth.uid || isAdminPlus());
+    }
+
+    // ─── user_settings/{uid} — per-user preferences ──────────────────────
+    match /user_settings/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ─── app_config/{doc} — e.g. admin_emails — server-controlled ────────
+    match /app_config/{doc} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ─── frontend_errors/{id} — client error reporting, write-only ──────
+    match /frontend_errors/{id} {
+      allow create: if true;
+      allow read, update, delete: if false;
+    }
+
+    // ─── invite_tokens, audit_log — backend (Admin SDK) only ─────────────
+    match /invite_tokens/{token} {
+      allow read, write: if false;
+    }
+    match /audit_log/{id} {
+      allow read, write: if false;
+    }
+
+    // ─── Default deny for everything else ────────────────────────────────
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

@@ -15,6 +15,51 @@ const BATCH_SIZE = 450; // Firestore limit is 500, keeping buffer room
 const FLUSH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 /**
+ * Auto-resolve any open/acknowledged alerts for a device once it has
+ * recovered (RECOVERY_THRESHOLD consecutive safe readings). Runs server-side
+ * so recovery doesn't depend on a browser tab being open (previously this
+ * was only handled client-side in AlertContext.tsx as a "backup").
+ */
+async function autoResolveDeviceAlerts(deviceId: string): Promise<void> {
+    const db = getDb();
+    const redis = getRedis();
+    const resolvedAt = new Date().toISOString();
+
+    try {
+        const openSnap = await db.collection('alerts')
+            .where('device_id', '==', deviceId)
+            .where('status', 'in', ['open', 'acknowledged'])
+            .get();
+
+        if (openSnap.empty) return;
+
+        const batch = db.batch();
+        openSnap.docs.forEach(doc => {
+            batch.update(doc.ref, {
+                status: 'resolved',
+                resolved_at: resolvedAt,
+                resolved_by: 'system_auto_recovery',
+                resolution_note: 'Auto-resolved: device reported safe TDS readings',
+                updated_at: resolvedAt,
+            });
+        });
+        await batch.commit();
+
+        console.log(`✅ [AUTO-RECOVERY] Resolved ${openSnap.size} alert(s) for recovered device ${deviceId}`);
+
+        // Clear Redis open-alert tracking and the alert-cooldown suppression key
+        // so a fresh breach on this device can alert immediately rather than
+        // waiting out a stale 30-min window from before the recovery.
+        await Promise.all([
+            redis.del(`device:${deviceId}:alerts:open`),
+            redis.del(`notif:suppressed:${deviceId}`),
+        ]);
+    } catch (e) {
+        console.error(`❌ [AUTO-RECOVERY] Failed to auto-resolve alerts for device ${deviceId}:`, e);
+    }
+}
+
+/**
  * Process incoming telemetry from devices
  */
 export async function processTelemetry(data: {
@@ -147,6 +192,13 @@ async function checkThresholds(device: Device, reading: any, recordedAt: Date) {
                 updated_at: recordedAtISO
             };
 
+            // Stable per-device alert ID — MUST match notificationService.triggerForceDeviceAlert's
+            // `active-alert-{deviceId}` scheme. Both this telemetry path and the ThingSpeak Ghost
+            // Engine can independently detect the same breach; using the same deterministic ID
+            // (instead of a random .add() ID here) means a race between the two collapses into a
+            // single merged document instead of two separate open alerts for the same device.
+            const alertId = `active-alert-${device.id}`;
+
             // Update device status in Redis immediately (before Firestore write)
             await hset(`device:${device.id}`, { ...device, status: 'critical' });
 
@@ -156,12 +208,12 @@ async function checkThresholds(device: Device, reading: any, recordedAt: Date) {
 
             // Write alert to Firestore — this triggers the onSnapshot listener
             // which dispatches the FCM push notification
-            getDb().collection('alerts').add(alertData).then(alertRef => {
-                getRedis().sAdd('alerts:all', alertRef.id);
-                hset(`alert:${alertRef.id}`, { ...alertData, id: alertRef.id });
-                getRedis().sAdd(`device:${device.id}:alerts`, alertRef.id);
-                getRedis().sAdd(`device:${device.id}:alerts:open`, alertRef.id);
-                console.log(`✅ [ALERT CREATED] Alert ${alertRef.id} for device ${device.id} written to Firestore`);
+            getDb().collection('alerts').doc(alertId).set(alertData, { merge: true }).then(() => {
+                getRedis().sAdd('alerts:all', alertId);
+                hset(`alert:${alertId}`, { ...alertData, id: alertId });
+                getRedis().sAdd(`device:${device.id}:alerts`, alertId);
+                getRedis().sAdd(`device:${device.id}:alerts:open`, alertId);
+                console.log(`✅ [ALERT CREATED] Alert ${alertId} for device ${device.id} written to Firestore`);
             }).catch(e => console.error('Firestore alert sync failed', e));
 
             getDb().collection('devices').doc(device.id).update({ status: 'critical', updated_at: new Date().toISOString() })
@@ -183,8 +235,9 @@ async function checkThresholds(device: Device, reading: any, recordedAt: Date) {
                 // Async Firestore sync
                 getDb().collection('devices').doc(device.id).update({ status: 'online', updated_at: new Date().toISOString() })
                     .catch(e => console.error("Firestore recovery sync failed", e));
-                
-                // Note: Auto-resolving alerts can be added here if desired.
+
+                // Auto-resolve any open/acknowledged alerts now that the device has recovered
+                autoResolveDeviceAlerts(device.id).catch(e => console.error("Auto-resolve on recovery failed", e));
             } else {
                 console.log(`ℹ️ Device ${device.name} reading safe (${reading.tds} PPM), recovery count: ${currentCount}/${RECOVERY_THRESHOLD}`);
             }

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as deviceService from '../../services/deviceService';
 import { ApiResponse, Device } from '../../types';
+import { requireRole } from '../middleware/roleGuard';
 
 const router = Router();
 
@@ -254,9 +255,9 @@ router.get('/telemetry/live', async (req: Request, res: Response) => {
 
 /**
  * POST /api/devices
- * Create a new device
+ * Create a new device (admin+ only — matches the 'add_device' permission)
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const deviceData = req.body;
 
@@ -366,9 +367,9 @@ router.get('/:id/health-events', async (req: Request, res: Response) => {
 
 /**
  * PUT /api/devices/:id/tds-thresholds
- * Update device TDS thresholds
+ * Update device TDS thresholds (field_engineer+ — matches 'edit_device' permission)
  */
-router.put('/:id/tds-thresholds', async (req: Request, res: Response) => {
+router.put('/:id/tds-thresholds', requireRole('field_engineer'), async (req: Request, res: Response) => {
   try {
     const { min_tds, max_tds } = req.body;
 
@@ -407,9 +408,9 @@ router.put('/:id/tds-thresholds', async (req: Request, res: Response) => {
 
 /**
  * PUT /api/devices/:id/status
- * Update device status
+ * Update device status (field_engineer+ — matches 'maintenance_mode' permission)
  */
-router.put('/:id/status', async (req: Request, res: Response) => {
+router.put('/:id/status', requireRole('field_engineer'), async (req: Request, res: Response) => {
   try {
     const { status } = req.body;
     const validStatuses = ['online', 'offline', 'critical', 'maintenance'];
@@ -441,9 +442,9 @@ router.put('/:id/status', async (req: Request, res: Response) => {
 
 /**
  * PATCH /api/devices/:id
- * Update an existing device
+ * Update an existing device (field_engineer+ — matches 'edit_device' permission)
  */
-router.patch('/:id', async (req: Request, res: Response) => {
+router.patch('/:id', requireRole('field_engineer'), async (req: Request, res: Response) => {
   try {
     const deviceId = req.params.id;
     const updates = req.body;
@@ -467,9 +468,9 @@ router.patch('/:id', async (req: Request, res: Response) => {
 
 /**
  * DELETE /api/devices/:id
- * Delete a device
+ * Delete a device (admin+ only — matches the 'delete_device' permission)
  */
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     await deviceService.deleteDevice(req.params.id);
 

@@ -99,7 +99,6 @@ export type Alert = {
     acknowledged_at?: string
     resolved_at?: string
     resolved_by?: string
-    escalation_level?: number
     device_name?: string // Added for convenience in UI
     expiresAt?: any
     last_notified_at?: string

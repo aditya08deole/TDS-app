@@ -24,7 +24,6 @@ export interface AlertRecord {
   created_at: string
   acknowledged_at?: string
   resolved_at?: string
-  escalation_level?: number
   expiresAt?: string
 }
 
@@ -186,55 +185,57 @@ export async function getSyncLogs(limit: number = 20): Promise<SyncLog[]> {
 }
 
 export async function createDevice(deviceData: Partial<Device>): Promise<Device> {
-  const response = await fetch(`${getBase()}/api/devices`, {
+  // Uses apiFetch which injects the Firebase Bearer token — the backend now
+  // requires admin+ (requireRole('admin')) for device creation.
+  const response = await apiFetch('/api/devices', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(deviceData)
   })
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(error.message || 'Failed to create device')
+    throw new Error(error.message || error.error || 'Failed to create device')
   }
   const result: ApiResponse<Device> = await response.json()
-  
+
   // Invalidate device cache after mutation
   invalidateCache('/api/devices');
-  
+
   return result.data
 }
 
 export async function deleteDevice(id: string) {
-  const response = await fetch(`${getBase()}/api/devices/${id}`, {
+  // Backend now requires admin+ (requireRole('admin')) for device deletion.
+  const response = await apiFetch(`/api/devices/${id}`, {
     method: 'DELETE'
   })
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(error.message || 'Failed to delete device')
+    throw new Error(error.message || error.error || 'Failed to delete device')
   }
-  
+
   // Invalidate device caches after mutation
   invalidateCache('/api/devices');
   invalidateCache(`/api/devices/${id}`);
-  
+
   return await response.json()
 }
 
 export async function updateDevice(id: string, updates: Partial<Device>): Promise<Device> {
-  const response = await fetch(`${getBase()}/api/devices/${id}`, {
+  // Backend now requires field_engineer+ (requireRole('field_engineer')) for device edits.
+  const response = await apiFetch(`/api/devices/${id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates)
   })
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(error.message || 'Failed to update device')
+    throw new Error(error.message || error.error || 'Failed to update device')
   }
   const result: ApiResponse<Device> = await response.json()
-  
+
   // Invalidate device caches after mutation
   invalidateCache('/api/devices');
   invalidateCache(`/api/devices/${id}`);
-  
+
   return result.data
 }
 
@@ -312,13 +313,31 @@ export async function fetchAlerts(limit: number = 50): Promise<AlertRecord[]> {
   }, { useSwrPattern: true });
 }
 
+/**
+ * Builds a diagnosable error from a failed fetch Response — includes the
+ * HTTP status so failures like "502 Bad Gateway" (backend unreachable) are
+ * immediately distinguishable from "403 Forbidden" (role denied) instead of
+ * collapsing into one generic message.
+ */
+async function apiErrorFromResponse(response: Response, fallback: string): Promise<Error> {
+  const bodyText = await response.text().catch(() => '')
+  let message = fallback
+  try {
+    const parsed = bodyText ? JSON.parse(bodyText) : null
+    if (parsed?.error) message = parsed.error
+  } catch {
+    // Non-JSON body (e.g. a platform-level error page) — fall through to fallback
+  }
+  return new Error(`${message} (HTTP ${response.status})`)
+}
+
 export async function acknowledgeAlertApi(alertId: string, _userId: string, _role: string): Promise<void> {
   // Uses apiFetch which injects Firebase Bearer token — role enforced server-side
   const response = await apiFetch(`/api/alerts/${alertId}/ack`, {
     method: 'PUT',
     body: JSON.stringify({}),
   })
-  if (!response.ok) throw new Error('Failed to acknowledge alert')
+  if (!response.ok) throw await apiErrorFromResponse(response, 'Failed to acknowledge alert')
   invalidateCache('/api/alerts');
 }
 
@@ -328,10 +347,7 @@ export async function resolveAlertApi(alertId: string, _userId: string, _role: s
     method: 'PUT',
     body: JSON.stringify({ note }),
   })
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    throw new Error(body.error || 'Failed to resolve alert')
-  }
+  if (!response.ok) throw await apiErrorFromResponse(response, 'Failed to resolve alert')
   invalidateCache('/api/alerts');
 }
 
@@ -405,4 +421,23 @@ export async function revokeInviteApi(token: string): Promise<void> {
     throw new Error(body.error || 'Failed to revoke invite')
   }
   invalidateCache('/api/users/invites');
+}
+
+export interface UserRoleStats {
+  total: number
+  viewer: number
+  field_engineer: number
+  admin: number
+  super_admin: number
+}
+
+/** Real user counts per role (admin/super_admin only) */
+export async function getUserStatsApi(): Promise<UserRoleStats> {
+  const endpoint = `/api/users/stats`;
+  return dedupFetch(endpoint, async () => {
+    const response = await apiFetch(endpoint)
+    if (!response.ok) throw new Error('Failed to fetch user stats')
+    const result: ApiResponse<UserRoleStats> = await response.json()
+    return result.data
+  }, { useSwrPattern: false });
 }

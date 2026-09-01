@@ -3,6 +3,7 @@ import { db } from '../lib/firebase'
 import { collection, query, where, orderBy, limit, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { type Device } from '../types'
 import { getDeviceDisplayName } from '../lib/constants'
+import { useRole } from '../context/RoleContext'
 import {
     X,
     Battery,
@@ -65,6 +66,8 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
     const [editTdsMin, setEditTdsMin] = useState<number>(device?.safe_tds_min ?? 35)
     const [editTdsMax, setEditTdsMax] = useState<number>(device?.safe_tds_max ?? 175)
     const [isEditingTds, setIsEditingTds] = useState(false)
+    const { hasPermission } = useRole()
+    const canEditDevice = hasPermission('edit_device')
 
 
     const fetchSensorHistory = useCallback(async () => {
@@ -314,14 +317,16 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                             </span>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={toggleMaintenanceMode}
-                                        disabled={updating}
-                                        className="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary text-sm rounded-lg transition-colors flex items-center gap-2"
-                                    >
-                                        <Wrench className="h-4 w-4" />
-                                        {device.status === 'maintenance' ? 'Exit' : 'Enter'} Maintenance
-                                    </button>
+                                    {canEditDevice && (
+                                        <button
+                                            onClick={toggleMaintenanceMode}
+                                            disabled={updating}
+                                            className="px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary text-sm rounded-lg transition-colors flex items-center gap-2"
+                                        >
+                                            <Wrench className="h-4 w-4" />
+                                            {device.status === 'maintenance' ? 'Exit' : 'Enter'} Maintenance
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
@@ -436,7 +441,7 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                 <div className="p-4 space-y-3 border-b border-slate-700">
                                     <div className="flex items-center justify-between">
                                         <h4 className="text-sm font-medium text-slate-300">Water Quality Thresholds (PPM)</h4>
-                                        {!isEditingTds && (
+                                        {!isEditingTds && canEditDevice && (
                                             <button
                                                 onClick={() => {
                                                     setEditTdsMin(device.safe_tds_min ?? 35)

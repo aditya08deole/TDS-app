@@ -48,7 +48,6 @@ export interface Alert {
   resolved_at?: string;
   resolved_by?: string;
   created_by?: string;
-  escalation_level?: number;
   synced_at?: string;
   firestore_id?: string;
 }

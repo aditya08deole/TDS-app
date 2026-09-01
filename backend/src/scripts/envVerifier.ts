@@ -59,6 +59,20 @@ export async function verifyEnvironment(): Promise<{ success: boolean; report: s
     report.push('ℹ️ CORS Security: Defaulting to local origins (localhost:3000, localhost:5173)');
   }
 
+  // 5. Check Telemetry Ingestion Auth
+  if (process.env.TELEMETRY_API_KEY) {
+    report.push('✅ Telemetry Auth: TELEMETRY_API_KEY set — /api/telemetry requires x-telemetry-key');
+  } else {
+    report.push('⚠️ Telemetry Auth: TELEMETRY_API_KEY not set — /api/telemetry accepts readings for ANY device_id with no auth');
+  }
+
+  // 6. Check Auto-Tunnel (repoints production mobile apps if left on by accident)
+  if (process.env.AUTO_TUNNEL === 'true') {
+    report.push('⚠️ Auto-Tunnel: AUTO_TUNNEL=true — this boot will overwrite Remote Config api_url for ALL mobile clients');
+  } else {
+    report.push('✅ Auto-Tunnel: disabled (default)');
+  }
+
   return { success, report };
 }
 

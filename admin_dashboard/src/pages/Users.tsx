@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { useState, useEffect, useCallback } from 'react'
 import { useRole, ROLE_DISPLAY_NAMES } from '../context/RoleContext'
-import { generateInviteApi, listInvitesApi, revokeInviteApi, type InviteToken } from '../lib/api'
+import { generateInviteApi, listInvitesApi, revokeInviteApi, getUserStatsApi, type InviteToken, type UserRoleStats } from '../lib/api'
 import { cn } from '@/lib/utils'
 
 type InviteRole = 'field_engineer' | 'viewer' | 'admin'
@@ -28,6 +28,7 @@ export default function Users() {
     const [invites, setInvites] = useState<InviteToken[]>([])
     const [loadingInvites, setLoadingInvites] = useState(false)
     const [revoking, setRevoking] = useState<string | null>(null)
+    const [userStats, setUserStats] = useState<UserRoleStats | null>(null)
 
     const loadInvites = useCallback(async () => {
         if (!canInvite) return
@@ -42,9 +43,21 @@ export default function Users() {
         }
     }, [canInvite])
 
+    const loadUserStats = useCallback(async () => {
+        // Visible to every signed-in role (viewer+), not just admins who can
+        // invite — the backend endpoint is open to any authenticated role.
+        try {
+            const stats = await getUserStatsApi()
+            setUserStats(stats)
+        } catch (err) {
+            console.error('Failed to load user stats:', err)
+        }
+    }, [])
+
     useEffect(() => {
         loadInvites()
-    }, [loadInvites])
+        loadUserStats()
+    }, [loadInvites, loadUserStats])
 
     const handleGenerate = async () => {
         setGenerating(true)
@@ -121,13 +134,13 @@ export default function Users() {
                 </div>
             </div>
 
-            {/* Stats Row */}
+            {/* Stats Row — real counts from GET /api/users/stats (falls back to '—' while loading / for non-admins) */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
-                    { label: 'Super Admin', icon: ShieldCheck, color: 'text-cyan-400', bg: 'bg-cyan-500/20', count: '1' },
-                    { label: 'Admins', icon: ShieldCheck, color: 'text-purple-400', bg: 'bg-purple-500/20', count: '—' },
-                    { label: 'Maintenance', icon: UsersIcon, color: 'text-amber-400', bg: 'bg-amber-500/20', count: invites.filter(i => i.role === 'field_engineer' && i.status === 'used').length.toString() },
-                    { label: 'Users', icon: UsersIcon, color: 'text-blue-400', bg: 'bg-blue-500/20', count: invites.filter(i => i.role === 'viewer' && i.status === 'used').length.toString() },
+                    { label: 'Super Admin', icon: ShieldCheck, color: 'text-cyan-400', bg: 'bg-cyan-500/20', count: userStats ? userStats.super_admin.toString() : '—' },
+                    { label: 'Admins', icon: ShieldCheck, color: 'text-purple-400', bg: 'bg-purple-500/20', count: userStats ? userStats.admin.toString() : '—' },
+                    { label: 'Maintenance', icon: UsersIcon, color: 'text-amber-400', bg: 'bg-amber-500/20', count: userStats ? userStats.field_engineer.toString() : '—' },
+                    { label: 'Users', icon: UsersIcon, color: 'text-blue-400', bg: 'bg-blue-500/20', count: userStats ? userStats.viewer.toString() : '—' },
                 ].map(s => (
                     <GlassCard key={s.label} className="p-5 flex items-center gap-4">
                         <div className={cn('w-11 h-11 rounded-xl flex items-center justify-center', s.bg)}>
@@ -325,7 +338,7 @@ export default function Users() {
                 <h3 className="text-sm font-bold text-foreground">Role Hierarchy</h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     {[
-                        { role: 'Super Admin', color: 'text-cyan-400', desc: 'Full system access, manages all admins, can see all audit logs' },
+                        { role: 'Super Admin', color: 'text-cyan-400', desc: 'Full system access, manages all admins' },
                         { role: 'Admin', color: 'text-purple-400', desc: 'Device management, invite users, resolve alerts' },
                         { role: 'Maintenance', color: 'text-amber-400', desc: 'Resolve alerts, edit device settings on-site' },
                         { role: 'User', color: 'text-blue-400', desc: 'Read-only: view dashboards, alerts, and map' },

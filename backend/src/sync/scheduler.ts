@@ -3,7 +3,6 @@ import { syncFromFirebase } from '../services/syncService';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getRedisClient } from '../db/redis';
 import {
-    sendHourlyReminders,
     triggerForceDeviceAlert,
     sendForcePushNotification,
     isDeviceSuppressed,
@@ -19,13 +18,12 @@ function getRedis() { return getRedisClient(); }
 let scheduledTask: any = null;
 let cleanupTask: any = null;
 let heartbeatTask: any = null;
-let reminderTask: any = null;
 let thingSpeakTask: any = null;
 let forceEngineTask: any = null; // Fix #10: Was untracked — leaked after stopScheduler()
 
 /**
  * ThingSpeak Autonomous Ghost Engine
- * Fix #9: Reduced from 15-min to 2-min polling for near-real-time detection.
+ * Polls every 10 minutes for near-real-time detection of threshold breaches.
  * First breach fires immediately; subsequent blasts throttled to 1 per hour.
  */
 export function startThingSpeakMonitorJob(): void {
@@ -34,9 +32,7 @@ export function startThingSpeakMonitorJob(): void {
         try {
             console.log('👻 [GHOST ENGINE] Starting autonomous ThingSpeak scan...');
             const devices = await getAllDevices();
-            const criticalDevices: any[] = [];
-            const now = Date.now();
-            const ONE_HOUR_MS = 60 * 60 * 1000;
+            let criticalCount = 0;
 
             for (const device of devices) {
                 if (!device.thingspeak_channel_id) continue;
@@ -58,56 +54,24 @@ export function startThingSpeakMonitorJob(): void {
                     // Check if device is in 30-min alert or resolved cooldown window
                     const suppressed = await isDeviceSuppressed(device.id);
                     if (suppressed) {
-                        console.log(`⏱️ [GHOST ENGINE] Device ${device.id} is in 30-min cooldown/resolution window — excluding from critical report.`);
+                        console.log(`⏱️ [GHOST ENGINE] Device ${device.id} is in 30-min cooldown/resolution window — skipping.`);
                         continue;
                     }
 
-                    criticalDevices.push({
-                        id: device.id,
-                        name: device.name,
-                        location: device.location_name,
-                        tds: tds,
-                        time: reading.recorded_at
-                    });
+                    criticalCount++;
 
-                    // Force-create individual alert — ensures APK shows the card immediately
+                    // Create/update the per-device alert and fire the initial FCM push.
+                    // Ongoing "still open" reminders are handled solely by the Force
+                    // Engine (see startHourlyReminderJob below) — this job no longer
+                    // sends its own separate "consolidated report" push, which used
+                    // to duplicate that and reference a fake SYSTEM_REPORT device.
                     await triggerForceDeviceAlert(device.id, tds, reading.recorded_at);
                 }
             }
 
-            if (criticalDevices.length > 0) {
-                console.log(`🚨 [GHOST ENGINE] Found ${criticalDevices.length} critical devices! Checking force-timer...`);
-
-                const redis = getRedis();
-                const FORCE_TIMER_KEY = 'engine:force_report_last_sent';
-                const lastSent = await redis.get(FORCE_TIMER_KEY);
-                const lastSentTime = lastSent ? parseInt(lastSent) : 0;
-
-                // Fire immediately on first breach (lastSentTime === 0), then throttle to 1hr
-                if (now - lastSentTime >= ONE_HOUR_MS) {
-                    // Send FCM push for the most critical device as a consolidated report
-                    const worstDevice = criticalDevices.reduce((a, b) => (b.tds > a.tds ? b : a), criticalDevices[0]);
-                    const reportId = `report-${Date.now()}`;
-                    const consolidatedAlertData = {
-                        message: `${criticalDevices.length} device(s) in critical state! Highest: ${worstDevice.tds} PPM`,
-                        severity: 'critical',
-                        device_id: 'SYSTEM_REPORT',
-                        location_name: criticalDevices.length === 1
-                            ? (worstDevice.location || worstDevice.name)
-                            : `${criticalDevices.length} Critical Devices`,
-                        value_at_time: worstDevice.tds,
-                        recorded_at: worstDevice.time || new Date().toISOString(),
-                        tds_value: worstDevice.tds,
-                    };
-                    await sendForcePushNotification(reportId, consolidatedAlertData, true);
-                    await redis.set(FORCE_TIMER_KEY, String(now));
-                    console.log('🔥 [GHOST ENGINE] FCM consolidated report dispatched.');
-                } else {
-                    console.log(`⏱️ [GHOST ENGINE] Force-timer active. Next report in ${Math.round((ONE_HOUR_MS - (now - lastSentTime)) / 60000)} mins.`);
-                }
-            } else {
-                console.log('✅ [GHOST ENGINE] Scan complete. All systems healthy.');
-            }
+            console.log(criticalCount > 0
+                ? `🚨 [GHOST ENGINE] Scan complete. ${criticalCount} device(s) critical.`
+                : '✅ [GHOST ENGINE] Scan complete. All systems healthy.');
         } catch (error) {
             console.error('❌ [GHOST ENGINE] Job failed:', error);
         }
@@ -263,24 +227,23 @@ export function startDeviceHeartbeatJob(): void {
 }
 
 /**
- * Hourly Reminder Job — fires at :00 of every hour.
- * Separately: Force-Hunting Engine — every 5 min, re-dispatches if critical alert
- * still open and last notification was >1 hour ago.
+ * Force Critical Engine — every 5 min, re-dispatches FCM for any open critical
+ * alert whose last notification was >1 hour ago.
  *
- * Fix #10: forceEngineTask now tracked in a module-level variable so
+ * This is now the SINGLE reminder mechanism for still-open critical alerts.
+ * It used to run alongside two other overlapping systems: a Redis-driven
+ * top-of-hour scan (sendHourlyReminders) and the Ghost Engine's own separate
+ * "consolidated report" push. Both were removed — this job already covers
+ * every open critical alert regardless of source, reading directly from
+ * Firestore (the source of truth) with a precise per-alert 1-hour throttle,
+ * so the other two were pure duplication that could fire within minutes of
+ * each other for the same alert.
+ *
+ * Fix #10: forceEngineTask tracked in a module-level variable so
  * stopScheduler() can properly stop it.
  * Fix #22: Removed dynamic require() — functions imported statically at top.
  */
 export function startHourlyReminderJob(): void {
-    reminderTask = cron.schedule('0 * * * *', async () => {
-        try {
-            console.log('⏰ [CRON] Starting top-of-hour reminder job...');
-            await sendHourlyReminders();
-        } catch (error) {
-            console.error('❌ Hourly reminder job failed:', error);
-        }
-    });
-
     // Fix #10: Store handle in module-level variable so stopScheduler() can stop it
     forceEngineTask = cron.schedule('*/5 * * * *', async () => {
         try {
@@ -339,8 +302,7 @@ export function startHourlyReminderJob(): void {
         }
     });
 
-    console.log('✅ Hourly reminder job started — every hour at :00.');
-    console.log('✅ Force Critical Engine active — checking every 5 minutes (now tracked).');
+    console.log('✅ Force Critical Engine active — checking every 5 minutes (sole reminder mechanism).');
 }
 
 /**
@@ -352,7 +314,6 @@ export function stopScheduler(): void {
     ['Sync scheduler', scheduledTask],
     ['Alert cleanup job', cleanupTask],
     ['Device heartbeat job', heartbeatTask],
-    ['Hourly reminder job', reminderTask],
     ['ThingSpeak monitor job', thingSpeakTask],
     ['Force Critical Engine', forceEngineTask], // Fix #10: now tracked
   ];
@@ -367,7 +328,6 @@ export function stopScheduler(): void {
   scheduledTask = null;
   cleanupTask = null;
   heartbeatTask = null;
-  reminderTask = null;
   thingSpeakTask = null;
   forceEngineTask = null; // Fix #10
 }
@@ -381,9 +341,8 @@ export function getSchedulerStatus(): any {
     isRunning: !!scheduledTask,
     cleanupRunning: !!cleanupTask,
     heartbeatRunning: !!heartbeatTask,
-    reminderRunning: !!reminderTask,
     thingSpeakMonitorRunning: !!thingSpeakTask,
-    forceEngineRunning: !!forceEngineTask, // Fix #10: now reported
+    forceEngineRunning: !!forceEngineTask, // Fix #10: now reported — sole reminder mechanism
     nextRun: scheduledTask ? 'Check logs' : 'Not running',
     interval: process.env.SYNC_INTERVAL_HOURS || '1 hour',
     alertRetentionHours: 24,

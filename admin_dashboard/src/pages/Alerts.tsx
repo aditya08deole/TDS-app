@@ -6,6 +6,7 @@ import { useUI } from '../context/UIContext'
 import { useRole } from '../context/RoleContext'
 import { queueAction } from '../lib/syncQueue'
 import { fetchAlerts, acknowledgeAlertApi, resolveAlertApi } from '../lib/api'
+import { toast } from 'sonner'
 import { collection, query, where, onSnapshot } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { GlassCard } from '@/components/GlassCard'
@@ -24,31 +25,14 @@ export default function Alerts() {
     const [filter, setFilter] = useState<'all' | 'critical'>('all')
     const [resolving, setResolving] = useState<string | null>(null)
 
-    // Real-time Firestore stream (<100ms latency) + API fallback
+    // Real-time Firestore stream is the primary source (<100ms latency).
+    // API polling only ever runs as a fallback if the listener itself fails —
+    // previously both ran unconditionally in parallel forever, doubling reads
+    // and bouncing the UI between two sources every 15s for no reason.
     useEffect(() => {
         let mounted = true
+        let pollTimer: ReturnType<typeof setInterval> | null = null
 
-        // 1. Primary: Real-time Firestore onSnapshot listener
-        let unsubscribe: (() => void) | null = null
-        try {
-            const alertsRef = collection(db, 'alerts')
-            const q = query(alertsRef, where('status', 'in', ['open', 'acknowledged']))
-            unsubscribe = onSnapshot(q, (snapshot) => {
-                if (!mounted) return
-                const liveAlerts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Alert))
-                // Sort newest first
-                liveAlerts.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
-                setAlerts(liveAlerts)
-                setFetchError(null)
-                setLoading(false)
-            }, (err) => {
-                console.warn('⚡ [REAL-TIME] Firestore listener fallback:', err)
-            })
-        } catch (e) {
-            console.warn('⚡ [REAL-TIME] Firestore setup failed:', e)
-        }
-
-        // 2. Fallback: API polling
         const load = async () => {
             try {
                 const data = await fetchAlerts(50)
@@ -63,13 +47,40 @@ export default function Alerts() {
                 if (mounted) setLoading(false)
             }
         }
-        load()
-        const timer = setInterval(load, 15000)
+
+        const startPolling = () => {
+            if (pollTimer) return
+            load()
+            pollTimer = setInterval(load, 15000)
+        }
+
+        let unsubscribe: (() => void) | null = null
+        try {
+            const alertsRef = collection(db, 'alerts')
+            const q = query(alertsRef, where('status', 'in', ['open', 'acknowledged']))
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                if (!mounted) return
+                // Realtime is healthy — stop any fallback polling that may be running
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+                const liveAlerts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Alert))
+                // Sort newest first
+                liveAlerts.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+                setAlerts(liveAlerts)
+                setFetchError(null)
+                setLoading(false)
+            }, (err) => {
+                console.warn('⚡ [REAL-TIME] Firestore listener failed — falling back to API polling:', err)
+                startPolling()
+            })
+        } catch (e) {
+            console.warn('⚡ [REAL-TIME] Firestore setup failed — falling back to API polling:', e)
+            startPolling()
+        }
 
         return () => {
             mounted = false
             if (unsubscribe) unsubscribe()
-            clearInterval(timer)
+            if (pollTimer) clearInterval(pollTimer)
         }
     }, [])
 
@@ -84,6 +95,12 @@ export default function Alerts() {
             setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: 'acknowledged' as const } : a))
         } catch (error) {
             console.error('Error acknowledging alert:', error)
+            // Previously silent — the button would appear to do nothing on
+            // failure (e.g. backend unreachable, expired session), with no
+            // way to tell what went wrong. Surface it.
+            toast.error('Failed to acknowledge alert', {
+                description: error instanceof Error ? error.message : 'Unknown error — check your connection and try again.',
+            })
         }
     }
 
@@ -103,6 +120,10 @@ export default function Alerts() {
             setAlerts(prev => prev.filter(a => a.id !== id))
         } catch (error) {
             console.error('Error resolving alert:', error)
+            // Previously silent — same issue as acknowledgeAlert above.
+            toast.error('Failed to resolve alert', {
+                description: error instanceof Error ? error.message : 'Unknown error — check your connection and try again.',
+            })
         } finally {
             setResolving(null)
         }
@@ -233,11 +254,6 @@ export default function Alerts() {
                                         <div className="min-w-0 flex-1 pr-2">
                                             <h2 className="font-bold text-foreground text-sm md:text-base flex items-center flex-wrap gap-2 truncate leading-tight">
                                                 {alert.device_name || alert.device_id || 'Unknown Device'}
-                                                {(alert.escalation_level || 0) > 0 && (
-                                                    <span className="bg-red-500/20 text-red-500 dark:text-red-400 text-[8px] md:text-[10px] px-1.5 md:px-2 py-0.5 rounded border border-red-500/30 font-black tracking-wider animate-pulse">
-                                                        ESC
-                                                    </span>
-                                                )}
                                             </h2>
                                             {!isLandscape && <p className="text-foreground/80 text-xs md:text-sm mt-1 leading-relaxed line-clamp-2 md:line-clamp-none">{alert.message}</p>}
                                         </div>
@@ -273,7 +289,7 @@ export default function Alerts() {
                                         </div>
 
                                         <div className="flex gap-2">
-                                            {hasPermission('maintenance_mode') && alert.status === 'open' && (
+                                            {hasPermission('resolve_alert') && alert.status === 'open' && (
                                                 <Button
                                                     onClick={() => acknowledgeAlert(alert.id)}
                                                     className="bg-blue-600 hover:bg-blue-700 text-[10px] md:text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 h-8 px-4 rounded-xl active:scale-95 transition-all"

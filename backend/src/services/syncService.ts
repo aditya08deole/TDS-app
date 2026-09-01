@@ -293,7 +293,6 @@ async function syncAlerts(since?: Date | null): Promise<number> {
       device_id: deviceId,
       firestore_id: alertId,
       synced_at: new Date().toISOString(),
-      escalation_level: firebaseData.escalation_level || 0,
     };
 
     await hset(`alert:${alertId}`, alertData);
