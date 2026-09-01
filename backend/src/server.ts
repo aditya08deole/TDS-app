@@ -44,8 +44,30 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 // login) relies on to resolve after the popup completes — the popup closes but
 // the promise never resolves, so login silently hangs. 'same-origin-allow-popups'
 // keeps the COOP protection while allowing that handshake.
+//
+// contentSecurityPolicy: helmet's defaults lock connect-src and frame-src down
+// to 'self' only. Firebase Auth's popup sign-in depends on a hidden helper
+// iframe served from the Firebase auth domain (*.firebaseapp.com) plus fetch
+// calls to Google's identity/Firestore/FCM/Remote Config APIs (*.googleapis.com)
+// — none same-origin, so the default CSP silently blocked them. The browser
+// doesn't surface "blocked by CSP" to the Firebase SDK as a distinct error; it
+// just fails, and Firebase Auth reports it as the generic "auth/internal-error".
+// Also allow the frontend's direct ThingSpeak API calls (api.thingspeak.com)
+// and Google profile photo images (img-src) so avatars aren't broken either.
 app.use(helmet({
   crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  contentSecurityPolicy: {
+    directives: {
+      // getDefaultDirectives() returns kebab-case keys ("img-src", not
+      // "imgSrc") — overrides below MUST match that casing exactly, or
+      // helmet sees two different keys for the same directive and throws
+      // "Content-Security-Policy received a duplicate directive" at boot.
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      'connect-src': ["'self'", 'https://*.googleapis.com', 'https://api.thingspeak.com'],
+      'frame-src': ["'self'", 'https://*.firebaseapp.com', 'https://accounts.google.com'],
+      'img-src': ["'self'", 'data:', 'https:'],
+    },
+  },
 }));
 
 // CORS Configuration - Restrict to allowed origins in production
