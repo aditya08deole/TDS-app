@@ -31,8 +31,6 @@ const MapPage = lazy(() => import('./pages/MapPage'))
 const DeviceList = lazy(() => import('./pages/Devices'))
 const Alerts = lazy(() => import('./pages/Alerts'))
 const ScanDevice = lazy(() => import('./pages/ScanDevice'))
-const AuditLog = lazy(() => import('./pages/AuditLog'))
-const Reports = lazy(() => import('./pages/Reports'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Users = lazy(() => import('./pages/Users'))
 const Register = lazy(() => import('./pages/Register'))
@@ -138,18 +136,6 @@ function RoutesWrapper() {
                 <Route path="scan" element={
                     <Suspense fallback={<PageLoader />}>
                         <ScanDevice />
-                    </Suspense>
-                } />
-                <Route path="audit" element={
-                    <Suspense fallback={<PageLoader />}>
-                        <AuthGuard requiredRole="admin">
-                            <AuditLog />
-                        </AuthGuard>
-                    </Suspense>
-                } />
-                <Route path="reports" element={
-                    <Suspense fallback={<PageLoader />}>
-                        <Reports />
                     </Suspense>
                 } />
                 <Route path="users" element={

@@ -18,7 +18,6 @@ export type Permission =
     | 'view_devices'
     | 'view_map'
     | 'view_alerts'
-    | 'view_audit'
     | 'manage_devices'
     | 'add_device'
     | 'delete_device'
@@ -53,7 +52,6 @@ const rolePermissions: Record<UserRole, Permission[]> = {
         'view_devices',
         'view_map',
         'view_alerts',
-        'view_audit',
         'view_settings',
         'edit_settings',
         'maintenance_mode',
@@ -69,7 +67,6 @@ const rolePermissions: Record<UserRole, Permission[]> = {
         'view_devices',
         'view_map',
         'view_alerts',
-        'view_audit',
         'manage_devices',
         'add_device',
         'delete_device',
@@ -90,7 +87,6 @@ const rolePermissions: Record<UserRole, Permission[]> = {
         'view_devices',
         'view_map',
         'view_alerts',
-        'view_audit',
         'manage_devices',
         'add_device',
         'delete_device',

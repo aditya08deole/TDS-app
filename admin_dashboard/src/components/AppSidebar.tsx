@@ -3,11 +3,9 @@
 import * as React from "react"
 import {
     AlertTriangle,
-    FileText,
     LayoutDashboard,
     Map as MapIcon,
     Settings,
-    ShieldCheck,
     Smartphone,
     LogOut,
     ChevronUp,
@@ -70,12 +68,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             icon: AlertTriangle,
             isActive: location.pathname === "/alerts",
         },
-        {
-            title: "Reports",
-            url: "/reports",
-            icon: FileText,
-            isActive: location.pathname === "/reports",
-        },
     ]
 
     const navAdmin = [
@@ -85,13 +77,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             icon: UsersIcon,
             isActive: location.pathname === "/users",
             permission: "manage_users",
-        },
-        {
-            title: "Audit Log",
-            url: "/audit",
-            icon: ShieldCheck,
-            isActive: location.pathname === "/audit",
-            permission: "view_audit",
         },
         {
             title: "Settings",

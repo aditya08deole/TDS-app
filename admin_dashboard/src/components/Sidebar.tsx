@@ -5,9 +5,7 @@ import {
     Bell,
     Settings,
     LogOut,
-    Droplets,
-    FileText,
-    ShieldCheck
+    Droplets
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useUI } from '../context/UIContext'
@@ -25,9 +23,7 @@ interface NavItem {
 const navItems: NavItem[] = [
     { label: 'Map View', path: '/map', icon: MapIcon, permission: 'view_map' },
     { label: 'Dashboard', path: '/', icon: LayoutDashboard, permission: 'view_dashboard' },
-    { label: 'Reports', path: '/reports', icon: FileText, permission: 'view_dashboard' }, // Assuming dashboard permission covers reports
     { label: 'Alerts & Logs', path: '/alerts', icon: Bell, permission: 'view_alerts' },
-    { label: 'Audit Trail', path: '/audit', icon: ShieldCheck, permission: 'view_audit' },
 ]
 
 export default function Sidebar() {
