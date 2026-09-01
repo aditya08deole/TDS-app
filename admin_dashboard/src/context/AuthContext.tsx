@@ -126,26 +126,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             setUser(firebaseUser)
-            
-            if (firebaseUser) {
-                // Initialize token refresh on login
-                await initTokenRefresh(firebaseUser);
 
-                // Fix #18: Sequential fetch — load admin config FIRST so fetchProfile
-                // reads the correct adminEmails list when determining the new user's role.
-                // Previously ran in parallel (Promise.all) — fetchProfile could finish
-                // before fetchAdminConfig set the emails, giving new admins 'viewer' role.
+            if (firebaseUser) {
+                // Safety net: browser fetch()/Firestore calls have no built-in
+                // timeout. If any awaited call below genuinely stalls (network
+                // hiccup, cold backend, etc.) instead of resolving OR rejecting,
+                // loading would never flip to false and AuthGuard's spinner
+                // would spin forever with no way for the user to recover short
+                // of a hard refresh. Whichever finishes first — the real auth
+                // flow or this timeout — wins; the timeout is a no-op if the
+                // real flow already completed.
+                let settled = false
+                const safetyTimer = window.setTimeout(() => {
+                    if (!settled) {
+                        console.warn('[AUTH] Profile fetch did not complete within 12s — unblocking UI so the app is usable while it keeps retrying in the background.')
+                        setLoading(false)
+                    }
+                }, 12000)
+
                 try {
+                    // Initialize token refresh on login
+                    await initTokenRefresh(firebaseUser);
+
+                    // Fix #18: Sequential fetch — load admin config FIRST so fetchProfile
+                    // reads the correct adminEmails list when determining the new user's role.
+                    // Previously ran in parallel (Promise.all) — fetchProfile could finish
+                    // before fetchAdminConfig set the emails, giving new admins 'viewer' role.
                     await fetchAdminConfig();
                     await fetchProfile(firebaseUser.uid, firebaseUser.email);
                 } catch (err) {
                     console.error('Auth post-processing failed:', err);
                     setLoading(false);
+                } finally {
+                    settled = true
+                    window.clearTimeout(safetyTimer)
                 }
             } else {
                 // Fix #11: Clear session on logout
                 await clearSession();
-                
+
                 setProfile(null)
                 setLoading(false)
             }
