@@ -268,7 +268,9 @@ export default function Dashboard() {
     const systemHealth = useMemo(() => {
         const total = devices.length
         if (total === 0) return 0
-        return Math.round(((categorizedStats.safeTDS.count * 100) + (categorizedStats.online.count * 20)) / (total * 1.2))
+        const safeScore = (categorizedStats.safeTDS.count / total) * 70   // 70% weight on water quality
+        const onlineScore = (categorizedStats.online.count / total) * 30  // 30% weight on connectivity
+        return Math.min(100, Math.round(safeScore + onlineScore))
     }, [categorizedStats, devices.length])
 
     if (loading) return (

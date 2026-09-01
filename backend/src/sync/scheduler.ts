@@ -145,7 +145,8 @@ export function startScheduler(): void {
  * Previously deleted all non-open alerts older than 10 minutes, destroying audit history.
  */
 export function startAlertCleanupJob(): void {
-  cleanupTask = cron.schedule('* * * * *', async () => {
+  // Reduced to every 5 minutes — running every minute caused unnecessary Firestore full scans
+  cleanupTask = cron.schedule('*/5 * * * *', async () => {
     try {
       const db = getDb();
       const redis = getRedis();
@@ -210,7 +211,7 @@ export function startAlertCleanupJob(): void {
     }
   });
 
-  console.log('✅ Alert cleanup job started — 24hr retention for resolved alerts.');
+  console.log('✅ Alert cleanup job started — 24hr retention for resolved alerts (runs every 5 min).');
 }
 
 /**
@@ -263,7 +264,7 @@ export function startDeviceHeartbeatJob(): void {
 
 /**
  * Hourly Reminder Job — fires at :00 of every hour.
- * Also: Force-Hunting Engine — every 5 min, re-dispatches if critical alert
+ * Separately: Force-Hunting Engine — every 5 min, re-dispatches if critical alert
  * still open and last notification was >1 hour ago.
  *
  * Fix #10: forceEngineTask now tracked in a module-level variable so
@@ -386,6 +387,6 @@ export function getSchedulerStatus(): any {
     nextRun: scheduledTask ? 'Check logs' : 'Not running',
     interval: process.env.SYNC_INTERVAL_HOURS || '1 hour',
     alertRetentionHours: 24,
-    thingSpeakPollIntervalMins: 2,
+    thingSpeakPollIntervalMins: 10, // Actual cron: */10 * * * *
   };
 }

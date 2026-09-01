@@ -18,12 +18,10 @@ export default function Layout() {
             {/* Premium Three.js + Anime atmosphere */}
             <PremiumBackground />
 
-            {/* Unified Top Navigation Header (Desktop Only, hidden on Map page for 0px top gap) */}
-            {!isMapPage && (
-                <div className="hidden md:block">
-                    <TopBar />
-                </div>
-            )}
+            {/* Unified Top Navigation Header (Desktop Only) */}
+            <div className="hidden md:block z-[1000] relative">
+                <TopBar />
+            </div>
 
             {/* Mobile Bottom Navigation Bar (Mobile Only) */}
             <div className="md:hidden">

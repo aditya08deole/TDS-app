@@ -202,3 +202,43 @@ export function useUptimeStats(deviceId?: string) {
         refetchInterval: 5 * 60 * 1000 // Poll every 5 minutes
     })
 }
+
+/**
+ * Hook to test ThingSpeak Channel ID & Read Key validity
+ */
+export function useTestThingSpeakConnection() {
+    return useMutation({
+        mutationFn: async ({ channelId, readKey }: { channelId: string; readKey: string }) => {
+            const apiBase = import.meta.env.VITE_API_URL || '';
+            try {
+                const res = await fetch(`${apiBase}/api/devices/test-thingspeak`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channelId, readKey }),
+                });
+                if (res.ok) {
+                    const json = await res.json();
+                    return json.data || { success: false, error: 'Empty response' };
+                }
+            } catch {
+                // Fallback to direct client-side test if backend API endpoint unavailable
+            }
+
+            // Client-side fallback check directly against ThingSpeak API
+            try {
+                const url = `https://api.thingspeak.com/channels/${channelId.trim()}/feeds/last.json?api_key=${(readKey || '').trim()}&_cb=${Date.now()}`;
+                const resp = await fetch(url);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    return { success: true, lastEntryId: data.entry_id || 0 };
+                }
+                if (resp.status === 404) return { success: false, error: 'Channel ID not found or private without valid Read Key' };
+                if (resp.status === 400 || resp.status === 403) return { success: false, error: 'Invalid Read API Key' };
+                return { success: false, error: `HTTP ${resp.status} response from ThingSpeak` };
+            } catch (err: any) {
+                return { success: false, error: err.message || 'Connection failed' };
+            }
+        }
+    })
+}
+

@@ -15,6 +15,8 @@ export interface Device {
   temperature_field_number?: number;
   voltage_field_number?: number;
   last_tds?: number;
+  last_temperature?: number;
+  last_voltage?: number;
   status: 'online' | 'offline' | 'critical' | 'maintenance';
   last_seen_at?: string;
   deployment_date?: string;

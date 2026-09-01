@@ -127,57 +127,95 @@ export function useDeviceLatestReading(device: Device | undefined) {
 }
 
 /**
- * Hook to fetch ThingSpeak data for multiple devices (batched)
- * Optimized: Only fetches the LATEST reading to enrich the device list.
- * This reduces data transfer by ~99% for large device lists.
+ * Hook to fetch live telemetry data for multiple devices (up to 50 devices)
+ * Optimized: Attempts a single batched endpoint call (`GET /api/devices/telemetry/live`),
+ * reducing network requests from 50 queries down to 1 single request.
+ * Falls back to individual ThingSpeak endpoints if backend is offline.
  */
 export function useAllDevicesThingSpeakData(devices: Device[]) {
-    // Create queries for all devices - Optimized to only fetch LAST entry
-    const queries = useQueries({
-        queries: devices.map(device => ({
-            queryKey: ['thingspeak', 'latest', device.id],
-            queryFn: async () => {
-                if (!device.thingspeak_channel_id || !device.thingspeak_read_key) {
-                    return null
-                }
-                const mapping = getFieldMapping(device)
-                return await fetchLastEntry(
-                    device.thingspeak_channel_id,
-                    device.thingspeak_read_key,
-                    mapping
-                )
-            },
-            enabled: !!device.thingspeak_channel_id && !!device.thingspeak_read_key,
-            staleTime: 0, // Always fresh
-            refetchInterval: 5 * 1000, // Reduced to 5 seconds for faster updates
-            gcTime: 5 * 60 * 1000,
+    // Normalize devices to guarantee channelId and readApiKey fields
+    const normalizedDevices = useMemo(() => {
+        return devices.map(d => ({
+            ...d,
+            thingspeak_channel_id: d.thingspeak_channel_id || (d as any).channelId || (d as any).channel_id,
+            thingspeak_read_key: d.thingspeak_read_key || (d as any).readApiKey || (d as any).read_api_key
         }))
-    })
+    }, [devices])
+
+    // 1. Batched Single-Call Query
+    const batchQuery = useQuery({
+        queryKey: ['devices', 'telemetry', 'live_batch', normalizedDevices.map(d => d.id).join(',')],
+        queryFn: async () => {
+            const apiBase = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiBase}/api/devices/telemetry/live`);
+            if (!res.ok) throw new Error('Batch endpoint unavailable');
+            const json = await res.json();
+            return json.data as EnrichedDevice[];
+        },
+        enabled: normalizedDevices.length > 0,
+        staleTime: 0,
+        refetchInterval: 5 * 1000,
+        retry: 1,
+    });
+
+    // 2. Individual ThingSpeak queries (Fetches direct live feeds from ThingSpeak)
+    const fallbackQueries = useQueries({
+        queries: normalizedDevices.map(device => {
+            const channelId = device.thingspeak_channel_id;
+            const readKey = device.thingspeak_read_key;
+
+            return {
+                queryKey: ['thingspeak', 'latest', device.id, channelId],
+                queryFn: async () => {
+                    if (!channelId || !readKey) return null;
+                    const mapping = getFieldMapping(device);
+                    return await fetchLastEntry(channelId, readKey, mapping);
+                },
+                enabled: !!channelId && !!readKey,
+                staleTime: 0,
+                refetchInterval: 5 * 1000,
+                gcTime: 5 * 60 * 1000,
+            };
+        })
+    });
 
     const enrichedDevices: EnrichedDevice[] = useMemo(() => {
-        return devices.map((device, index) => {
-            const query = queries[index]
-            const latest = query.data
-            
+        const batchMap = new Map(
+            (batchQuery.data && Array.isArray(batchQuery.data)) 
+                ? batchQuery.data.map(d => [d.id, d]) 
+                : []
+        );
+
+        return normalizedDevices.map((device, index) => {
+            const live = batchMap.get(device.id);
+            const tsData = fallbackQueries[index]?.data;
+
+            const latest_tds = live?.latest_tds ?? tsData?.tds ?? device.last_tds;
+            const latest_temperature = live?.latest_temperature ?? tsData?.temperature ?? device.last_temperature;
+            const latest_voltage = live?.latest_voltage ?? tsData?.voltage ?? device.last_voltage;
+            const last_reading_at = live?.last_reading_at || tsData?.timestamp || device.last_reading_at || (device as any).last_seen_at;
+
+            const connectivity = getConnectivityStatus(last_reading_at);
+
             return {
                 ...device,
-                latest_tds: latest?.tds,
-                latest_temperature: latest?.temperature,
-                latest_voltage: latest?.voltage,
-                last_reading_at: latest?.timestamp,
-                is_offline: getConnectivityStatus(latest?.timestamp) === 'offline'
-            } as EnrichedDevice
-        })
-    }, [devices, queries])
+                latest_tds,
+                latest_temperature,
+                latest_voltage,
+                last_reading_at,
+                is_offline: connectivity === 'offline',
+                status: connectivity === 'online' ? (live?.status === 'critical' ? 'critical' : 'online') : 'offline'
+            } as EnrichedDevice;
+        });
+    }, [normalizedDevices, batchQuery.data, fallbackQueries]);
 
-    const isLoading = useMemo(() => queries.some(q => q.isLoading), [queries])
-    const isError = useMemo(() => queries.some(q => q.isError), [queries])
+    const isLoading = useMemo(() => batchQuery.isLoading && fallbackQueries.some(q => q.isLoading), [batchQuery.isLoading, fallbackQueries]);
 
     return useMemo(() => ({
         devices: enrichedDevices,
         isLoading,
-        isError
-    }), [enrichedDevices, isLoading, isError])
+        isError: batchQuery.isError && fallbackQueries.some(q => q.isError)
+    }), [enrichedDevices, isLoading, batchQuery.isError, fallbackQueries]);
 }
 
 /**

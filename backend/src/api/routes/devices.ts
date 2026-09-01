@@ -173,6 +173,81 @@ router.get('/status/:status', async (req: Request, res: Response) => {
   }
 });
 
+
+/**
+ * POST /api/devices/test-thingspeak
+ * Test ThingSpeak Channel ID & Read Key validity before saving
+ */
+router.post('/test-thingspeak', async (req: Request, res: Response) => {
+  try {
+    const { channelId, readKey } = req.body;
+    const { testThingSpeakConnection } = await import('../../services/thingSpeakService');
+    
+    const result = await testThingSpeakConnection(channelId, readKey);
+    res.json({
+      success: result.success,
+      data: result,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to test ThingSpeak connection',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * GET /api/devices/telemetry/live
+ * Batched endpoint returning all devices enriched with latest live telemetry from Redis/Firestore.
+ * Replaces 50 individual client-side HTTP queries with 1 single request.
+ */
+router.get('/telemetry/live', async (req: Request, res: Response) => {
+  try {
+    const devices = await deviceService.getAllDevices();
+    const { getRedisClient } = await import('../../db/redis');
+    const redis = getRedisClient();
+
+    const enriched = await Promise.all(devices.map(async (device) => {
+      let cached = null;
+      try {
+        cached = await redis.hGetAll(`device:${device.id}`);
+      } catch {
+        // Fallback to device record
+      }
+
+      const latest_tds = cached?.last_tds != null ? parseFloat(cached.last_tds) : (device.last_tds ?? undefined);
+      const latest_temp = cached?.last_temp != null ? parseFloat(cached.last_temp) : (device.last_temperature ?? undefined);
+      const latest_volt = cached?.last_voltage != null ? parseFloat(cached.last_voltage) : (device.last_voltage ?? undefined);
+      const last_reading = cached?.last_reading_at || device.last_reading_at || device.last_seen_at;
+
+      return {
+        ...device,
+        latest_tds,
+        latest_temperature: latest_temp,
+        latest_voltage: latest_volt,
+        last_reading_at: last_reading,
+        status: cached?.status || device.status || 'offline',
+      };
+    }));
+
+    res.json({
+      success: true,
+      total: enriched.length,
+      data: enriched,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error('Error fetching batched live telemetry:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch batched live telemetry',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PARAMETERIZED ROUTES — declared after all static routes
 // ═══════════════════════════════════════════════════════════════════════════

@@ -38,6 +38,9 @@ export type Device = {
     deployment_date?: string
     metadata?: Record<string, unknown>
     confidence_score?: number
+    last_tds?: number
+    last_temperature?: number
+    last_voltage?: number
     last_reading_at?: string
 
     // Lifecycle/Rotation

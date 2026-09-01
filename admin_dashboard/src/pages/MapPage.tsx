@@ -17,7 +17,6 @@ import {
 } from 'lucide-react'
 import type { ParsedSensorData } from '../lib/thingspeak'
 import { type EnrichedDevice, type MapTheme, type MapStyle, type DeviceLocation } from '../types'
-import { Capacitor } from '@capacitor/core'
 
 // Fix #20: Ensure icons work on native platforms by providing base64 fallbacks if needed
 // or just ensuring the prototype is set correctly after import.
@@ -36,13 +35,7 @@ if (typeof L !== 'undefined' && L.Marker && L.Marker.prototype) {
     L.Marker.prototype.options.icon = DefaultIcon;
 }
 
-// Fix #21: Log platform for debugging maps on native
-const isNative = Capacitor.isNativePlatform();
-const platform = Capacitor.getPlatform();
-console.log(`[MAP-INIT] Platform: ${platform}, isNative: ${isNative}`);
-
-
-
+// Native platform — map size invalidation handled in MapController via invalidateSize()
 const DeviceMarkers = ({
     devices,
     theme,
@@ -63,22 +56,24 @@ const DeviceMarkers = ({
 
     return (
         <>
-            {devices.map(device => (
-                device.latitude && device.longitude && (
+            {devices.map(device => {
+                const lat = Number(device.latitude)
+                const lng = Number(device.longitude)
+                if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return null
+                return (
                     <Marker
                         key={device.id}
-                        position={[device.latitude, device.longitude]}
+                        position={[lat, lng]}
                         icon={createWhiteTransparentMarker(device, theme, zoom)}
                         bubblingMouseEvents={true}
                         eventHandlers={{
                             click: () => {
-                                console.log('[MAP] Selected device:', device.id)
                                 setSelectedDevice(device)
                             }
                         }}
                     />
                 )
-            ))}
+            })}
         </>
     )
 }
@@ -91,7 +86,6 @@ function MapController({ center, zoom }: { center: [number, number] | null; zoom
     useEffect(() => {
         const timer = setTimeout(() => {
             map.invalidateSize();
-            console.log('🗺️ [MAP-INIT] Invalidate size called');
         }, 300);
         return () => clearTimeout(timer);
     }, [map]);
@@ -183,7 +177,7 @@ function DevicePanel({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 90, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 450, damping: 32 }}
-            className="fixed bottom-80 left-2 right-4 md:left-auto md:right-10 md:w-[480px] md:bottom-52 z-[99999] max-w-xl mx-auto rounded-[2.2rem] liquid-glass-stack backdrop-blur-2xl border border-white/40 dark:border-white/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] text-foreground p-5 flex flex-col gap-4 overflow-hidden"
+            className="fixed bottom-24 left-2 right-4 md:left-auto md:right-10 md:w-[480px] md:bottom-20 z-[99999] max-w-xl mx-auto rounded-[2.2rem] liquid-glass-stack backdrop-blur-2xl border border-white/40 dark:border-white/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] text-foreground p-5 flex flex-col gap-4 overflow-hidden"
         >
             {/* Specular Top Light Rim Streak */}
             <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-white/70 to-transparent pointer-events-none z-10" />
@@ -214,7 +208,7 @@ function DevicePanel({
                             </span>
                         </div>
                         <p className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1 mt-1">
-                            <MapPin className="w-3.5 h-3.5" style={{ color: ppmStatus.color }} /> {device.location_name || 'Infrastructure Water Plant'}
+                            <MapPin className="w-3.5 h-3.5" style={{ color: ppmStatus.color }} /> {device.location_name || 'Location not set'}
                         </p>
                     </div>
                 </div>
@@ -332,7 +326,10 @@ function DevicePanel({
             <div className="relative z-10 flex items-center justify-between pt-2.5 border-t border-border/30">
                 <span className="text-[10.5px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full animate-pulse shadow-xs" style={{ background: ppmStatus.color }} />
-                    Updated {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    Updated {device.last_reading_at
+                        ? new Date(device.last_reading_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : '—'
+                    }
                 </span>
                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[9.5px] font-black uppercase tracking-widest border shadow-sm"
                     style={{ background: ppmStatus.bg, color: ppmStatus.color, borderColor: `${ppmStatus.color}40` }}>
@@ -346,10 +343,10 @@ function DevicePanel({
 
 
 export default function MapPage() {
-    const [mapError] = useState<string | null>(null)
+    const [mapError, setMapError] = useState<string | null>(null)
 
     // Fetch devices using React Query (with caching)
-    const { data: devicesList = [] } = useDevices()
+    const { data: devicesList = [], refetch: refetchDevices } = useDevices()
 
     // Subscribe to real-time device changes
     useDeviceSubscription()
@@ -360,11 +357,6 @@ export default function MapPage() {
     const { resolvedTheme } = useTheme()
     const theme = useMemo(() => getMapTheme(resolvedTheme === 'dark'), [resolvedTheme])
 
-    // Debug logging for native platform
-    useEffect(() => {
-        console.log(`[MAP-RENDER] Devices loaded: ${devicesList.length}`);
-        console.log(`[MAP-RENDER] Native platform: ${isNative}, Platform: ${platform}`);
-    }, [devicesList])
 
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [mapStyle, setMapStyle] = useState<MapStyle>('street')
@@ -398,30 +390,28 @@ export default function MapPage() {
         })
     }, [devicesWithData])
 
-    // Filtered devices
-    const filteredDevices = devices
-
     // Global window handler for marker clicks to guarantee popup opens on mobile & desktop
     useEffect(() => {
         (window as any).__selectMapDevice = (deviceId: string) => {
             const found = devices.find(d => String(d.id) === String(deviceId))
-            if (found) {
-                console.log('📍 [MAP-MARKER-CLICK] Device selected:', found.name || found.id)
-                setSelectedDevice(found)
-            }
+            if (found) setSelectedDevice(found)
         }
         return () => {
             delete (window as any).__selectMapDevice
         }
     }, [devices])
 
-    // Refresh handler - smooth rotation only once
-    const handleRefresh = useCallback(() => {
+    // Refresh handler — triggers actual data refetch + brief animation
+    const handleRefresh = useCallback(async () => {
         setIsRefreshing(true)
-        setTimeout(() => {
-            setIsRefreshing(false)
-        }, 600)
-    }, [])
+        try {
+            await refetchDevices()
+        } catch {
+            setMapError('Refresh failed. Check your connection.')
+        } finally {
+            setTimeout(() => setIsRefreshing(false), 600)
+        }
+    }, [refetchDevices])
 
     // Map tiles
     const tileUrls = {
@@ -444,19 +434,21 @@ export default function MapPage() {
 
     return (
         <div className="fixed inset-0 h-screen w-screen overflow-hidden flex flex-col touch-none select-none" style={{ background: 'transparent' }} data-testid="map-container">
-            {/* Map Status Indicator - Debug */}
-            <div className="absolute top-2 left-2 z-[10] text-xs text-emerald-400 font-mono opacity-60 pointer-events-none">
-                {mapError ? (
-                    <div className="flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3 text-red-500" />
-                        Error: {mapError}
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-1">
-                        ✓ Map initialized | Devices: {devices.length}
-                    </div>
-                )}
-            </div>
+            {/* Map Status Indicator - only show on error or in dev mode */}
+            {(mapError || import.meta.env.DEV) && (
+                <div className="absolute top-2 left-2 z-[10] text-xs font-mono opacity-60 pointer-events-none">
+                    {mapError ? (
+                        <div className="flex items-center gap-1 text-red-400">
+                            <AlertCircle className="w-3 h-3 text-red-500" />
+                            Error: {mapError}
+                        </div>
+                    ) : import.meta.env.DEV ? (
+                        <div className="flex items-center gap-1 text-emerald-400">
+                            ✓ Map initialized | Devices: {devices.length}
+                        </div>
+                    ) : null}
+                </div>
+            )}
 
 
 
@@ -477,21 +469,42 @@ export default function MapPage() {
                     <MapController center={selectedDevice ? [selectedDevice.latitude!, selectedDevice.longitude!] : null} />
 
                     <DeviceMarkers
-                        devices={filteredDevices}
+                        devices={devices}
                         theme={theme}
                         setSelectedDevice={setSelectedDevice}
                     />
                 </MapContainer>
 
                 {/* Top Right Controls */}
-                <div className="absolute top-4 right-4 z-[500] flex items-center gap-2">
+                <div className="absolute top-4 right-4 md:top-28 md:right-8 z-[500] flex items-center gap-2">
+                    {/* Device Quick Selector Dropdown for 50-Device Map Navigation */}
+                    {devices.length > 0 && (
+                        <div className="relative">
+                            <select
+                                value={selectedDevice?.id || ''}
+                                onChange={(e) => {
+                                    const d = devices.find(dev => String(dev.id) === String(e.target.value))
+                                    if (d) setSelectedDevice(d)
+                                }}
+                                className="bg-card/90 backdrop-blur-xl border border-white/20 text-foreground text-xs font-semibold rounded-xl px-3 py-2.5 outline-none shadow-xl cursor-pointer max-w-[180px] sm:max-w-[240px] truncate"
+                            >
+                                <option value="">📍 Select Device ({devices.length})</option>
+                                {devices.map(d => (
+                                    <option key={d.id} value={d.id}>
+                                        {getDeviceDisplayName(d)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
                     {/* Refresh Button - Single rotation */}
                     <button
                         onClick={handleRefresh}
                         className="p-3 rounded-xl glass-system-micro border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.2)] transition-all duration-300 active:scale-90"
                     >
                         <RefreshCw
-                            className={`w-5 h-5 transition-transform duration-600 ${isRefreshing ? 'rotate-360' : ''}`}
+                            className={`w-5 h-5 transition-transform duration-500 ${isRefreshing ? 'animate-spin' : ''}`}
                             style={{ color: theme.text.primary }}
                         />
                     </button>
@@ -526,9 +539,21 @@ export default function MapPage() {
                         )}
                     </div>
 
-                    {/* Fullscreen */}
+                    {/* Fullscreen — uses the browser's native Fullscreen API */}
                     <button
-                        onClick={() => setIsFullscreen(!isFullscreen)}
+                        onClick={async () => {
+                            try {
+                                if (!document.fullscreenElement) {
+                                    await document.documentElement.requestFullscreen()
+                                    setIsFullscreen(true)
+                                } else {
+                                    await document.exitFullscreen()
+                                    setIsFullscreen(false)
+                                }
+                            } catch {
+                                // Fullscreen not supported or denied (e.g., iOS)
+                            }
+                        }}
                         className="p-3 rounded-xl backdrop-blur-xl transition-all duration-300 liquid-ios-glass"
                         style={{ border: '1px solid var(--specular-highlight)' }}
                     >

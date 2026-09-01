@@ -353,6 +353,7 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   console.log('📭 SIGINT received, shutting down gracefully...');
+  stopAutoTunnel(); // Fix: was missing from SIGINT handler, tunnel was leaking on Ctrl+C
   stopScheduler();
   stopTelemetryFlusher(); // Fix #11
   try {

@@ -97,8 +97,16 @@ router.post('/register-token', async (req: Request, res: Response) => {
             platform: platform || 'android_native',
             userAgent: userAgent || 'native',
             updated_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
+            // created_at is only written on first registration (merge:true preserves existing value)
         }, { merge: true });
+
+        // Set created_at only on first write (won't overwrite existing value due to merge)
+        const docSnap = await db.collection('notification_subscriptions').doc(docId).get();
+        if (!docSnap.exists || !docSnap.data()?.created_at) {
+            await db.collection('notification_subscriptions').doc(docId).update({
+                created_at: new Date().toISOString(),
+            });
+        }
 
         // Update Redis immediately
         await redis.sAdd(FCM_TOKEN_CACHE_KEY, cleanToken);

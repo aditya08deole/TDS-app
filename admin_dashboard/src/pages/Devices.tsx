@@ -4,8 +4,10 @@ import { type Device } from '../types'
 import { useAuth } from '../context/AuthContext'
 import { useUI } from '../context/UIContext'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
+import { AddDeviceModal } from '../components/AddDeviceModal'
 import { QRCodeGenerator } from '../components/QRCodeGenerator'
 import { QRCodeScanner } from '../components/QRCodeScanner'
+import { GlassCard } from '../components/GlassCard'
 import {
     useDevices,
     useAddDevice,
@@ -13,13 +15,9 @@ import {
     useUpdateDevice,
     useDeviceSubscription
 } from '../hooks/useDeviceQueries'
-import { GlassCard } from '../components/GlassCard'
 import { useAllDevicesThingSpeakData } from '../hooks/useThingSpeakQueries'
 import { triggerSync } from '../lib/api'
-import {
-    Sheet,
-    SheetContent,
-} from "@/components/ui/sheet"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 import {
     Plus,
     Pencil,
@@ -38,8 +36,11 @@ import {
     MapPin,
     RefreshCw,
     X,
-    QrCode,
-    ScanLine
+    LayoutGrid,
+    List,
+    ChevronLeft,
+    ChevronRight,
+    Building2
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { getConnectivityStatus } from '../lib/constants'
@@ -65,9 +66,9 @@ export default function Devices() {
     
     // Use Firestore hooks
     const { data: devices = [], isLoading, refetch } = useDevices()
-    const { mutate: addDevice, isPending: addingDevice } = useAddDevice()
+    const { mutateAsync: addDevice } = useAddDevice()
     const { mutate: deleteDevice } = useDeleteDevice()
-    const { mutate: updateDevice } = useUpdateDevice()
+    const { mutateAsync: updateDevice } = useUpdateDevice()
     
     // Realtime subscription
     useDeviceSubscription()
@@ -75,37 +76,24 @@ export default function Devices() {
     // Enrich with ThingSpeak data for real-time status
     const { devices: enrichedDevices } = useAllDevicesThingSpeakData(devices)
 
-    const [newDevice, setNewDevice] = useState({
-        name: '',
-        location_name: '',
-        latitude: '',
-        longitude: '',
-        sim_number: '',
-        node_number: '',
-        thingspeak_channel_id: '',
-        thingspeak_read_key: '',
-        tds_field: 1,
-        temp_field: 2,
-        voltage_field: 3,
-        safe_tds_min: '35',
-        safe_tds_max: '175'
-    })
+    // Add/Edit Modal State
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+    const [editingDevice, setEditingDevice] = useState<Device | null>(null)
 
-    const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null)
-    
     const [showQRGenerator, setShowQRGenerator] = useState(false)
     const [showQRScanner, setShowQRScanner] = useState(false)
 
-    // Search and Filter State
+    // Search, Filter, ViewMode & Pagination State
     const [searchQuery, setSearchQuery] = useState('')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+    const [locationFilter, setLocationFilter] = useState<string>('all')
+    const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid')
+    const [currentPage, setCurrentPage] = useState(1)
+    const pageSize = 12
 
     // Selection State (for bulk operations)
     const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set())
     const [selectionMode, setSelectionMode] = useState(false)
-    
-    // Toggle for Add/Edit Form
-    const [isFormOpen, setIsFormOpen] = useState(false)
 
     // Sync state
     const [isSyncing, setIsSyncing] = useState(false)
@@ -122,25 +110,45 @@ export default function Devices() {
         disabled: !isMobile
     })
 
-    // Filtered devices
+    // Unique deployment locations for filter dropdown
+    const uniqueLocations = useMemo(() => {
+        const locs = enrichedDevices
+            .map(d => d.location_name?.trim())
+            .filter((loc): loc is string => Boolean(loc && loc.length > 0))
+        return Array.from(new Set(locs))
+    }, [enrichedDevices])
+
+    // Filtered devices (Search + Status + Location)
     const filteredDevices = useMemo(() => {
         return enrichedDevices.filter(device => {
-            // Search filter
             const matchesSearch = searchQuery === '' ||
                 device.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                device.location_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 device.id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (device.thingspeak_channel_id?.toString() || '').includes(searchQuery)
 
-            // Status filter
             const deviceStatus = device.status === 'maintenance' 
                 ? 'maintenance' 
                 : getConnectivityStatus(device.last_reading_at || device.last_seen_at)
             
             const matchesStatus = statusFilter === 'all' || deviceStatus === statusFilter
+            const matchesLocation = locationFilter === 'all' || device.location_name === locationFilter
 
-            return matchesSearch && matchesStatus
+            return matchesSearch && matchesStatus && matchesLocation
         })
-    }, [enrichedDevices, searchQuery, statusFilter])
+    }, [enrichedDevices, searchQuery, statusFilter, locationFilter])
+
+    // Reset to page 1 on filter/search change
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [searchQuery, statusFilter, locationFilter])
+
+    // Paginated Devices for 50-device scale
+    const totalPages = Math.ceil(filteredDevices.length / pageSize) || 1
+    const paginatedDevices = useMemo(() => {
+        const start = (currentPage - 1) * pageSize
+        return filteredDevices.slice(start, start + pageSize)
+    }, [filteredDevices, currentPage, pageSize])
 
     // Cache channel configs to prevent infinite fetch loops
     const activeChannelConfig = useMemo(() => {
@@ -200,107 +208,7 @@ export default function Devices() {
         }
     }
 
-    const handleAddDevice = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!isAdmin) return;
 
-        const lat = parseFloat(newDevice.latitude)
-        const lon = parseFloat(newDevice.longitude)
-        const tdsField = newDevice.tds_field
-        const tempField = newDevice.temp_field
-        const voltageField = newDevice.voltage_field
-        const tdsMin = parseFloat(newDevice.safe_tds_min)
-        const tdsMax = parseFloat(newDevice.safe_tds_max)
-        
-        if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-            alert('Invalid GPS coordinates. Latitude must be -90 to 90, Longitude must be -180 to 180')
-            return
-        }
-
-        if (isNaN(tdsMin) || isNaN(tdsMax) || tdsMin < 0 || tdsMax < tdsMin || tdsMax > 10000) {
-            alert('Invalid TDS thresholds. Min must be >= 0 and Max must be >= Min and <= 10000')
-            return
-        }
-
-        // Validate ThingSpeak Channel ID (numeric)
-        if (!newDevice.thingspeak_channel_id || !/^\d+$/.test(newDevice.thingspeak_channel_id)) {
-            alert('Invalid ThingSpeak Channel ID. Must be numeric')
-            return
-        }
-
-        // Validate ThingSpeak Read Key
-        if (!newDevice.thingspeak_read_key || newDevice.thingspeak_read_key.length < 10) {
-            alert('Invalid ThingSpeak Read Key. Must be at least 10 characters')
-            return
-        }
-
-        if ([tdsField, tempField, voltageField].some(f => isNaN(f) || f < 1 || f > 8)) {
-            alert('Invalid field numbers. ThingSpeak fields must be 1-8')
-            return
-        }
-
-        // Validate required fields
-        if (!newDevice.name.trim()) {
-            alert('Device name is required')
-            return
-        }
-
-        const devicePayload = {
-            name: newDevice.name.trim(),
-            location_name: newDevice.location_name.trim(),
-            latitude: lat,
-            longitude: lon,
-            sim_number: newDevice.sim_number.trim(),
-            node_number: newDevice.node_number.trim(),
-            thingspeak_channel_id: newDevice.thingspeak_channel_id.trim(),
-            thingspeak_read_key: newDevice.thingspeak_read_key.trim(),
-            tds_field_number: tdsField,
-            temperature_field_number: tempField,
-            voltage_field_number: voltageField,
-            safe_tds_min: tdsMin,
-            safe_tds_max: tdsMax,
-            status: 'offline' as const
-        }
-
-        if (editingDeviceId) {
-            updateDevice({ id: editingDeviceId, updates: devicePayload }, {
-                onSuccess: () => {
-                    setEditingDeviceId(null)
-                    resetForm()
-                },
-                onError: (error) => {
-                    alert('Error updating device: ' + error.message)
-                }
-            })
-        } else {
-            addDevice(devicePayload, {
-                onSuccess: () => {
-                    resetForm()
-                },
-                onError: (error) => {
-                    alert('Error adding device: ' + error.message)
-                }
-            })
-        }
-    }
-
-    const resetForm = () => {
-        setNewDevice({
-            name: '',
-            location_name: '',
-            latitude: '',
-            longitude: '',
-            sim_number: '',
-            node_number: '',
-            thingspeak_channel_id: '',
-            thingspeak_read_key: '',
-            tds_field: 1,
-            temp_field: 2,
-            voltage_field: 3,
-            safe_tds_min: '35',
-            safe_tds_max: '175'
-        })
-    }
 
     const handleDelete = (id: string) => {
         if (!isAdmin) return;
@@ -395,16 +303,35 @@ export default function Devices() {
             {...handlers}
         >
             <PullIndicator />
-
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 md:gap-4 pb-1">
                 <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">Devices</h1>
-                    <p className="text-muted-foreground mt-0.5 text-[10px] lg:text-base font-medium">
-                        {filteredDevices.length} of {devices.length} nodes active
+                    <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">EvaraTDS Devices</h1>
+                    <p className="text-muted-foreground mt-0.5 text-[10px] lg:text-sm font-medium">
+                        Showing {paginatedDevices.length} of {filteredDevices.length} deployed nodes (Total: {devices.length})
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    {/* View Mode Toggle */}
+                    <div className="flex items-center p-1 rounded-xl bg-secondary/50 border border-border/40">
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('grid')}
+                            className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-cyan-500 text-black shadow-sm font-bold' : 'text-muted-foreground hover:text-foreground'}`}
+                            title="Grid Card View"
+                        >
+                            <LayoutGrid className="h-4 w-4" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('table')}
+                            className={`p-1.5 rounded-lg transition-all ${viewMode === 'table' ? 'bg-cyan-500 text-black shadow-sm font-bold' : 'text-muted-foreground hover:text-foreground'}`}
+                            title="Compact Table View"
+                        >
+                            <List className="h-4 w-4" />
+                        </button>
+                    </div>
+
                     <button
                         onClick={() => refetch()}
                         disabled={isLoading}
@@ -415,8 +342,8 @@ export default function Devices() {
                     <button
                         onClick={handleSync}
                         disabled={isSyncing}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-xs font-semibold bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed border border-blue-500/30"
-                        title="Sync devices from Firebase to local database"
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all text-xs font-semibold bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-50 border border-blue-500/30"
+                        title="Sync devices from Firebase"
                     >
                         <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
                         {isSyncing ? 'Syncing...' : 'Fetch Latest'}
@@ -431,21 +358,21 @@ export default function Devices() {
                     {isAdmin && (
                         <>
                             <button
-                                onClick={() => setIsFormOpen(!isFormOpen)}
-                                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-sm font-bold border-white/20 shadow-[0_0_20px_rgba(234,179,8,0.3)] ${isFormOpen 
-                                    ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 ring-1 ring-yellow-400/50' 
-                                    : 'bg-yellow-500/10 text-yellow-400 glass-system-child hover:scale-[1.05] active:scale-95 border-yellow-500/30'
-                                }`}
+                                onClick={() => {
+                                    setEditingDevice(null)
+                                    setIsAddModalOpen(true)
+                                }}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all text-xs font-bold bg-cyan-500 hover:bg-cyan-600 text-black shadow-lg shadow-cyan-500/20 active:scale-95"
                             >
-                                {isFormOpen ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                                {isFormOpen ? 'Close Form' : 'Add Device'}
+                                <Plus className="h-4 w-4" />
+                                Provision Device
                             </button>
                             <button
                                 onClick={() => {
                                     setSelectionMode(!selectionMode)
                                     setSelectedDevices(new Set())
                                 }}
-                                className={`p-2 rounded-lg transition-colors ${selectionMode
+                                className={`p-2 rounded-xl transition-colors ${selectionMode
                                     ? 'bg-cyan-500/20 text-cyan-400'
                                     : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                                     }`}
@@ -457,17 +384,17 @@ export default function Devices() {
                 </div>
             </div>
 
-            {/* Search and Filter Bar */}
-            <div className="flex flex-col sm:flex-row gap-3">
-                {/* Search */}
-                <div className="relative flex-1">
+            {/* Search, Status & Location Filter Bar */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                {/* Search Box */}
+                <div className="relative md:col-span-6">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <input
                         type="text"
-                        placeholder="Search devices..."
+                        placeholder="Search by device name, location, node #, channel ID..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-secondary border border-accent rounded-xl pl-10 pr-4 py-2.5 text-foreground placeholder-muted-foreground focus:border-primary outline-none"
+                        className="w-full bg-secondary/60 border border-border/40 rounded-xl pl-10 pr-8 py-2 text-sm text-foreground placeholder-muted-foreground focus:border-cyan-500 outline-none"
                     />
                     {searchQuery && (
                         <button
@@ -479,19 +406,35 @@ export default function Devices() {
                     )}
                 </div>
 
+                {/* Location Filter Dropdown */}
+                {uniqueLocations.length > 0 && (
+                    <div className="relative md:col-span-3">
+                        <select
+                            value={locationFilter}
+                            onChange={(e) => setLocationFilter(e.target.value)}
+                            className="w-full bg-secondary/60 border border-border/40 rounded-xl px-3 py-2 text-xs font-semibold text-foreground outline-none cursor-pointer"
+                        >
+                            <option value="all">📍 All Locations ({uniqueLocations.length} Sites)</option>
+                            {uniqueLocations.map(loc => (
+                                <option key={loc} value={loc}>📍 {loc}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
                 {/* Status Filter Chips */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:col-span-3 justify-end">
                     <Filter className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                     {statusFilters.map((filter) => (
                         <button
                             key={filter.value}
                             onClick={() => setStatusFilter(filter.value)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${statusFilter === filter.value
+                            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${statusFilter === filter.value
                                 ? `${filter.color} text-white`
-                                : 'bg-secondary text-muted-foreground hover:bg-accent'
+                                : 'bg-secondary/60 text-muted-foreground hover:bg-accent'
                                 }`}
                         >
-                            <span className={`w-2 h-2 rounded-full ${filter.color}`} />
+                            <span className={`w-1.5 h-1.5 rounded-full ${filter.color}`} />
                             {filter.label}
                         </button>
                     ))}
@@ -527,242 +470,7 @@ export default function Devices() {
                 </div>
             )}
 
-            {/* Add/Edit Device Form */}
-            {isAdmin && !selectionMode && (isFormOpen || editingDeviceId) && (
-                <GlassCard size="lg" className="p-4 lg:p-6 mb-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                            <Plus className="h-5 w-5 text-blue-400" />
-                            {editingDeviceId ? 'Edit Device Settings' : 'Add New Device'}
-                        </h3>
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setShowQRScanner(true)}
-                                className="flex items-center gap-2 px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 font-medium rounded-lg transition-all text-sm"
-                            >
-                                <ScanLine className="h-4 w-4" />
-                                {editingDeviceId ? 'Update Metadata' : 'Scan QR'}
-                            </button>
-                            {editingDeviceId && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setEditingDeviceId(null)
-                                        resetForm()
-                                    }}
-                                    className="flex items-center gap-2 px-3 py-2 bg-secondary hover:bg-accent text-foreground font-medium rounded-lg transition-all text-sm"
-                                >
-                                    Cancel Edit
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                onClick={() => setShowQRGenerator(true)}
-                                className="flex items-center gap-2 px-3 py-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 font-medium rounded-lg transition-all text-sm"
-                            >
-                                <QrCode className="h-4 w-4" />
-                                Generate QR
-                            </button>
-                        </div>
-                    </div>
-                    <form onSubmit={handleAddDevice} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {/* Device Name */}
-                        <div>
-                            <label className="text-sm text-muted-foreground mb-1.5 block">Device Name *</label>
-                            <input
-                                type="text"
-                                required
-                                value={newDevice.name}
-                                onChange={e => setNewDevice({ ...newDevice, name: e.target.value })}
-                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
-                                placeholder="e.g., NodeMCU-01"
-                            />
-                        </div>
 
-                        {/* Location Name */}
-                        <div>
-                            <label className="text-sm text-muted-foreground mb-1.5 block">Location Name *</label>
-                            <input
-                                type="text"
-                                required
-                                value={newDevice.location_name}
-                                onChange={e => setNewDevice({ ...newDevice, location_name: e.target.value })}
-                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
-                                placeholder="e.g., Tank A - Block 3"
-                            />
-                        </div>
-
-                        {/* Node Number */}
-                        <div>
-                            <label className="text-sm text-muted-foreground mb-1.5 block">Node Number *</label>
-                            <input
-                                type="text"
-                                required
-                                value={newDevice.node_number}
-                                onChange={e => setNewDevice({ ...newDevice, node_number: e.target.value })}
-                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
-                                placeholder="e.g., NODE-001"
-                            />
-                        </div>
-
-                        {/* Latitude */}
-                        <div>
-                            <label className="text-sm text-muted-foreground mb-1.5 block">Latitude *</label>
-                            <input
-                                type="number"
-                                step="any"
-                                required
-                                value={newDevice.latitude}
-                                onChange={e => setNewDevice({ ...newDevice, latitude: e.target.value })}
-                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
-                                placeholder="e.g., 20.5937"
-                            />
-                        </div>
-
-                        {/* Longitude */}
-                        <div>
-                            <label className="text-sm text-muted-foreground mb-1.5 block">Longitude *</label>
-                            <input
-                                type="number"
-                                step="any"
-                                required
-                                value={newDevice.longitude}
-                                onChange={e => setNewDevice({ ...newDevice, longitude: e.target.value })}
-                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
-                                placeholder="e.g., 78.9629"
-                            />
-                        </div>
-
-                        {/* SIM Number */}
-                        <div>
-                            <label className="text-sm text-muted-foreground mb-1.5 block">SIM Number *</label>
-                            <input
-                                type="text"
-                                required
-                                value={newDevice.sim_number}
-                                onChange={e => setNewDevice({ ...newDevice, sim_number: e.target.value })}
-                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
-                                placeholder="e.g., +91-9876543210"
-                            />
-                        </div>
-
-                        {/* ThingSpeak Channel ID */}
-                        <div>
-                            <label className="text-sm text-muted-foreground mb-1.5 block">ThingSpeak Channel ID *</label>
-                            <input
-                                type="text"
-                                required
-                                value={newDevice.thingspeak_channel_id}
-                                onChange={e => setNewDevice({ ...newDevice, thingspeak_channel_id: e.target.value })}
-                                className="w-full bg-background/50 border border-accent rounded-lg px-3 py-2.5 text-foreground font-mono focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm transition-all"
-                                placeholder="e.g., 2713286"
-                            />
-                        </div>
-
-                        {/* ThingSpeak Read API Key */}
-                        <div className="md:col-span-1 lg:col-span-1">
-                            <label className="text-sm text-muted-foreground mb-1.5 block">ThingSpeak Read API Key *</label>
-                            <input
-                                type="text"
-                                required
-                                value={newDevice.thingspeak_read_key}
-                                onChange={e => setNewDevice({ ...newDevice, thingspeak_read_key: e.target.value })}
-                                className="w-full glass-system-inset px-3 py-2.5 text-foreground font-mono outline-none text-sm"
-                                placeholder="e.g., XXXXXXXXXXXXXX"
-                            />
-                        </div>
-
-                        {/* Safe TDS Range */}
-                        <div>
-                            <label className="text-sm text-muted-foreground mb-1.5 block">Safe TDS Min (Default: 35)</label>
-                            <input
-                                type="number"
-                                value={newDevice.safe_tds_min}
-                                onChange={e => setNewDevice({ ...newDevice, safe_tds_min: e.target.value })}
-                                className="w-full glass-system-inset px-3 py-2.5 text-foreground outline-none text-sm"
-                                placeholder="35"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="text-sm text-muted-foreground mb-1.5 block">Safe TDS Max (Default: 175)</label>
-                            <input
-                                type="number"
-                                value={newDevice.safe_tds_max}
-                                onChange={e => setNewDevice({ ...newDevice, safe_tds_max: e.target.value })}
-                                className="w-full glass-system-inset px-3 py-2.5 text-foreground outline-none text-sm"
-                                placeholder="175"
-                            />
-                        </div>
-
-                        {/* Field Mapping Section */}
-                        <div className="md:col-span-2 lg:col-span-3">
-                            <h4 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                                ThingSpeak Field Mapping
-                            </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {/* TDS Field */}
-                                <div>
-                                    <label className="text-sm text-muted-foreground mb-1.5 block">TDS Field Number</label>
-                                    <select
-                                        value={newDevice.tds_field}
-                                        onChange={e => setNewDevice({ ...newDevice, tds_field: parseInt(e.target.value) })}
-                                        className="w-full glass-system-inset px-3 py-2.5 text-foreground outline-none text-sm"
-                                    >
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
-                                            <option key={num} value={num}>Field {num}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {/* Temperature Field */}
-                                <div>
-                                    <label className="text-sm text-muted-foreground mb-1.5 block">Temperature Field Number</label>
-                                    <select
-                                        value={newDevice.temp_field}
-                                        onChange={e => setNewDevice({ ...newDevice, temp_field: parseInt(e.target.value) })}
-                                        className="w-full glass-system-inset px-3 py-2.5 text-foreground outline-none text-sm"
-                                    >
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
-                                            <option key={num} value={num}>Field {num}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {/* Voltage Field */}
-                                <div>
-                                    <label className="text-sm text-muted-foreground mb-1.5 block">Voltage Field Number</label>
-                                    <select
-                                        value={newDevice.voltage_field}
-                                        onChange={e => setNewDevice({ ...newDevice, voltage_field: parseInt(e.target.value) })}
-                                        className="w-full glass-system-inset px-3 py-2.5 text-foreground outline-none text-sm"
-                                    >
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
-                                            <option key={num} value={num}>Field {num}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Submit Button */}
-                        <div className="md:col-span-2 lg:col-span-3 flex justify-end">
-                            <button
-                                type="submit"
-                                disabled={addingDevice}
-                                className="px-6 py-2.5 glass-system-child text-primary-foreground font-bold rounded-xl transition-all shadow-xl border-white/20 hover:scale-[1.02] active:scale-95 disabled:opacity-50"
-                            >
-                                {editingDeviceId 
-                                    ? (addingDevice ? 'Updating...' : 'Update Device') 
-                                    : (addingDevice ? 'Adding...' : 'Add Device')
-                                }
-                            </button>
-                        </div>
-                    </form>
-                </GlassCard>
-            )}
 
             {/* Device Quick View Floating Panel / Drawer */}
             <AnimatePresence>
@@ -1087,107 +795,239 @@ export default function Devices() {
                 )}
             </AnimatePresence>
 
-            {/* Device Grid */}
-            <div className={cn(
-                "grid gap-4 transition-all duration-500",
-                // Perfect Fit: High-density landscape grid
-                isLandscape && !isDesktop ? "grid-cols-2 lg:grid-cols-3 gap-3" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
-            )}>
-                {filteredDevices.map(device => (
-                    <GlassCard
-                        size="md"
-                        key={device.id}
-                        onClick={() => handleDeviceClick(device)}
-                        className={`transition-all cursor-pointer ${selectionMode && selectedDevices.has(device.id)
-                            ? 'ring-2 ring-primary bg-primary/5'
-                            : 'hover:border-primary/50'
-                            }`}
-                    >
-                        <div className="flex justify-between items-start mb-3">
-                            <div className="h-10 w-10 lg:h-12 lg:w-12 glass-system-micro flex items-center justify-center border-white/10 shadow-lg">
-                                {selectionMode ? (
-                                    selectedDevices.has(device.id) ? (
-                                        <CheckSquare className="h-5 w-5 text-primary" />
+            {/* Device Rendering: Grid View vs Compact Table View */}
+            {viewMode === 'grid' ? (
+                <div className={cn(
+                    "grid gap-4 transition-all duration-500",
+                    isLandscape && !isDesktop ? "grid-cols-2 lg:grid-cols-3 gap-3" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
+                )}>
+                    {paginatedDevices.map(device => (
+                        <GlassCard
+                            size="md"
+                            key={device.id}
+                            onClick={() => handleDeviceClick(device)}
+                            className={`transition-all cursor-pointer ${selectionMode && selectedDevices.has(device.id)
+                                ? 'ring-2 ring-cyan-500 bg-cyan-500/5'
+                                : 'hover:border-cyan-500/50'
+                                }`}
+                        >
+                            <div className="flex justify-between items-start mb-3">
+                                <div className="h-10 w-10 lg:h-12 lg:w-12 glass-system-micro flex items-center justify-center border-white/10 shadow-lg rounded-2xl">
+                                    {selectionMode ? (
+                                        selectedDevices.has(device.id) ? (
+                                            <CheckSquare className="h-5 w-5 text-cyan-400" />
+                                        ) : (
+                                            <Square className="h-5 w-5 text-muted-foreground" />
+                                        )
                                     ) : (
-                                        <Square className="h-5 w-5 text-muted-foreground" />
-                                    )
-                                ) : (
-                                    <Smartphone className="h-5 w-5 lg:h-6 lg:w-6 text-primary drop-shadow-[0_0_8px_rgba(59,130,246,0.3)]" />
+                                        <Smartphone className="h-5 w-5 lg:h-6 lg:w-6 text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.3)]" />
+                                    )}
+                                </div>
+                                {!selectionMode && isAdmin && (
+                                    <div className="flex gap-1">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                setEditingDevice(device)
+                                                setIsAddModalOpen(true)
+                                            }}
+                                            className="p-2 hover:bg-cyan-500/10 rounded-xl text-muted-foreground hover:text-cyan-400 transition-colors"
+                                            title="Edit Device"
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleDelete(device.id)
+                                            }}
+                                            className="p-2 hover:bg-red-500/10 rounded-xl text-muted-foreground hover:text-red-400 transition-colors"
+                                            title="Delete Device"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
                                 )}
                             </div>
-                            {!selectionMode && isAdmin && (
-                                <div className="flex gap-1">
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            setEditingDeviceId(device.id)
-                                            setNewDevice({
-                                                name: device.name,
-                                                location_name: device.location_name || '',
-                                                latitude: String(device.latitude),
-                                                longitude: String(device.longitude),
-                                                sim_number: device.sim_number || '',
-                                                node_number: device.node_number || '',
-                                                thingspeak_channel_id: device.thingspeak_channel_id || '',
-                                                thingspeak_read_key: device.thingspeak_read_key || '',
-                                                tds_field: device.tds_field_number || 1,
-                                                temp_field: device.temperature_field_number || 2,
-                                                voltage_field: device.voltage_field_number || 3,
-                                                safe_tds_min: String(device.safe_tds_min || 35),
-                                                safe_tds_max: String(device.safe_tds_max || 175)
-                                            })
-                                            window.scrollTo({ top: 0, behavior: 'smooth' })
-                                        }}
-                                        className="p-2 hover:bg-primary/10 rounded-lg text-muted-foreground hover:text-primary transition-colors"
-                                        title="Edit Device"
-                                    >
-                                        <Pencil className="h-4 w-4" />
 
-                                    </button>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            handleDelete(device.id)
-                                        }}
-                                        className="p-2 hover:bg-red-500/10 rounded-lg text-muted-foreground hover:text-red-400 transition-colors"
-                                        title="Delete Device"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </button>
+                            <h3 className="text-base lg:text-lg font-bold text-foreground mb-0.5 truncate">{device.name}</h3>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1 mb-3 truncate">
+                                <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                <span>{device.location_name || 'Deployment Location'}</span>
+                            </p>
+
+                            <div className="space-y-3 mt-auto pt-2 border-t border-border/30">
+                                <div className="flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground font-medium">Node: {device.node_number || 'N/A'}</span>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                                        (device.status === 'maintenance' ? 'maintenance' : getConnectivityStatus(device.last_reading_at || device.last_seen_at)) === 'online' 
+                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
+                                        (device.status === 'maintenance' ? 'maintenance' : getConnectivityStatus(device.last_reading_at || device.last_seen_at)) === 'maintenance' 
+                                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' :
+                                        'bg-secondary text-muted-foreground border-border/40'
+                                    }`}>
+                                        {device.status === 'maintenance' ? 'maintenance' : getConnectivityStatus(device.last_reading_at || device.last_seen_at)}
+                                    </span>
                                 </div>
-                            )}
-                        </div>
-                        <h3 className="text-lg lg:text-xl font-bold text-foreground mb-1 truncate">{device.location_name || device.name}</h3>
-                        <div className="space-y-3 mt-auto">
-                            <div className="flex justify-end items-center text-xs text-muted-foreground">
-                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase border flex-shrink-0 ${
-                                    (device.status === 'maintenance' ? 'maintenance' : getConnectivityStatus(device.last_reading_at || device.last_seen_at)) === 'online' 
-                                        ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
-                                    (device.status === 'maintenance' ? 'maintenance' : getConnectivityStatus(device.last_reading_at || device.last_seen_at)) === 'maintenance' 
-                                        ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
-                                    'bg-muted text-muted-foreground border-muted-foreground/20'
-                                }`}>
-                                    {device.status === 'maintenance' ? 'maintenance' : getConnectivityStatus(device.last_reading_at || device.last_seen_at)}
-                                </span>
                             </div>
-                        </div>
-                    </GlassCard>
-                ))}
+                        </GlassCard>
+                    ))}
+                </div>
+            ) : (
+                /* Compact Table View */
+                <div className="overflow-x-auto rounded-2xl border border-border/40 bg-card/40 backdrop-blur-xl">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="border-b border-border/40 bg-secondary/30 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                                <th className="p-3 pl-4">Device Name</th>
+                                <th className="p-3">Location</th>
+                                <th className="p-3">Node #</th>
+                                <th className="p-3">Channel ID</th>
+                                <th className="p-3">Latest TDS</th>
+                                <th className="p-3">Status</th>
+                                {isAdmin && <th className="p-3 text-right pr-4">Actions</th>}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/30 text-xs">
+                            {paginatedDevices.map(device => {
+                                const conn = getConnectivityStatus(device.last_reading_at || device.last_seen_at)
+                                return (
+                                    <tr
+                                        key={device.id}
+                                        onClick={() => handleDeviceClick(device)}
+                                        className="hover:bg-secondary/40 transition-colors cursor-pointer"
+                                    >
+                                        <td className="p-3 pl-4 font-bold text-foreground">{device.name}</td>
+                                        <td className="p-3 text-muted-foreground">{device.location_name || '—'}</td>
+                                        <td className="p-3 font-mono text-muted-foreground">{device.node_number || '—'}</td>
+                                        <td className="p-3 font-mono text-muted-foreground">{device.thingspeak_channel_id || '—'}</td>
+                                        <td className="p-3 font-mono font-bold text-cyan-400">
+                                            {device.latest_tds != null ? `${device.latest_tds} PPM` : '—'}
+                                        </td>
+                                        <td className="p-3">
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
+                                                conn === 'online' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-secondary text-muted-foreground border-border/40'
+                                            }`}>
+                                                {conn}
+                                            </span>
+                                        </td>
+                                        {isAdmin && (
+                                            <td className="p-3 text-right pr-4">
+                                                <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                                                    <button
+                                                        onClick={() => { setEditingDevice(device); setIsAddModalOpen(true) }}
+                                                        className="p-1.5 hover:bg-cyan-500/10 rounded-lg text-muted-foreground hover:text-cyan-400"
+                                                    >
+                                                        <Pencil className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(device.id)}
+                                                        className="p-1.5 hover:bg-rose-500/10 rounded-lg text-muted-foreground hover:text-rose-400"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        )}
+                                    </tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
-                {filteredDevices.length === 0 && (
-                    <div className="col-span-full text-center py-12 text-muted-foreground">
-                        {searchQuery || statusFilter !== 'all'
-                            ? 'No devices match your filters'
-                            : 'No devices found. Add your first device above.'}
+            {filteredDevices.length === 0 && (
+                <div className="col-span-full text-center py-16 text-muted-foreground bg-card/20 rounded-3xl border border-border/30">
+                    <Smartphone className="w-10 h-10 mx-auto mb-3 opacity-30 text-cyan-400" />
+                    <p className="text-sm font-bold text-foreground">No EvaraTDS devices found</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        {searchQuery || statusFilter !== 'all' || locationFilter !== 'all'
+                            ? 'Try clearing your search or status/location filters'
+                            : 'Click "Provision Device" to add your first EvaraTDS device.'}
+                    </p>
+                </div>
+            )}
+
+            {/* Pagination Controls for 50-Device Scale */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4 border-t border-border/30 text-xs font-semibold">
+                    <span className="text-muted-foreground">
+                        Page {currentPage} of {totalPages} ({filteredDevices.length} Total Devices)
+                    </span>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                            className="p-2 rounded-xl bg-secondary hover:bg-accent disabled:opacity-40 transition-all"
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                            <button
+                                key={page}
+                                type="button"
+                                onClick={() => setCurrentPage(page)}
+                                className={`w-8 h-8 rounded-xl font-bold transition-all ${
+                                    currentPage === page
+                                        ? 'bg-cyan-500 text-black shadow-md shadow-cyan-500/20'
+                                        : 'bg-secondary/60 text-muted-foreground hover:bg-accent'
+                                }`}
+                            >
+                                {page}
+                            </button>
+                        ))}
+
+                        <button
+                            type="button"
+                            disabled={currentPage === totalPages}
+                            onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                            className="p-2 rounded-xl bg-secondary hover:bg-accent disabled:opacity-40 transition-all"
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
                     </div>
-                )}
-            </div>
+                </div>
+            )}
 
-            {/* Device Detail Modal REMOVED - using Global Inspector */}
+            {/* 3-Step Device Provisioning & Edit Wizard Modal */}
+            <AddDeviceModal
+                isOpen={isAddModalOpen}
+                onClose={() => {
+                    setIsAddModalOpen(false)
+                    setEditingDevice(null)
+                }}
+                onSubmit={async (deviceData) => {
+                    if (editingDevice) {
+                        await updateDevice({ id: editingDevice.id, updates: deviceData })
+                    } else {
+                        await addDevice(deviceData)
+                    }
+                }}
+                initialData={editingDevice}
+                isEditing={!!editingDevice}
+            />
 
             {/* QR Code Generator Modal */}
             <QRCodeGenerator
-                deviceData={newDevice}
+                deviceData={{
+                    name: editingDevice?.name || 'EvaraTDS Device',
+                    location_name: editingDevice?.location_name || '',
+                    latitude: String(editingDevice?.latitude || 17.4455),
+                    longitude: String(editingDevice?.longitude || 78.3489),
+                    sim_number: editingDevice?.sim_number || '',
+                    node_number: editingDevice?.node_number || '',
+                    thingspeak_channel_id: editingDevice?.thingspeak_channel_id || '',
+                    thingspeak_read_key: editingDevice?.thingspeak_read_key || '',
+                    tds_field: editingDevice?.tds_field_number || 1,
+                    temp_field: editingDevice?.temperature_field_number || 2,
+                    voltage_field: editingDevice?.voltage_field_number || 3,
+                    safe_tds_min: String(editingDevice?.safe_tds_min || 35),
+                    safe_tds_max: String(editingDevice?.safe_tds_max || 175),
+                }}
                 isOpen={showQRGenerator}
                 onClose={() => setShowQRGenerator(false)}
             />
@@ -1196,22 +1036,8 @@ export default function Devices() {
             <QRCodeScanner
                 isOpen={showQRScanner}
                 onClose={() => setShowQRScanner(false)}
-                onScan={(data) => {
-                    setNewDevice({
-                        name: data.name,
-                        location_name: data.location_name,
-                        latitude: String(data.latitude),
-                        longitude: String(data.longitude),
-                        sim_number: data.sim_number,
-                        node_number: data.node_number,
-                        thingspeak_channel_id: data.thingspeak_channel_id || '',
-                        thingspeak_read_key: data.thingspeak_read_key,
-                        tds_field: data.tds_field || 1,
-                        temp_field: data.temp_field || 2,
-                        voltage_field: data.voltage_field || 3,
-                        safe_tds_min: String(data.safe_tds_min || 35),
-                        safe_tds_max: String(data.safe_tds_max || 175)
-                    })
+                onScan={() => {
+                    setIsAddModalOpen(true)
                 }}
             />
         </div>

@@ -90,8 +90,11 @@ backend/node_modules/
 backend/firebase-service-account.json
 admin_dashboard/android/app/google-services.json
 *-service-account.json
+*serviceAccountKey*.json
+serviceAccountKey.json
+backend/src/config/serviceAccountKey.json
 *.keystore
 *.jks
-c r e d e n t i a l s . j s o n  
- * c r e d e n t i a l * . j s o n  
+credentials.json
+*credential*.json
 *.apk

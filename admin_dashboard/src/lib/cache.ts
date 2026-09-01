@@ -2,7 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import { type Device } from '../types'
 import { type ParsedSensorData } from './thingspeak'
 
-interface EvaraTDSDB extends DBSchema {
+interface EvaraTdsDB extends DBSchema {
     devices: {
         key: string
         value: {
@@ -33,15 +33,15 @@ const DB_NAME = 'evaratds-cache'
 const DB_VERSION = 1
 const CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
 
-let dbInstance: IDBPDatabase<EvaraTDSDB> | null = null
+let dbInstance: IDBPDatabase<EvaraTdsDB> | null = null
 
 /**
  * Initialize IndexedDB
  */
-export async function initDB(): Promise<IDBPDatabase<EvaraTDSDB>> {
+export async function initDB(): Promise<IDBPDatabase<EvaraTdsDB>> {
     if (dbInstance) return dbInstance
 
-    dbInstance = await openDB<EvaraTDSDB>(DB_NAME, DB_VERSION, {
+    dbInstance = await openDB<EvaraTdsDB>(DB_NAME, DB_VERSION, {
         upgrade(db) {
             // Create object stores
             if (!db.objectStoreNames.contains('devices')) {

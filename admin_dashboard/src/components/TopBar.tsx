@@ -1,4 +1,3 @@
-"use client"
 import { Bell, AlertTriangle, MoreVertical, LayoutDashboard, Map as MapIcon, Smartphone, FileText, Settings, ShieldCheck, Users as UsersIcon, LogOut } from "lucide-react"
 import { ThemeToggle } from "./ThemeToggle"
 import { Button } from "@/components/ui/button"
@@ -72,7 +71,7 @@ export function TopBar() {
                 <img src="/pwa-512x512.png" alt="EvaraTDS" className="size-12 rounded-2xl shadow-inner" />
                 <div className="flex flex-col">
                     <span className="text-[17px] font-black tracking-tight text-foreground leading-none whitespace-nowrap">EvaraTDS</span>
-                    <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold leading-none mt-1.5 whitespace-nowrap">Water Systems</span>
+                    <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-bold leading-none mt-1.5 whitespace-nowrap">Water Quality Monitor</span>
                 </div>
             </Link>
 

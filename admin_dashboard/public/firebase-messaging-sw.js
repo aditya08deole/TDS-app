@@ -1,4 +1,4 @@
-// ─── EvaraTDS Firebase Messaging Service Worker ──────────────────────────────
+// ─── Smart Valve Firebase Messaging Service Worker ──────────────────────────────
 // Handles background push notifications when the app tab is closed or hidden.
 // This file is served from /public and injected with real env values at build time.
 // For dev, the Vite dev-server middleware injects values at request time.
@@ -44,7 +44,7 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] 📬 Background message received:', payload);
 
-  const title = payload.notification?.title || '🚨 EvaraTDS Alert';
+  const title = payload.notification?.title || '🚨 Smart Valve Alert';
   const location = payload.data?.location_name || payload.data?.deviceId || 'System';
   const ppm = payload.data?.ppm || '';
   const recordedAt = payload.data?.recorded_at || '';
@@ -65,7 +65,7 @@ messaging.onBackgroundMessage((payload) => {
     icon: '/pwa-192x192.png',
     badge: '/pwa-192x192.png',
     // tag groups alerts per device — replaces old notification instead of stacking
-    tag: payload.data?.alertId || `evaratds-${payload.data?.deviceId || 'alert'}`,
+    tag: payload.data?.alertId || `smartvalve-${payload.data?.deviceId || 'alert'}`,
     renotify: true,
     requireInteraction: severity === 'critical' && !isReminder,
     data: {

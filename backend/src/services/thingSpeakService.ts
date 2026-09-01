@@ -52,3 +52,40 @@ export async function getLatestThingSpeakReading(device: Device): Promise<any | 
         return null;
     }
 }
+
+/**
+ * Tests connection to a ThingSpeak channel with given Read Key.
+ * Returns metadata about the channel if successful.
+ */
+export async function testThingSpeakConnection(
+    channelId: string,
+    readKey: string
+): Promise<{ success: boolean; channelName?: string; lastEntryId?: number; error?: string }> {
+    if (!channelId || !channelId.trim()) {
+        return { success: false, error: 'Channel ID is required' };
+    }
+
+    try {
+        const cleanChannelId = channelId.trim();
+        const cleanReadKey = (readKey || '').trim();
+        const url = `https://api.thingspeak.com/channels/${cleanChannelId}/feeds/last.json?api_key=${cleanReadKey}&_cb=${Date.now()}`;
+
+        const response = await axios.get(url, { timeout: 8000 });
+        if (response.status === 200 && response.data) {
+            return {
+                success: true,
+                lastEntryId: response.data.entry_id || 0,
+            };
+        }
+        return { success: false, error: 'Channel returned empty response' };
+    } catch (error: any) {
+        if (error.response?.status === 404) {
+            return { success: false, error: 'Channel ID not found or is private without a valid Read Key' };
+        }
+        if (error.response?.status === 400 || error.response?.status === 403) {
+            return { success: false, error: 'Invalid ThingSpeak API Key' };
+        }
+        return { success: false, error: error.message || 'ThingSpeak connection request failed' };
+    }
+}
+

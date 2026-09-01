@@ -112,17 +112,29 @@ export async function getDevicesByStatus(status: string): Promise<Device[]> {
 export async function getDeviceStats(): Promise<any> {
   const allDevices = await getAllDevices();
   
-  const totalTds = allDevices.reduce((acc, d) => acc + (d.last_tds || 0), 0);
-  const activeDevices = allDevices.filter(d => d.last_tds !== undefined && d.last_tds !== null).length;
-  const averageTds = activeDevices > 0 ? totalTds / activeDevices : 0;
+  const now = Date.now();
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+
+  // Determine online/offline based on last_reading_at recency (same logic as frontend)
+  // NOTE: last_tds on the device document is stale — real-time TDS comes from ThingSpeak,
+  // not from writes back to Firestore. Do NOT use last_tds for averages here.
+  const onlineDevices = allDevices.filter(d => {
+    const ts = d.last_reading_at || d.last_seen_at;
+    if (!ts) return false;
+    try {
+      return (now - new Date(ts).getTime()) < ONE_HOUR_MS;
+    } catch {
+      return false;
+    }
+  });
 
   return {
     total_devices: allDevices.length,
-    online_count: allDevices.filter(d => d.status === 'online').length,
-    offline_count: allDevices.filter(d => d.status === 'offline').length,
+    online_count: onlineDevices.length,
+    offline_count: allDevices.length - onlineDevices.length,
     critical_count: allDevices.filter(d => d.status === 'critical').length,
     maintenance_count: allDevices.filter(d => d.status === 'maintenance').length,
-    average_tds: Math.round(averageTds * 10) / 10,
+    // average_tds is intentionally omitted — use /api/devices/telemetry/live for real-time TDS values
     updated_at: new Date().toISOString()
   };
 }

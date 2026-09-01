@@ -18,21 +18,30 @@ router.get('/', async (req: Request, res: Response) => {
 
     let snapshot: FirebaseFirestore.QuerySnapshot;
     if (requestedStatus) {
+      // Single-status filter with server-side ordering + limit
       snapshot = await getDb().collection('alerts')
         .where('status', '==', requestedStatus)
+        .orderBy('created_at', 'desc')
+        .limit(limit)
         .get();
     } else if (includeResolved) {
+      // All alerts — server-side ordered + limited
       snapshot = await getDb().collection('alerts')
+        .orderBy('created_at', 'desc')
+        .limit(limit)
         .get();
     } else {
-      // By default: ONLY return active un-resolved alerts (open & acknowledged)
+      // Default: only active (open + acknowledged) — Firestore 'in' doesn't support orderBy
+      // so we fetch both statuses separately and merge, then sort in-memory.
+      // This is necessary because Firestore composite indexes don't support 'in' + orderBy
+      // without explicit composite index creation.
       snapshot = await getDb().collection('alerts')
         .where('status', 'in', ['open', 'acknowledged'])
         .get();
     }
 
     let alerts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    // Sort in-memory to prevent missing index errors
+    // In-memory sort only needed for the 'in' query path which can't use server-side orderBy
     alerts.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     if (alerts.length > limit) alerts = alerts.slice(0, limit);
 

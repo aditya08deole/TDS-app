@@ -53,16 +53,22 @@ export const THINGSPEAK_CONFIG = {
 } as const
 
 /**
- * Determine device status based on TDS value
- * Uses internal buffers for more accurate status determination
+ * Determine device TDS quality status based on TDS value.
+ * NOTE: This function classifies DATA QUALITY only, not connectivity.
+ * - 'online': valid reading within safe range
+ * - 'critical': valid reading outside safe range
+ * - For missing/invalid readings, returns 'online' to avoid false offline status.
+ *   Use getConnectivityStatus() separately for actual connectivity.
  */
 export function getTDSStatus(
     tds: number | null | undefined, 
     customMin?: number, 
     customMax?: number
 ): 'online' | 'critical' | 'offline' {
-    if (tds === null || tds === undefined) return 'offline'
-    if (tds <= TDS_RANGES.MIN_VALID) return 'offline' // Invalid reading
+    // No data at all — cannot determine quality; caller must use getConnectivityStatus for offline state
+    if (tds === null || tds === undefined) return 'online'
+    // Reading below minimum valid threshold is sensor noise — treat as missing, not offline
+    if (tds <= TDS_RANGES.MIN_VALID) return 'online'
 
     const min = customMin ?? TDS_THRESHOLDS.CRITICAL_LOW
     const max = customMax ?? TDS_THRESHOLDS.CRITICAL_HIGH
@@ -160,10 +166,23 @@ export type TDSCategory = 'safe' | 'critical' | 'unknown'
 export type ConnectivityStatus = 'online' | 'offline'
 
 /**
+ * Format and sanitize device or location name, ensuring legacy database names
+ * with "Smart Valve" or "Valve" are presented cleanly as EvaraTDS.
+ */
+export function formatDeviceName(name?: string | null): string {
+    if (!name) return 'EvaraTDS Device'
+    return name
+        .replace(/Smart\s*Valve/gi, 'EvaraTDS')
+        .replace(/SmartValve/gi, 'EvaraTDS')
+        .replace(/\bValve\b/gi, 'Device')
+}
+
+/**
  * Helper function to get device display name
- * Prefers location_name over device name
+ * Prefers location_name over device name, sanitized for consistent branding
  */
 export function getDeviceDisplayName(device: { location_name?: string | null; name: string }): string {
-    return device.location_name || device.name || 'Unknown Device'
+    const raw = device.location_name || device.name || 'EvaraTDS Device'
+    return formatDeviceName(raw)
 }
 
