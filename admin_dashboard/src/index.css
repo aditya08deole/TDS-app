@@ -245,3 +245,28 @@
 .animate-shimmer {
     animation: shimmer 3s linear infinite;
 }
+
+/* ─── LEAFLET LIQUID NODE POPUP STYLING ─── */
+.leaflet-popup.liquid-node-leaflet-popup {
+    margin-bottom: 0;
+    pointer-events: auto;
+}
+.liquid-node-leaflet-popup .leaflet-popup-content-wrapper {
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    border-radius: 2rem !important;
+    overflow: visible !important;
+    border: none !important;
+}
+.liquid-node-leaflet-popup .leaflet-popup-content {
+    margin: 0 !important;
+    line-height: 1.4 !important;
+    width: auto !important;
+}
+.liquid-node-leaflet-popup .leaflet-popup-tip-container {
+    display: none !important;
+}
+.liquid-node-leaflet-popup a.leaflet-popup-close-button {
+    display: none !important;
+}

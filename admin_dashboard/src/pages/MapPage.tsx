@@ -1,6 +1,4 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import { useTheme } from '../context/ThemeContext'
 import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
@@ -12,14 +10,13 @@ import 'leaflet/dist/leaflet.css'
 import { cn } from '@/lib/utils'
 import {
     Maximize2, Minimize2, Layers, X, Droplets, Thermometer, MapPin,
-    Wifi, WifiOff, RefreshCw,
-    TrendingUp, TrendingDown, AlertCircle
+    WifiOff, RefreshCw, TrendingUp, TrendingDown, AlertCircle, Activity
 } from 'lucide-react'
+import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts'
 import type { ParsedSensorData } from '../lib/thingspeak'
 import { type EnrichedDevice, type MapTheme, type MapStyle, type DeviceLocation } from '../types'
 
-// Fix #20: Ensure icons work on native platforms by providing base64 fallbacks if needed
-// or just ensuring the prototype is set correctly after import.
+// Ensure default icons work properly
 import icon from 'leaflet/dist/images/marker-icon.png'
 import iconShadow from 'leaflet/dist/images/marker-shadow.png'
 
@@ -29,80 +26,9 @@ let DefaultIcon = L.icon({
     iconAnchor: [12, 41]
 });
 
-// Fix #20: Ensure icons work on native platforms by providing base64 fallbacks if needed
-// or just ensuring the prototype is set correctly after import.
 if (typeof L !== 'undefined' && L.Marker && L.Marker.prototype) {
     L.Marker.prototype.options.icon = DefaultIcon;
 }
-
-// Native platform — map size invalidation handled in MapController via invalidateSize()
-const DeviceMarkers = ({
-    devices,
-    theme,
-    setSelectedDevice
-}: {
-    devices: DeviceLocation[],
-    theme: MapTheme,
-    setSelectedDevice: (d: DeviceLocation) => void
-}) => {
-    const map = useMap()
-    const [zoom, setZoom] = useState(map.getZoom())
-
-    useEffect(() => {
-        const handleZoom = () => setZoom(map.getZoom())
-        map.on('zoomend', handleZoom)
-        return () => { map.off('zoomend', handleZoom) }
-    }, [map])
-
-    return (
-        <>
-            {devices.map(device => {
-                const lat = Number(device.latitude)
-                const lng = Number(device.longitude)
-                if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return null
-                return (
-                    <Marker
-                        key={device.id}
-                        position={[lat, lng]}
-                        icon={createWhiteTransparentMarker(device, theme, zoom)}
-                        bubblingMouseEvents={true}
-                        eventHandlers={{
-                            click: () => {
-                                setSelectedDevice(device)
-                            }
-                        }}
-                    />
-                )
-            })}
-        </>
-    )
-}
-
-
-function MapController({ center, zoom }: { center: [number, number] | null; zoom?: number }) {
-    const map = useMap()
-
-    // Fix #20: Force map size recalculation on mount to prevent "stopped" rendering on APK
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            map.invalidateSize();
-        }, 300);
-        return () => clearTimeout(timer);
-    }, [map]);
-
-    useEffect(() => {
-        if (center) {
-            map.flyTo(center, zoom || 17, {
-                duration: 1.2,
-                easeLinearity: 0.25
-            })
-        }
-    }, [center, zoom, map])
-    return null
-}
-
-
-
 
 export const getMapTheme = (isDark: boolean): MapTheme => ({
     bg: {
@@ -136,18 +62,19 @@ export const getMapTheme = (isDark: boolean): MapTheme => ({
     }
 })
 
-
-function DevicePanel({
+/**
+ * Liquid Glass Floating Device Telemetry Inspector Window
+ */
+function DeviceTelemetryWindow({
     device,
+    theme,
     onClose
 }: {
     device: EnrichedDevice;
-    onClose: () => void
+    theme: MapTheme;
+    onClose: () => void;
 }) {
-    const { resolvedTheme } = useTheme()
-    const theme = useMemo(() => getMapTheme(resolvedTheme === 'dark'), [resolvedTheme])
-
-    const { data: sensorData = [] } = useDeviceThingSpeakChartData(device, 30)
+    const { data: sensorData = [], isLoading } = useDeviceThingSpeakChartData(device, 30)
     const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview')
 
     const chartData = useMemo(() => {
@@ -169,178 +96,331 @@ function DevicePanel({
         return chartData[chartData.length - 1].temp - chartData[chartData.length - 2].temp
     }, [chartData])
 
-    const ppmStatus = useMemo(() => getPpmStatus(device.latest_tds, device.status || 'offline', theme), [device.latest_tds, device.status, theme])
+    const customMin = device.safe_tds_min != null ? Number(device.safe_tds_min) : undefined
+    const customMax = device.safe_tds_max != null ? Number(device.safe_tds_max) : undefined
+    const ppmStatus = useMemo(() => getPpmStatus(device.latest_tds, device.status || 'offline', theme, customMin, customMax), [device.latest_tds, device.status, theme, customMin, customMax])
+
+    const isSafe = ppmStatus.status === 'online'
+    const isCritical = ppmStatus.status === 'critical'
+    const statusColor = isSafe ? '#00df81' : isCritical ? '#ff0055' : '#818cf8'
+    const statusBg = isSafe ? 'rgba(0, 223, 129, 0.12)' : isCritical ? 'rgba(255, 0, 85, 0.12)' : 'rgba(129, 140, 248, 0.12)'
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 90, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 90, scale: 0.96 }}
-            transition={{ type: "spring", stiffness: 450, damping: 32 }}
-            className="fixed bottom-24 left-2 right-4 md:left-auto md:right-10 md:w-[480px] md:bottom-20 z-[99999] max-w-xl mx-auto rounded-[2.2rem] liquid-glass-stack backdrop-blur-2xl border border-white/40 dark:border-white/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] text-foreground p-5 flex flex-col gap-4 overflow-hidden"
-        >
-            {/* Specular Top Light Rim Streak */}
-            <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-white/70 to-transparent pointer-events-none z-10" />
+        <div className="relative w-full rounded-[2.2rem] liquid-glass-stack backdrop-blur-3xl bg-slate-950/95 dark:bg-[#070b14]/98 border border-white/25 dark:border-white/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85),0_0_30px_rgba(6,182,212,0.2)] text-foreground p-5 flex flex-col gap-4 select-none animate-in fade-in slide-in-from-bottom-8 duration-300">
+            {/* Top Specular Light Rim Streak */}
+            <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-white/80 to-transparent pointer-events-none z-10" />
 
-            {/* Header Row */}
-            <div className="relative z-10 flex items-center justify-between">
-                <div className="flex items-center gap-3.5">
-                    <div className="relative w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg"
-                        style={{ background: ppmStatus.bg, border: `1.5px solid ${ppmStatus.color}50` }}>
+            {/* Header Section */}
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3.5 min-w-0">
+                    <div
+                        className="relative w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg shrink-0"
+                        style={{ background: statusBg, border: `1.5px solid ${statusColor}50` }}
+                    >
                         {device.status === 'offline' ? (
-                            <WifiOff className="w-5 h-5" style={{ color: ppmStatus.color }} />
+                            <WifiOff className="w-5 h-5" style={{ color: statusColor }} />
                         ) : (
-                            <Wifi className="w-5 h-5" style={{ color: ppmStatus.color }} />
+                            <Droplets className="w-6 h-6" style={{ color: statusColor }} />
                         )}
                         {device.status !== 'offline' && (
-                            <div className="absolute inset-0 rounded-2xl animate-ping opacity-25"
-                                style={{ background: ppmStatus.color }} />
+                            <div className="absolute inset-0 rounded-2xl animate-ping opacity-25" style={{ background: statusColor }} />
                         )}
                     </div>
-
-                    <div className="flex flex-col justify-center">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-base font-black text-foreground tracking-tight leading-none">{getDeviceDisplayName(device)}</h3>
-                            <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border shadow-xs"
-                                style={{ background: ppmStatus.bg, color: ppmStatus.color, borderColor: `${ppmStatus.color}40` }}>
-                                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: ppmStatus.color }} />
-                                {ppmStatus.label}
-                            </span>
-                        </div>
-                        <p className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1 mt-1">
-                            <MapPin className="w-3.5 h-3.5" style={{ color: ppmStatus.color }} /> {device.location_name || 'Location not set'}
+                    <div className="flex flex-col min-w-0">
+                        <h3 className="text-base font-black text-foreground tracking-tight leading-tight truncate">
+                            {getDeviceDisplayName(device)}
+                        </h3>
+                        <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mt-0.5 truncate">
+                            <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                            <span className="truncate">{device.location_name || 'Location not specified'}</span>
                         </p>
                     </div>
                 </div>
 
-                <button
-                    onClick={onClose}
-                    className="p-2 rounded-full bg-secondary/80 hover:bg-destructive text-foreground hover:text-destructive-foreground transition-all shadow-md active:scale-90 border border-border/40 shrink-0"
-                    aria-label="Close"
-                >
-                    <X className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                    <span
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-xs"
+                        style={{ background: statusBg, color: statusColor, borderColor: `${statusColor}40` }}
+                    >
+                        <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: statusColor }} />
+                        {ppmStatus.label}
+                    </span>
+                    <button
+                        onClick={onClose}
+                        className="p-2 rounded-full bg-white/10 hover:bg-rose-500 text-muted-foreground hover:text-white transition-all shadow-sm active:scale-90 border border-white/10"
+                        title="Close details"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
 
-            {/* Dynamic State Active Tab Selector (Green when Safe, Red when Critical) */}
-            <div className="relative z-10 flex p-1.5 gap-1.5 rounded-2xl bg-secondary/60 border border-border/30">
-                {['overview', 'history'].map((tab) => {
+            {/* Tab Selector */}
+            <div className="flex p-1 gap-1.5 rounded-xl bg-white/5 border border-white/10">
+                {(['overview', 'history'] as const).map((tab) => {
                     const isActive = activeTab === tab
-                    const isSafe = ppmStatus.status === 'online'
-                    const isCritical = ppmStatus.status === 'critical'
-
                     return (
                         <button
                             key={tab}
-                            onClick={() => setActiveTab(tab as 'overview' | 'history')}
+                            onClick={() => setActiveTab(tab)}
                             className={cn(
-                                "flex-1 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2",
+                                "flex-1 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-1.5",
                                 isActive
                                     ? isSafe
-                                        ? "bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30 scale-[1.02]"
+                                        ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/25 font-black"
                                         : isCritical
-                                            ? "bg-rose-500 text-white shadow-lg shadow-rose-500/30 scale-[1.02]"
-                                            : "bg-slate-500 text-white shadow-lg shadow-slate-500/30 scale-[1.02]"
+                                            ? "bg-rose-500 text-white shadow-md shadow-rose-500/25 font-black"
+                                            : "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/25 font-black"
                                     : "text-muted-foreground hover:text-foreground"
                             )}
                         >
-                            {tab}
+                            {tab === 'overview' ? (
+                                <>
+                                    <Activity className="w-3.5 h-3.5" />
+                                    <span>Telemetry & Trends</span>
+                                </>
+                            ) : (
+                                <>
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    <span>Recent Logs ({chartData.length})</span>
+                                </>
+                            )}
                         </button>
                     )
                 })}
             </div>
 
-            {/* Main Metrics Content */}
-            {activeTab === 'overview' && (
-                <div className="relative z-10 grid grid-cols-2 gap-3.5 items-stretch">
-                    {/* TDS Metric Card */}
-                    <div className="p-4 rounded-2xl bg-secondary/40 border border-border/30 shadow-sm backdrop-blur-xl flex flex-col justify-between hover:border-cyan-500/40 transition-all">
-                        <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-1.5">
-                                <div className="p-1.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30">
-                                    <Droplets className="w-4 h-4 text-cyan-500" />
+            {activeTab === 'overview' ? (
+                <div className="space-y-3.5">
+                    {/* Primary KPI Grid (TDS & Temperature) */}
+                    <div className="grid grid-cols-2 gap-3">
+                        {/* TDS Metric Card */}
+                        <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 shadow-sm flex flex-col justify-between hover:border-cyan-500/30 transition-all">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                    <div className="p-1 rounded-md bg-cyan-500/15 text-cyan-400">
+                                        <Droplets className="w-3.5 h-3.5" />
+                                    </div>
+                                    <span className="text-[10.5px] font-black uppercase tracking-wider text-muted-foreground">TDS Level</span>
                                 </div>
-                                <span className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">TDS Level</span>
+                                {tdsTrend !== 0 && (
+                                    <div className={cn(
+                                        "flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-black",
+                                        tdsTrend > 0 ? "bg-red-500/15 text-red-400" : "bg-emerald-500/15 text-emerald-400"
+                                    )}>
+                                        {tdsTrend > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                                        {Math.abs(tdsTrend)}
+                                    </div>
+                                )}
                             </div>
-                            {tdsTrend !== 0 && (
-                                <div className={cn(
-                                    "flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-black",
-                                    tdsTrend > 0 ? "bg-red-500/15 text-red-500" : "bg-emerald-500/15 text-emerald-500"
-                                )}>
-                                    {tdsTrend > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                                    {Math.abs(tdsTrend)}
-                                </div>
-                            )}
+                            <div className="flex items-baseline gap-1.5 mt-2">
+                                <span className="text-3xl font-black font-mono tracking-tighter" style={{ color: statusColor }}>
+                                    {device.latest_tds != null ? device.latest_tds : '--'}
+                                </span>
+                                <span className="text-xs font-black text-muted-foreground uppercase">ppm</span>
+                            </div>
+                            <div className="text-[9px] text-muted-foreground font-semibold mt-1">
+                                Safe Threshold: {customMin ?? 35}-{customMax ?? 175} ppm
+                            </div>
                         </div>
-                        <div className="flex items-baseline gap-1.5 mt-1">
-                            <span className="text-3xl font-black font-mono tracking-tighter" style={{ color: ppmStatus.color }}>{device.latest_tds || '--'}</span>
-                            <span className="text-xs font-black text-muted-foreground uppercase tracking-widest">ppm</span>
+
+                        {/* Temperature Metric Card */}
+                        <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 shadow-sm flex flex-col justify-between hover:border-amber-500/30 transition-all">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                    <div className="p-1 rounded-md bg-amber-500/15 text-amber-400">
+                                        <Thermometer className="w-3.5 h-3.5" />
+                                    </div>
+                                    <span className="text-[10.5px] font-black uppercase tracking-wider text-muted-foreground">Temperature</span>
+                                </div>
+                                {tempTrend !== 0 && (
+                                    <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/15 text-amber-400">
+                                        {tempTrend > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                                        {Math.abs(tempTrend)}°
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex items-baseline gap-1.5 mt-2">
+                                <span className="text-3xl font-black font-mono tracking-tighter text-amber-400">
+                                    {device.latest_temperature != null ? Number(device.latest_temperature).toFixed(1) : '--'}
+                                </span>
+                                <span className="text-xs font-black text-muted-foreground uppercase">°C</span>
+                            </div>
+                            <div className="text-[9px] text-muted-foreground font-semibold mt-1">
+                                Node #{device.node_number || device.id.slice(0, 5)}
+                            </div>
                         </div>
                     </div>
 
-                    {/* Temp Metric Card */}
-                    <div className="p-4 rounded-2xl bg-secondary/40 border border-border/30 shadow-sm backdrop-blur-xl flex flex-col justify-between hover:border-amber-500/40 transition-all">
+                    {/* 24-Hour TDS Trend Analysis Graph */}
+                    <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 shadow-inner">
                         <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-1.5">
-                                <div className="p-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30">
-                                    <Thermometer className="w-4 h-4 text-amber-500" />
-                                </div>
-                                <span className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Temp</span>
-                            </div>
-                            {tempTrend !== 0 && (
-                                <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/15 text-amber-500">
-                                    {tempTrend > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                                    {Math.abs(tempTrend)}
+                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                                <Activity className="w-3 h-3 text-cyan-400" />
+                                Live Telemetry Stream
+                            </span>
+                            <span className="text-[9.5px] font-mono text-cyan-400 font-bold">{chartData.length} Samples</span>
+                        </div>
+                        <div className="h-[90px] w-full">
+                            {chartData.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={chartData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id={`windowFill-${device.id}`} x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor={statusColor} stopOpacity={0.45} />
+                                                <stop offset="95%" stopColor={statusColor} stopOpacity={0.0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <Tooltip
+                                            content={({ active, payload }) => {
+                                                if (active && payload && payload.length) {
+                                                    const data = payload[0].payload
+                                                    return (
+                                                        <div className="p-2 rounded-xl bg-slate-900/95 border border-white/20 shadow-xl text-xs font-mono">
+                                                            <div className="text-muted-foreground text-[9.5px]">{data.time}</div>
+                                                            <div className="font-bold text-cyan-400">{data.tds} ppm</div>
+                                                            <div className="font-bold text-amber-400">{data.temp} °C</div>
+                                                        </div>
+                                                    )
+                                                }
+                                                return null
+                                            }}
+                                        />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="tds"
+                                            stroke={statusColor}
+                                            strokeWidth={2.5}
+                                            fill={`url(#windowFill-${device.id})`}
+                                            isAnimationActive={false}
+                                        />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                                    {isLoading ? 'Fetching telemetry stream...' : 'No historical data available'}
                                 </div>
                             )}
                         </div>
-                        <div className="flex items-baseline gap-1.5 mt-1">
-                            <span className="text-3xl font-black font-mono tracking-tighter text-amber-500">{device.latest_temperature || '--'}</span>
-                            <span className="text-xs font-black text-muted-foreground uppercase tracking-widest">°C</span>
-                        </div>
                     </div>
                 </div>
-            )}
-
-            {activeTab === 'history' && (
-                <div className="relative z-10 space-y-2 max-h-[190px] overflow-y-auto px-1 custom-scrollbar">
-                    {chartData.slice().reverse().map((data, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 rounded-2xl bg-secondary/40 border border-border/20 hover:border-cyan-500/30 transition-all">
-                            <span className="text-[11px] font-black text-muted-foreground uppercase">{data.time}</span>
-                            <div className="flex items-center gap-5">
-                                <div className="flex items-center gap-1.5">
-                                    <Droplets className="w-3.5 h-3.5 text-cyan-500" />
-                                    <span className="text-xs font-black font-mono text-cyan-500">{data.tds} ppm</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <Thermometer className="w-3.5 h-3.5 text-amber-500" />
-                                    <span className="text-xs font-black font-mono text-amber-500">{data.temp} °C</span>
+            ) : (
+                /* History Logs Tab */
+                <div className="space-y-2 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
+                    {chartData.length > 0 ? (
+                        chartData.slice().reverse().map((d, i) => (
+                            <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/5 text-xs hover:border-cyan-500/30 transition-all">
+                                <span className="font-mono text-muted-foreground text-[11px]">{d.time}</span>
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-1">
+                                        <Droplets className="w-3 h-3 text-cyan-400" />
+                                        <span className="font-mono font-bold" style={{ color: statusColor }}>{d.tds} ppm</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <Thermometer className="w-3 h-3 text-amber-400" />
+                                        <span className="font-mono text-amber-400 font-bold">{d.temp}°C</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        ))
+                    ) : (
+                        <div className="text-center py-8 text-xs text-muted-foreground">No recent telemetry logs</div>
+                    )}
                 </div>
             )}
 
-            {/* Liquid Glass Footer */}
-            <div className="relative z-10 flex items-center justify-between pt-2.5 border-t border-border/30">
-                <span className="text-[10.5px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full animate-pulse shadow-xs" style={{ background: ppmStatus.color }} />
-                    Updated {device.last_reading_at
-                        ? new Date(device.last_reading_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                        : '—'
-                    }
+            {/* Footer */}
+            <div className="flex items-center justify-between pt-2.5 border-t border-white/10 text-[10px]">
+                <div className="flex items-center gap-1.5 text-muted-foreground font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Sync: {device.last_reading_at ? new Date(device.last_reading_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Live Connected'}</span>
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400">
+                    EvaraTDS Node
                 </span>
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[9.5px] font-black uppercase tracking-widest border shadow-sm"
-                    style={{ background: ppmStatus.bg, color: ppmStatus.color, borderColor: `${ppmStatus.color}40` }}>
-                    {ppmStatus.label}
-                </div>
             </div>
-        </motion.div>
+        </div>
     )
 }
 
+/**
+ * Markers layer that attaches click handlers to each device node on the map
+ */
+const DeviceMarkers = ({
+    devices,
+    theme,
+    setSelectedDevice
+}: {
+    devices: DeviceLocation[];
+    theme: MapTheme;
+    setSelectedDevice: (d: DeviceLocation) => void;
+}) => {
+    const map = useMap()
+    const [zoom, setZoom] = useState(map.getZoom())
 
+    useEffect(() => {
+        const handleZoom = () => setZoom(map.getZoom())
+        map.on('zoomend', handleZoom)
+        return () => { map.off('zoomend', handleZoom) }
+    }, [map])
+
+    // Global listener for HTML onclick events inside custom divIcon markers
+    useEffect(() => {
+        (window as any).__selectMapDevice = (deviceId: string) => {
+            const found = devices.find(d => String(d.id) === String(deviceId))
+            if (found) {
+                setSelectedDevice(found)
+            }
+        }
+        return () => {
+            delete (window as any).__selectMapDevice
+        }
+    }, [devices, setSelectedDevice])
+
+    return (
+        <>
+            {devices.map(device => {
+                const lat = Number(device.latitude)
+                const lng = Number(device.longitude)
+                if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return null
+                return (
+                    <Marker
+                        key={device.id}
+                        position={[lat, lng]}
+                        icon={createWhiteTransparentMarker(device, theme, zoom)}
+                        bubblingMouseEvents={true}
+                        eventHandlers={{
+                            click: () => {
+                                setSelectedDevice(device)
+                            }
+                        }}
+                    />
+                )
+            })}
+        </>
+    )
+}
+
+function MapController({ center, zoom }: { center: [number, number] | null; zoom?: number }) {
+    const map = useMap()
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            map.invalidateSize();
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [map]);
+
+    useEffect(() => {
+        if (center) {
+            map.flyTo(center, zoom || 17, {
+                duration: 1.2,
+                easeLinearity: 0.25
+            })
+        }
+    }, [center, zoom, map])
+    return null
+}
 
 export default function MapPage() {
     const [mapError, setMapError] = useState<string | null>(null)
@@ -357,7 +437,6 @@ export default function MapPage() {
     const { resolvedTheme } = useTheme()
     const theme = useMemo(() => getMapTheme(resolvedTheme === 'dark'), [resolvedTheme])
 
-
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [mapStyle, setMapStyle] = useState<MapStyle>('street')
     const [showLayerMenu, setShowLayerMenu] = useState(false)
@@ -370,13 +449,9 @@ export default function MapPage() {
             const customMin = device.safe_tds_min != null ? Number(device.safe_tds_min) : undefined
             const customMax = device.safe_tds_max != null ? Number(device.safe_tds_max) : undefined
 
-            // Use the unified connectivity status (1 hour threshold)
             const connectivity = getConnectivityStatus(device.last_reading_at || device.last_seen_at)
-
-            // Default to connectivity status
             let status: 'online' | 'critical' | 'offline' = connectivity
 
-            // If online, further refine based on TDS value
             if (connectivity === 'online' && device.latest_tds !== undefined) {
                 status = getTDSStatus(device.latest_tds, customMin, customMax)
             }
@@ -390,18 +465,7 @@ export default function MapPage() {
         })
     }, [devicesWithData])
 
-    // Global window handler for marker clicks to guarantee popup opens on mobile & desktop
-    useEffect(() => {
-        (window as any).__selectMapDevice = (deviceId: string) => {
-            const found = devices.find(d => String(d.id) === String(deviceId))
-            if (found) setSelectedDevice(found)
-        }
-        return () => {
-            delete (window as any).__selectMapDevice
-        }
-    }, [devices])
-
-    // Refresh handler — triggers actual data refetch + brief animation
+    // Refresh handler
     const handleRefresh = useCallback(async () => {
         setIsRefreshing(true)
         try {
@@ -420,7 +484,7 @@ export default function MapPage() {
     }
     const labelTileUrl = 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png'
 
-    // Strictly prevent page scroll on MapPage under any condition
+    // Prevent background page scrolling on MapPage
     useEffect(() => {
         const prevBodyOverflow = document.body.style.overflow
         const prevHtmlOverflow = document.documentElement.style.overflow
@@ -434,7 +498,7 @@ export default function MapPage() {
 
     return (
         <div className="fixed inset-0 h-screen w-screen overflow-hidden flex flex-col touch-none select-none" style={{ background: 'transparent' }} data-testid="map-container">
-            {/* Map Status Indicator - only show on error or in dev mode */}
+            {/* Map Status Indicator */}
             {(mapError || import.meta.env.DEV) && (
                 <div className="absolute top-2 left-2 z-[10] text-xs font-mono opacity-60 pointer-events-none">
                     {mapError ? (
@@ -450,11 +514,7 @@ export default function MapPage() {
                 </div>
             )}
 
-
-
-
             <div className="absolute inset-0">
-
                 {/* Map */}
                 <MapContainer
                     center={[17.4455, 78.3489]}
@@ -477,7 +537,7 @@ export default function MapPage() {
 
                 {/* Top Right Controls */}
                 <div className="absolute top-4 right-4 md:top-28 md:right-8 z-[500] flex items-center gap-2">
-                    {/* Device Quick Selector Dropdown for 50-Device Map Navigation */}
+                    {/* Device Quick Selector Dropdown */}
                     {devices.length > 0 && (
                         <div className="relative">
                             <select
@@ -498,7 +558,7 @@ export default function MapPage() {
                         </div>
                     )}
 
-                    {/* Refresh Button - Single rotation */}
+                    {/* Refresh Button */}
                     <button
                         onClick={handleRefresh}
                         className="p-3 rounded-xl glass-system-micro border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.2)] transition-all duration-300 active:scale-90"
@@ -539,7 +599,7 @@ export default function MapPage() {
                         )}
                     </div>
 
-                    {/* Fullscreen — uses the browser's native Fullscreen API */}
+                    {/* Fullscreen Toggle */}
                     <button
                         onClick={async () => {
                             try {
@@ -551,7 +611,7 @@ export default function MapPage() {
                                     setIsFullscreen(false)
                                 }
                             } catch {
-                                // Fullscreen not supported or denied (e.g., iOS)
+                                // Fullscreen not supported or denied
                             }
                         }}
                         className="p-3 rounded-xl backdrop-blur-xl transition-all duration-300 liquid-ios-glass"
@@ -560,21 +620,18 @@ export default function MapPage() {
                         {isFullscreen ? <Minimize2 className="w-5 h-5" style={{ color: theme.text.primary }} /> : <Maximize2 className="w-5 h-5" style={{ color: theme.text.primary }} />}
                     </button>
                 </div>
-            </div>
 
-
-            {typeof document !== 'undefined' && createPortal(
-                <AnimatePresence>
-                    {selectedDevice && (
-                        <DevicePanel
-                            key={selectedDevice.id || 'device-panel'}
+                {/* Dedicated Floating Device Telemetry Inspector Window */}
+                {selectedDevice && (
+                    <div className="fixed bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:bottom-6 sm:w-[420px] md:w-[460px] z-[9999] max-h-[85vh] overflow-y-auto custom-scrollbar">
+                        <DeviceTelemetryWindow
                             device={selectedDevice}
+                            theme={theme}
                             onClose={() => setSelectedDevice(null)}
                         />
-                    )}
-                </AnimatePresence>,
-                document.body
-            )}
+                    </div>
+                )}
+            </div>
         </div>
     )
 }
