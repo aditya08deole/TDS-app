@@ -83,7 +83,13 @@ export default function Register() {
         getRedirectResult(auth).catch((err) => {
             if (isBenignPopupDismissal(err)) return
             console.error('Redirect sign-up failed:', err)
-            setError(getAuthErrorMessage(err, 'Google sign-up failed. Please try again.'))
+            // See Login.tsx — a failure here happened after a full top-level
+            // navigation to Google and back, so it can't be a popup/cookie
+            // issue. Point at Firebase config instead of blaming the browser.
+            setError(
+                'Google sign-up failed after returning from Google — this happens even without a popup, so it is not a browser/cookie issue. ' +
+                'It usually means the Google sign-in provider is disabled in Firebase Console, or this domain is not in the authorized domains list. Please use email/password for now.'
+            )
         })
     }, [])
 

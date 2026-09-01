@@ -69,7 +69,16 @@ export default function Login() {
         getRedirectResult(auth).catch((err) => {
             if (isBenignPopupDismissal(err)) return
             console.error('Redirect sign-in failed:', err)
-            setError(getAuthErrorMessage(err, 'Google sign-in failed. Please try again.'))
+            // A failure here happened AFTER a full top-level navigation to
+            // Google and back — there is no popup, no third-party iframe,
+            // nothing for a browser's cookie policy to block. If Firebase
+            // still rejects it (commonly auth/internal-error), the cause is
+            // on the Firebase/Google Cloud config side, not the browser, so
+            // don't show the popup/cookie-blaming message here.
+            setError(
+                'Google sign-in failed after returning from Google — this happens even without a popup, so it is not a browser/cookie issue. ' +
+                'It usually means the Google sign-in provider is disabled in Firebase Console, or this domain is not in the authorized domains list. Please use email/password for now.'
+            )
         })
     }, [])
 
