@@ -5,6 +5,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../lib/firebase'
 import { initTokenRefresh, clearSession } from '../lib/tokenRefresh'
 import { redeemInviteApi, setDefaultRoleApi } from '../lib/api'
+import { getPendingInviteToken, clearPendingInviteToken } from '../lib/pendingInvite'
 
 export type Profile = {
     id: string
@@ -57,36 +58,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
             const docRef = doc(db, 'users', userId)
             const docSnap = await getDoc(docRef)
+            // Captured on mount by Login.tsx/Register.tsx (see lib/pendingInvite.ts) —
+            // reading from sessionStorage here instead of the URL avoids losing the
+            // token to a navigate() call that already fired by this point.
+            const pendingToken = getPendingInviteToken()
 
             if (docSnap.exists()) {
-                setProfile(docSnap.data() as Profile)
-            } else if (email) {
-                // New user — check if there's an invite token in the URL
-                const urlToken = new URLSearchParams(window.location.search).get('token') ||
-                    new URLSearchParams(window.location.search).get('invite');
+                let currentProfile = docSnap.data() as Profile
 
+                // An ALREADY-existing account can still redeem an invite link —
+                // this is what lets a super_admin "assign" a role to someone who
+                // already has an account: they just open the link and log in,
+                // whether that's their first time using it or their hundredth.
+                // The backend won't downgrade an existing higher-privilege user
+                // (see POST /api/users/redeem-invite).
+                if (pendingToken) {
+                    try {
+                        const result = await redeemInviteApi(pendingToken, userId)
+                        if (result.success && result.role && result.role !== currentProfile.role) {
+                            currentProfile = { ...currentProfile, role: result.role as Profile['role'] }
+                            console.log(`🎫 [INVITE REDEEMED] existing uid=${userId} role -> ${result.role}`)
+                        }
+                    } catch (inviteErr) {
+                        console.warn('⚠️ [INVITE] Failed to redeem invite token for existing user:', inviteErr)
+                    } finally {
+                        clearPendingInviteToken()
+                    }
+                }
+
+                setProfile(currentProfile)
+            } else if (email) {
                 // Determine role: hardcoded admin emails always get super_admin
                 const isHardcoded = adminEmails.includes(email.toLowerCase())
                 let assignedRole: Profile['role'] = isHardcoded ? 'super_admin' : 'viewer'
 
                 if (!isHardcoded) {
-                    if (urlToken) {
+                    if (pendingToken) {
                         // Attempt to redeem the invite token to get the correct role
                         try {
-                            const result = await redeemInviteApi(urlToken, userId)
+                            const result = await redeemInviteApi(pendingToken, userId)
                             if (result.success && result.role) {
                                 assignedRole = result.role as Profile['role']
                                 console.log(`🎫 [INVITE REDEEMED] uid=${userId} role=${result.role}`)
-                                // Clean token from URL without reload
-                                const url = new URL(window.location.href)
-                                url.searchParams.delete('token')
-                                url.searchParams.delete('invite')
-                                window.history.replaceState({}, '', url.toString())
                             }
                         } catch (inviteErr) {
                             console.warn('⚠️ [INVITE] Failed to redeem invite token (defaulting to viewer):', inviteErr)
                             // Fall through to setDefaultRole
                             try { await setDefaultRoleApi(userId) } catch (_) {}
+                        } finally {
+                            clearPendingInviteToken()
                         }
                     } else {
                         // No invite token — assign default viewer role in backend

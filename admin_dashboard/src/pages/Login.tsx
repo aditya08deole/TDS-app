@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth'
 import { Lock, Mail, AlertCircle, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
+import { capturePendingInviteToken } from '../lib/pendingInvite'
 
 // Custom Google Icon
 const GoogleIcon = () => (
@@ -44,6 +45,14 @@ export default function Login() {
     // Fix #1: Removed the useEffect that called getRedirectResult() —
     // we no longer use signInWithRedirect, so it's not needed.
     // The signInWithPopup approach is synchronous and handles navigation directly.
+
+    // If this page was reached with an invite token (e.g. an existing account
+    // clicked through from /register, or was sent a /login?token= link
+    // directly), stash it immediately so AuthContext can redeem it once
+    // sign-in completes — see lib/pendingInvite.ts.
+    useEffect(() => {
+        capturePendingInviteToken()
+    }, [])
 
     // Cursor Glow Effect
     useEffect(() => {

@@ -8,6 +8,7 @@ import { Eye, EyeOff, UserPlus, ShieldCheck, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Capacitor } from '@capacitor/core'
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication'
+import { capturePendingInviteToken } from '../lib/pendingInvite'
 
 // Custom Google Icon (matches Login.tsx)
 const GoogleIcon = () => (
@@ -24,18 +25,15 @@ const GoogleIcon = () => (
  *
  * Flow:
  * 1. User lands here via invite link: /register?token=<invite_token>
- * 2. They create a Firebase account — email/password OR Google (both stay on
- *    this page so the ?token= stays in the URL for step 3)
- * 3. onAuthStateChanged fires in AuthContext → fetches profile
- * 4. fetchProfile detects the token in the URL and calls redeemInviteApi
- * 5. User gets their role and is redirected to the dashboard
+ * 2. capturePendingInviteToken() (see lib/pendingInvite.ts) stashes the token
+ *    in sessionStorage on mount, before anything can navigate it away
+ * 3. They create a Firebase account (email/password or Google), or if they
+ *    already have one, click through to /login instead — either way works
+ * 4. onAuthStateChanged fires in AuthContext → fetches profile, redeems the
+ *    stashed token, and assigns/upgrades their role accordingly
+ * 5. User is redirected to the dashboard with the invited role applied
  *
  * If no token is present, user still registers but gets the default 'viewer' role.
- *
- * IMPORTANT: Google Sign-In must happen from THIS page (not /login) for invited
- * users — /login's Google button has no invite token in its URL, so a user who
- * skips this page and signs in with Google from /login silently gets 'viewer'
- * instead of their invited role.
  */
 export default function Register() {
     const navigate = useNavigate()
@@ -47,15 +45,24 @@ export default function Register() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
-    // Detect invite token in URL
-    const params = new URLSearchParams(window.location.search)
-    const inviteToken = params.get('token') || params.get('invite') || null
+    // Captured once at first render, before capturePendingInviteToken() strips
+    // it from the URL below — a plain re-computed const would go stale (and
+    // silently drop the "you've been invited" banner) on the next re-render
+    // once the URL no longer carries it.
+    const [inviteToken] = useState<string | null>(() => {
+        const params = new URLSearchParams(window.location.search)
+        return params.get('token') || params.get('invite') || null
+    })
 
-    // Pre-fill email from URL if provided
+    // Pre-fill email from URL if provided, and stash the invite token in
+    // sessionStorage immediately so it survives navigation (e.g. clicking
+    // through to /login for an existing account) without being lost.
     useEffect(() => {
+        const params = new URLSearchParams(window.location.search)
         const emailParam = params.get('email')
         if (emailParam) setEmail(emailParam)
-    }, []) // eslint-disable-line react-hooks/exhaustive-deps
+        capturePendingInviteToken()
+    }, [])
 
     const validateForm = (): string | null => {
         if (!email.trim()) return 'Email is required'

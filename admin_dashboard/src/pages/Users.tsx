@@ -1,8 +1,8 @@
 import { GlassCard } from '@/components/GlassCard'
-import { ShieldCheck, Users as UsersIcon, UserPlus, Link2, Copy, Check, Clock, Trash2, RefreshCw } from 'lucide-react'
+import { ShieldCheck, Users as UsersIcon, UserPlus, Link2, Copy, Check, Clock, Trash2, RefreshCw, Wrench, User, MessageCircle, Mail, Search, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useRole, ROLE_DISPLAY_NAMES } from '../context/RoleContext'
 import { generateInviteApi, listInvitesApi, revokeInviteApi, getUserStatsApi, listUsersApi, setUserRoleApi, type InviteToken, type UserRoleStats, type DirectoryUser, type UserRole } from '../lib/api'
@@ -10,10 +10,10 @@ import { cn } from '@/lib/utils'
 
 type InviteRole = 'field_engineer' | 'viewer' | 'admin'
 
-const ROLE_OPTIONS: { value: InviteRole; label: string; desc: string; color: string }[] = [
-    { value: 'field_engineer', label: 'Maintenance', desc: 'Can resolve alerts & edit devices', color: 'text-amber-400 border-amber-500/30 bg-amber-500/10' },
-    { value: 'viewer', label: 'User', desc: 'Read-only dashboard access', color: 'text-blue-400 border-blue-500/30 bg-blue-500/10' },
-    { value: 'admin', label: 'Admin', desc: 'Full control + can invite others', color: 'text-purple-400 border-purple-500/30 bg-purple-500/10' },
+const ROLE_OPTIONS: { value: InviteRole; label: string; desc: string; color: string; icon: typeof Wrench }[] = [
+    { value: 'field_engineer', label: 'Maintenance', desc: 'Can resolve alerts & edit devices', color: 'text-amber-400 border-amber-500/30 bg-amber-500/10', icon: Wrench },
+    { value: 'viewer', label: 'User', desc: 'Read-only dashboard access', color: 'text-blue-400 border-blue-500/30 bg-blue-500/10', icon: User },
+    { value: 'admin', label: 'Admin', desc: 'Full control + can invite others', color: 'text-purple-400 border-purple-500/30 bg-purple-500/10', icon: ShieldCheck },
 ]
 
 const DIRECTORY_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
@@ -51,6 +51,7 @@ export default function Users() {
     const [directory, setDirectory] = useState<DirectoryUser[]>([])
     const [loadingDirectory, setLoadingDirectory] = useState(false)
     const [changingRoleFor, setChangingRoleFor] = useState<string | null>(null)
+    const [directorySearch, setDirectorySearch] = useState('')
 
     const loadInvites = useCallback(async () => {
         if (!canInvite) return
@@ -109,6 +110,15 @@ export default function Users() {
         }
     }
 
+    const filteredDirectory = useMemo(() => {
+        const q = directorySearch.trim().toLowerCase()
+        if (!q) return directory
+        return directory.filter(u =>
+            (u.email || '').toLowerCase().includes(q) ||
+            (u.name || '').toLowerCase().includes(q)
+        )
+    }, [directory, directorySearch])
+
     const handleGenerate = async () => {
         setGenerating(true)
         setGeneratedLink(null)
@@ -135,6 +145,21 @@ export default function Users() {
         } catch {
             toast.error('Failed to copy — please copy manually')
         }
+    }
+
+    const shareText = generatedLink
+        ? `You've been invited to EvaraTDS as ${ROLE_DISPLAY_NAMES[inviteRole]}. Open this link and log in to accept — your access is set automatically: ${generatedLink}`
+        : ''
+
+    const handleShareWhatsApp = () => {
+        if (!generatedLink) return
+        window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer')
+    }
+
+    const handleShareEmail = () => {
+        if (!generatedLink) return
+        const subject = encodeURIComponent("You're invited to EvaraTDS")
+        window.location.href = `mailto:?subject=${subject}&body=${encodeURIComponent(shareText)}`
     }
 
     const handleRevoke = async (tokenId: string) => {
@@ -224,14 +249,22 @@ export default function Users() {
                                 key={opt.value}
                                 onClick={() => setInviteRole(opt.value)}
                                 className={cn(
-                                    'p-4 rounded-xl border text-left transition-all duration-200',
+                                    'p-4 rounded-xl border text-left transition-all duration-200 flex items-start gap-3',
                                     inviteRole === opt.value
                                         ? `${opt.color} border-current shadow-lg scale-[1.02]`
                                         : 'border-white/10 bg-white/5 text-muted-foreground hover:border-white/20'
                                 )}
                             >
-                                <p className="font-bold text-sm">{opt.label}</p>
-                                <p className="text-xs opacity-80 mt-0.5">{opt.desc}</p>
+                                <div className={cn(
+                                    'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
+                                    inviteRole === opt.value ? 'bg-current/15' : 'bg-white/5'
+                                )}>
+                                    <opt.icon className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="font-bold text-sm">{opt.label}</p>
+                                    <p className="text-xs opacity-80 mt-0.5 leading-relaxed">{opt.desc}</p>
+                                </div>
                             </button>
                         ))}
                     </div>
@@ -250,7 +283,7 @@ export default function Users() {
 
                     {/* Generated Link Display */}
                     {generatedLink && (
-                        <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-3">
+                        <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-4">
                             <div className="flex items-center gap-2 text-emerald-400">
                                 <Check className="w-4 h-4" />
                                 <span className="text-sm font-bold">Invite Link Ready</span>
@@ -261,26 +294,52 @@ export default function Users() {
                                     </span>
                                 )}
                             </div>
-                            <div className="flex items-center gap-2">
-                                <code className="flex-1 text-xs font-mono bg-black/30 px-3 py-2 rounded-lg border border-white/10 text-foreground/80 overflow-x-auto whitespace-nowrap block">
-                                    {generatedLink}
-                                </code>
+
+                            <code className="text-xs font-mono bg-black/30 px-3 py-2 rounded-lg border border-white/10 text-foreground/80 overflow-x-auto whitespace-nowrap block">
+                                {generatedLink}
+                            </code>
+
+                            {/* Share actions */}
+                            <div className="flex flex-wrap gap-2">
                                 <Button
                                     onClick={handleCopy}
                                     size="sm"
                                     className={cn(
-                                        'shrink-0 h-9 px-4 rounded-lg font-bold text-xs gap-1.5 transition-all',
+                                        'h-9 px-4 rounded-lg font-bold text-xs gap-1.5 transition-all',
                                         copied
                                             ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                                             : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30'
                                     )}
                                 >
-                                    {copied ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
+                                    {copied ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy Link</>}
+                                </Button>
+                                <Button
+                                    onClick={handleShareWhatsApp}
+                                    size="sm"
+                                    className="h-9 px-4 rounded-lg font-bold text-xs gap-1.5 bg-[#25D366]/15 text-[#25D366] border border-[#25D366]/30 hover:bg-[#25D366]/25"
+                                >
+                                    <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                                </Button>
+                                <Button
+                                    onClick={handleShareEmail}
+                                    size="sm"
+                                    className="h-9 px-4 rounded-lg font-bold text-xs gap-1.5 bg-white/5 text-foreground/80 border border-white/10 hover:bg-white/10"
+                                >
+                                    <Mail className="w-3.5 h-3.5" /> Email
                                 </Button>
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                                Share this link with the person you want to invite. They will be assigned the <strong>{ROLE_DISPLAY_NAMES[inviteRole as keyof typeof ROLE_DISPLAY_NAMES] || inviteRole}</strong> role on signup.
-                            </p>
+
+                            {/* What happens next */}
+                            <div className="pt-3 border-t border-white/10 space-y-1.5">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                    <ListChecks className="w-3 h-3" /> What happens when they open it
+                                </p>
+                                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside leading-relaxed">
+                                    <li>They open the link and are asked to log in — either create an account, or sign in if they already have one.</li>
+                                    <li>The moment they log in, their account is set to <strong className="text-foreground/90">{ROLE_DISPLAY_NAMES[inviteRole]}</strong> automatically — no extra step for them.</li>
+                                    <li>The link works once. After that, only a super admin can change their role — from the All Users list below.</li>
+                                </ol>
+                            </div>
                         </div>
                     )}
                 </GlassCard>
@@ -386,21 +445,33 @@ export default function Users() {
             {/* All Users Directory — super_admin only: see every real account and reassign roles */}
             {isSuperAdmin && (
                 <GlassCard className="overflow-hidden p-0">
-                    <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                    <div className="p-5 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
                         <div>
                             <h3 className="font-bold text-foreground text-sm">All Users</h3>
                             <p className="text-xs text-muted-foreground mt-0.5">
                                 {directory.length} real account{directory.length === 1 ? '' : 's'} — change anyone's role directly
                             </p>
                         </div>
-                        <button
-                            onClick={loadDirectory}
-                            disabled={loadingDirectory}
-                            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
-                        >
-                            <RefreshCw className={cn('w-3.5 h-3.5', loadingDirectory && 'animate-spin')} />
-                            Refresh
-                        </button>
+                        <div className="flex items-center gap-3">
+                            <div className="relative">
+                                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                                <input
+                                    type="text"
+                                    value={directorySearch}
+                                    onChange={(e) => setDirectorySearch(e.target.value)}
+                                    placeholder="Search by email..."
+                                    className="w-full md:w-56 pl-8 pr-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-cyan-500/50"
+                                />
+                            </div>
+                            <button
+                                onClick={loadDirectory}
+                                disabled={loadingDirectory}
+                                className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 shrink-0"
+                            >
+                                <RefreshCw className={cn('w-3.5 h-3.5', loadingDirectory && 'animate-spin')} />
+                                Refresh
+                            </button>
+                        </div>
                     </div>
 
                     <div className="overflow-x-auto">
@@ -423,22 +494,31 @@ export default function Users() {
                                             ))}
                                         </tr>
                                     ))
-                                ) : directory.length === 0 ? (
+                                ) : filteredDirectory.length === 0 ? (
                                     <tr>
                                         <td colSpan={3} className="px-5 py-8 text-center text-muted-foreground">
-                                            No users found.
+                                            {directorySearch ? `No users match "${directorySearch}".` : 'No users found.'}
                                         </td>
                                     </tr>
                                 ) : (
-                                    directory.map(u => {
+                                    filteredDirectory.map(u => {
                                         const isSelf = u.uid === user?.uid
+                                        const initial = (u.email || u.uid).charAt(0).toUpperCase()
                                         return (
                                             <tr key={u.uid} className="border-b border-white/5 hover:bg-white/3 transition-colors">
                                                 <td className="px-5 py-3.5">
-                                                    <span className="text-foreground/90">{u.email || u.uid}</span>
-                                                    {isSelf && (
-                                                        <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold uppercase tracking-wider">You</span>
-                                                    )}
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className={cn(
+                                                            'w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
+                                                            DIRECTORY_ROLE_COLORS[u.role]
+                                                        )}>
+                                                            {initial}
+                                                        </div>
+                                                        <span className="text-foreground/90">{u.email || u.uid}</span>
+                                                        {isSelf && (
+                                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold uppercase tracking-wider">You</span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-5 py-3.5 text-muted-foreground">{u.joined_at ? formatDate(u.joined_at) : '—'}</td>
                                                 <td className="px-5 py-3.5 text-right">
