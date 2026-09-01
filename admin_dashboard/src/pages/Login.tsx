@@ -6,6 +6,7 @@ import {
     createUserWithEmailAndPassword,
     GoogleAuthProvider,
     signInWithPopup,        // Fix #1: switched from signInWithRedirect — no stuck spinner
+    signInWithRedirect,     // Fallback when the popup itself is blocked — see handleGoogleLogin
     sendPasswordResetEmail, // Fix #3: forgot password implementation
     sendEmailVerification,  // Fix #23: email verification on sign-up
     signOut as firebaseSignOut,
@@ -125,19 +126,37 @@ export default function Login() {
                 // — popup stays on the same page, result is immediately available,
                 //   no redirect loop, and loading state is properly cleaned up.
                 const provider = new GoogleAuthProvider()
-                const result = await signInWithPopup(auth, provider)
-                if (result.user) {
-                    navigate(from, { replace: true })
+                try {
+                    const result = await signInWithPopup(auth, provider)
+                    if (result.user) {
+                        navigate(from, { replace: true })
+                    }
+                } catch (popupErr: any) {
+                    if (isBenignPopupDismissal(popupErr)) {
+                        setError(null)
+                        return
+                    }
+                    // signInWithPopup depends on a hidden cross-origin iframe (the
+                    // Firebase auth handler) being able to read/write storage —
+                    // browsers increasingly block that by default, popup-blocked
+                    // or not, surfacing as a generic auth/internal-error with no
+                    // indication that's what happened. signInWithRedirect doesn't
+                    // have this dependency: it's a real top-level navigation
+                    // through Google and back, so it isn't affected by third-party
+                    // storage restrictions at all. AuthContext's onAuthStateChanged
+                    // picks up the result automatically once the user lands back
+                    // here — no separate getRedirectResult() handling needed.
+                    if (popupErr.code === 'auth/internal-error' || popupErr.code === 'auth/popup-blocked') {
+                        console.warn('[AUTH] Popup sign-in blocked — falling back to redirect:', popupErr.code)
+                        await signInWithRedirect(auth, provider)
+                        return
+                    }
+                    throw popupErr
                 }
             }
         } catch (err: any) {
             console.error('Google login failed:', err)
-            // User closed the popup — not a real error
-            if (isBenignPopupDismissal(err)) {
-                setError(null)
-            } else {
-                setError(getAuthErrorMessage(err, 'Google login failed. Please try again.'))
-            }
+            setError(getAuthErrorMessage(err, 'Google login failed. Please try again.'))
         } finally {
             setLoading(false)
         }

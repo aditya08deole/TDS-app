@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signInWithCredential } from 'firebase/auth'
+import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signInWithCredential } from 'firebase/auth'
 import { useNavigate, Link } from 'react-router-dom'
 import { auth } from '../lib/firebase'
 import { GlassCard } from '@/components/GlassCard'
@@ -113,17 +113,33 @@ export default function Register() {
                 }
             } else {
                 const provider = new GoogleAuthProvider()
-                const result = await signInWithPopup(auth, provider)
-                if (result.user) {
-                    navigate('/', { replace: true })
+                try {
+                    const result = await signInWithPopup(auth, provider)
+                    if (result.user) {
+                        navigate('/', { replace: true })
+                    }
+                } catch (popupErr: any) {
+                    if (isBenignPopupDismissal(popupErr)) {
+                        setError(null)
+                        return
+                    }
+                    // See Login.tsx's handleGoogleLogin for why this fallback
+                    // exists — popup sign-in depends on third-party storage
+                    // access that browsers increasingly block by default, which
+                    // surfaces as a generic auth/internal-error. Redirect doesn't
+                    // have that dependency. The invite token is already safely in
+                    // sessionStorage (capturePendingInviteToken ran on mount), so
+                    // it survives the full-page round trip through Google.
+                    if (popupErr.code === 'auth/internal-error' || popupErr.code === 'auth/popup-blocked') {
+                        console.warn('[AUTH] Popup sign-up blocked — falling back to redirect:', popupErr.code)
+                        await signInWithRedirect(auth, provider)
+                        return
+                    }
+                    throw popupErr
                 }
             }
         } catch (err: any) {
-            if (isBenignPopupDismissal(err)) {
-                setError(null)
-            } else {
-                setError(getAuthErrorMessage(err, 'Google sign-up failed. Please try again.'))
-            }
+            setError(getAuthErrorMessage(err, 'Google sign-up failed. Please try again.'))
         } finally {
             setLoading(false)
         }
