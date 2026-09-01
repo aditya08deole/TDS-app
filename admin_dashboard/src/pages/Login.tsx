@@ -7,6 +7,7 @@ import {
     GoogleAuthProvider,
     signInWithPopup,        // Fix #1: switched from signInWithRedirect — no stuck spinner
     signInWithRedirect,     // Fallback when the popup itself is blocked — see handleGoogleLogin
+    getRedirectResult,      // Surfaces errors from a completed/failed redirect round trip
     sendPasswordResetEmail, // Fix #3: forgot password implementation
     sendEmailVerification,  // Fix #23: email verification on sign-up
     signOut as firebaseSignOut,
@@ -15,6 +16,7 @@ import { Lock, Mail, AlertCircle, Eye, EyeOff, CheckCircle2 } from 'lucide-react
 import { GlassCard } from '@/components/GlassCard'
 import { capturePendingInviteToken } from '../lib/pendingInvite'
 import { getAuthErrorMessage, isBenignPopupDismissal } from '../lib/authErrors'
+import { useAuth } from '../context/AuthContext'
 
 // Custom Google Icon
 const GoogleIcon = () => (
@@ -43,10 +45,33 @@ export default function Login() {
     const navigate = useNavigate()
     const location = useLocation()
     const from = location.state?.from?.pathname || '/'
+    const { user } = useAuth()
 
-    // Fix #1: Removed the useEffect that called getRedirectResult() —
-    // we no longer use signInWithRedirect, so it's not needed.
-    // The signInWithPopup approach is synchronous and handles navigation directly.
+    // signInWithRedirect (the fallback in handleGoogleLogin below, used when
+    // the popup itself is blocked) navigates the ENTIRE page away to Google
+    // and back — the navigate() call queued after awaiting it never runs on
+    // THIS page load, since execution doesn't resume here. When the user
+    // lands back on /login, AuthContext's onAuthStateChanged already picks
+    // up the now-authenticated user on its own, but nothing was sending them
+    // anywhere — they were stuck looking at the login form while already
+    // signed in, which read as "it redirected me back to login again".
+    // This effect is what actually completes that trip.
+    useEffect(() => {
+        if (user) {
+            navigate(from, { replace: true })
+        }
+    }, [user, from, navigate])
+
+    // Surface a real error if the redirect round trip itself failed (e.g. the
+    // user closed/cancelled it, or a genuine auth error occurred). A no-op
+    // when there was no pending redirect to resolve.
+    useEffect(() => {
+        getRedirectResult(auth).catch((err) => {
+            if (isBenignPopupDismissal(err)) return
+            console.error('Redirect sign-in failed:', err)
+            setError(getAuthErrorMessage(err, 'Google sign-in failed. Please try again.'))
+        })
+    }, [])
 
     // If this page was reached with an invite token (e.g. an existing account
     // clicked through from /register, or was sent a /login?token= link

@@ -686,7 +686,14 @@ export default function Users() {
 
             {/* Role Change Confirmation */}
             <Dialog open={!!pendingRoleChange} onOpenChange={(open) => { if (!open) setPendingRoleChange(null) }}>
-                <DialogContent className="max-w-md bg-slate-950 border-white/10 text-foreground">
+                {/* bg-card/border-border/text-foreground is the established pattern used by
+                    every other Dialog in this app (QRCodeGenerator, QRCodeScanner) — it's a
+                    theme-matched pair that adapts to light/dark mode together. The previous
+                    bg-slate-950 was a static color that doesn't change with theme, while
+                    text-foreground does (it becomes black in light mode) — black text on a
+                    hardcoded near-black background, which is exactly the "card was black,
+                    nothing visible" bug reported. */}
+                <DialogContent className="max-w-md bg-card border-border text-foreground">
                     <DialogHeader>
                         <div className="w-11 h-11 rounded-xl bg-amber-500/15 flex items-center justify-center mb-2">
                             <AlertTriangle className="w-5 h-5 text-amber-400" />

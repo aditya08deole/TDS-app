@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signInWithCredential } from 'firebase/auth'
+import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCredential } from 'firebase/auth'
 import { useNavigate, Link } from 'react-router-dom'
 import { auth } from '../lib/firebase'
 import { GlassCard } from '@/components/GlassCard'
@@ -10,6 +10,7 @@ import { Capacitor } from '@capacitor/core'
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication'
 import { capturePendingInviteToken } from '../lib/pendingInvite'
 import { getAuthErrorMessage, isBenignPopupDismissal } from '../lib/authErrors'
+import { useAuth } from '../context/AuthContext'
 
 // Custom Google Icon (matches Login.tsx)
 const GoogleIcon = () => (
@@ -38,6 +39,7 @@ const GoogleIcon = () => (
  */
 export default function Register() {
     const navigate = useNavigate()
+    const { user } = useAuth()
 
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -63,6 +65,26 @@ export default function Register() {
         const emailParam = params.get('email')
         if (emailParam) setEmail(emailParam)
         capturePendingInviteToken()
+    }, [])
+
+    // See Login.tsx for the full explanation — signInWithRedirect (the
+    // fallback used when the Google popup itself is blocked) navigates this
+    // entire page away and back, so nothing here ever calls navigate() on
+    // return. Without this, a successful redirect sign-up landed the user
+    // right back on this registration form, fully authenticated, looking
+    // like nothing happened.
+    useEffect(() => {
+        if (user) {
+            navigate('/', { replace: true })
+        }
+    }, [user, navigate])
+
+    useEffect(() => {
+        getRedirectResult(auth).catch((err) => {
+            if (isBenignPopupDismissal(err)) return
+            console.error('Redirect sign-up failed:', err)
+            setError(getAuthErrorMessage(err, 'Google sign-up failed. Please try again.'))
+        })
     }, [])
 
     const validateForm = (): string | null => {

@@ -1,20 +1,27 @@
-import { LayoutDashboard, Map as MapIcon, Smartphone, Bell, Settings } from "lucide-react"
+import { LayoutDashboard, Map as MapIcon, Smartphone, Bell, Settings, Users } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { useAlerts } from "../context/AlertContext"
 import { useViewport } from "../hooks/useViewport"
+import { useRole } from "../context/RoleContext"
 import { CurvedBottomNav } from "./CurvedBottomNav"
 
 export function MobileNav() {
     const location = useLocation()
     const { alertCount } = useAlerts()
     const { isLandscape } = useViewport()
+    const { hasPermission } = useRole()
 
+    // This bottom bar previously had no way to reach /users at all — the
+    // desktop TopBar's "More" dropdown already gates it to manage_users
+    // (super_admin), so mirror that here instead of leaving mobile/the
+    // native app with no path to user & role management whatsoever.
     const navItems = [
         { title: "Overview", url: "/", icon: LayoutDashboard },
         { title: "Map", url: "/map", icon: MapIcon },
         { title: "Devices", url: "/devices", icon: Smartphone },
         { title: "Alerts", url: "/alerts", icon: Bell, badge: alertCount },
+        ...(hasPermission('manage_users') ? [{ title: "Users", url: "/users", icon: Users }] : []),
         { title: "Settings", url: "/settings", icon: Settings },
     ]
 
