@@ -152,8 +152,21 @@ export default function Register() {
                     // it survives the full-page round trip through Google.
                     if (popupErr.code === 'auth/internal-error' || popupErr.code === 'auth/popup-blocked') {
                         console.warn('[AUTH] Popup sign-up blocked — falling back to redirect:', popupErr.code)
-                        await signInWithRedirect(auth, provider)
-                        return
+                        try {
+                            await signInWithRedirect(auth, provider)
+                            return
+                        } catch (redirectErr: any) {
+                            // If the redirect fallback ALSO fails, this isn't a
+                            // popup/third-party-cookie issue — it's a Firebase/
+                            // Google Cloud config problem (provider disabled,
+                            // API key restriction, etc). Say so distinctly.
+                            console.error('[AUTH] Redirect fallback ALSO failed (not a popup/cookie issue):', redirectErr)
+                            setError(
+                                'Google sign-up is failing at the account level, not just in this browser — the popup AND the redirect method both failed the same way. ' +
+                                'This points to a Firebase/Google Cloud configuration problem rather than anything on your end. Please use email/password for now.'
+                            )
+                            return
+                        }
                     }
                     throw popupErr
                 }

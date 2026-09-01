@@ -177,8 +177,26 @@ export default function Login() {
                     // here — no separate getRedirectResult() handling needed.
                     if (popupErr.code === 'auth/internal-error' || popupErr.code === 'auth/popup-blocked') {
                         console.warn('[AUTH] Popup sign-in blocked — falling back to redirect:', popupErr.code)
-                        await signInWithRedirect(auth, provider)
-                        return
+                        try {
+                            // If this throws too (rather than navigating away),
+                            // it means the failure isn't popup/third-party-cookie
+                            // specific at all — something more fundamental is
+                            // wrong (Google provider disabled in Firebase, API
+                            // key restrictions, etc.), and we want a message that
+                            // says so distinctly rather than repeating the same
+                            // "try a normal browser window" guidance that doesn't
+                            // apply here.
+                            await signInWithRedirect(auth, provider)
+                            return
+                        } catch (redirectErr: any) {
+                            console.error('[AUTH] Redirect fallback ALSO failed (not a popup/cookie issue):', redirectErr)
+                            setError(
+                                'Google sign-in is failing at the account level, not just in this browser — the popup AND the redirect method both failed the same way. ' +
+                                'This points to a Firebase/Google Cloud configuration problem (e.g. the Google sign-in provider being disabled in Firebase Console, ' +
+                                'or an API key restriction) rather than anything on your end. Please use email/password for now.'
+                            )
+                            return
+                        }
                     }
                     throw popupErr
                 }
