@@ -376,12 +376,14 @@ export async function generateInviteApi(role: 'field_engineer' | 'viewer' | 'adm
 /** List all invite tokens (admin/super_admin only) */
 export async function listInvitesApi(): Promise<InviteToken[]> {
   const endpoint = `/api/users/invites`;
+  // SWR: show cached data instantly on revisit, silently refresh in the
+  // background, instead of blocking on a network round-trip every time.
   return dedupFetch(endpoint, async () => {
     const response = await apiFetch(endpoint)
     if (!response.ok) throw new Error('Failed to fetch invites')
     const result: ApiResponse<InviteToken[]> = await response.json()
     return Array.isArray(result.data) ? result.data : []
-  }, { useSwrPattern: false });
+  }, { useSwrPattern: true });
 }
 
 /** Redeem an invite token after Firebase signup */
@@ -439,7 +441,7 @@ export async function getUserStatsApi(): Promise<UserRoleStats> {
     if (!response.ok) throw new Error('Failed to fetch user stats')
     const result: ApiResponse<UserRoleStats> = await response.json()
     return result.data
-  }, { useSwrPattern: false });
+  }, { useSwrPattern: true });
 }
 
 export type UserRole = 'viewer' | 'field_engineer' | 'admin' | 'super_admin'
@@ -461,7 +463,7 @@ export async function listUsersApi(): Promise<DirectoryUser[]> {
     if (!response.ok) throw await apiErrorFromResponse(response, 'Failed to list users')
     const result: ApiResponse<DirectoryUser[]> = await response.json()
     return Array.isArray(result.data) ? result.data : []
-  }, { useSwrPattern: false });
+  }, { useSwrPattern: true });
 }
 
 /** Assign a role to an existing user by uid (super_admin only) */

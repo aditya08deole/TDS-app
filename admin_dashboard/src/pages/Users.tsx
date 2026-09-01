@@ -211,18 +211,18 @@ export default function Users() {
 
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 min-w-0">
                     <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
                         <UsersIcon className="w-6 h-6 text-white" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <h1 className="text-2xl font-bold tracking-tight text-foreground">User Management</h1>
                         <p className="text-muted-foreground mt-0.5 text-sm">
                             Invite people, see who has access, and control exactly what they can do
                         </p>
                     </div>
                 </div>
-                <div className="px-3.5 py-2 rounded-xl glass-system-inset text-xs font-bold uppercase tracking-wider text-cyan-400 border border-cyan-500/30 flex items-center gap-2 self-start sm:self-auto">
+                <div className="px-3.5 py-2 rounded-xl glass-system-inset text-xs font-bold uppercase tracking-wider text-cyan-400 border border-cyan-500/30 flex items-center gap-2 self-start sm:self-auto shrink-0">
                     <ShieldCheck className="w-3.5 h-3.5" />
                     You: {ROLE_DISPLAY_NAMES[role] || role}
                 </div>
@@ -303,11 +303,11 @@ export default function Users() {
                     {/* Generated Link Display */}
                     {generatedLink && (
                         <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-4">
-                            <div className="flex items-center gap-2 text-emerald-400">
-                                <Check className="w-4 h-4" />
+                            <div className="flex items-center flex-wrap gap-2 text-emerald-400">
+                                <Check className="w-4 h-4 shrink-0" />
                                 <span className="text-sm font-bold">Invite Link Ready</span>
                                 {expiresAt && (
-                                    <span className="ml-auto text-xs text-muted-foreground flex items-center gap-1">
+                                    <span className="ml-auto text-xs text-muted-foreground flex items-center gap-1 shrink-0">
                                         <Clock className="w-3 h-3" />
                                         Expires {formatDate(expiresAt)}
                                     </span>
@@ -375,12 +375,12 @@ export default function Users() {
             {/* Invite Token Table */}
             {canInvite && (
                 <GlassCard className="overflow-hidden p-0">
-                    <div className="p-5 border-b border-white/10 flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
+                    <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
                             <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
                                 <KeyRound className="w-4 h-4 text-muted-foreground" />
                             </div>
-                            <div>
+                            <div className="min-w-0">
                                 <h3 className="font-bold text-foreground text-sm">Active Invite Tokens</h3>
                                 <p className="text-xs text-muted-foreground mt-0.5">{invites.length} invite(s) issued</p>
                             </div>
@@ -388,7 +388,7 @@ export default function Users() {
                         <button
                             onClick={loadInvites}
                             disabled={loadingInvites}
-                            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+                            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
                         >
                             <RefreshCw className={cn('w-3.5 h-3.5', loadingInvites && 'animate-spin')} />
                             Refresh
@@ -503,26 +503,30 @@ export default function Users() {
             {isSuperAdmin && (
                 <GlassCard className="overflow-hidden p-0">
                     <div className="p-5 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
                             <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
                                 <UsersIcon className="w-4 h-4 text-muted-foreground" />
                             </div>
-                            <div>
+                            <div className="min-w-0">
                                 <h3 className="font-bold text-foreground text-sm">All Users</h3>
                                 <p className="text-xs text-muted-foreground mt-0.5">
                                     {directory.length} real account{directory.length === 1 ? '' : 's'} — change anyone's role directly
                                 </p>
                             </div>
                         </div>
+                        {/* w-full/w-56 lives on this wrapper (not the input) so the
+                            percentage width has a definite box to resolve against —
+                            putting it on the input alone inside an unconstrained flex
+                            item is what made this row render cramped on narrow screens. */}
                         <div className="flex items-center gap-3">
-                            <div className="relative">
-                                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            <div className="relative w-full md:w-56">
+                                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                                 <input
                                     type="text"
                                     value={directorySearch}
                                     onChange={(e) => setDirectorySearch(e.target.value)}
                                     placeholder="Search by email..."
-                                    className="w-full md:w-56 pl-8 pr-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-cyan-500/50"
+                                    className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-cyan-500/50"
                                 />
                             </div>
                             <button
