@@ -119,7 +119,12 @@ export default function Login() {
                 return // Don't navigate
             } else {
                 await signInWithEmailAndPassword(auth, email, password)
-                navigate(from, { replace: true })
+                // No navigate() here on purpose — see the useEffect watching
+                // `user` above. Navigating immediately here would race
+                // AuthContext's async onAuthStateChanged update: if this
+                // synchronous navigate() won the race, AuthGuard would see
+                // user still null on the destination route and bounce
+                // straight back to /login with no error at all.
             }
         } catch (err: any) {
             console.error('Auth failed:', err)
@@ -135,14 +140,14 @@ export default function Login() {
         setSuccessMessage(null)
         try {
             if (Capacitor.isNativePlatform()) {
-                // Native Android (Capacitor) path — unchanged
+                // Native Android: sign in on the native layer, then sync
+                // that to the Firebase JS SDK via the returned idToken (the
+                // pattern the plugin's own docs specify) — no navigate()
+                // here, see the useEffect above for why.
                 const result = await FirebaseAuthentication.signInWithGoogle()
                 if (result.credential?.idToken) {
                     const credential = GoogleAuthProvider.credential(result.credential.idToken)
                     await signInWithCredential(auth, credential)
-                    // Fix #2: setLoading(false) before navigate to prevent race condition
-                    setLoading(false)
-                    navigate(from, { replace: true })
                 } else {
                     throw new Error("Google Sign-In failed or was cancelled")
                 }
@@ -152,10 +157,9 @@ export default function Login() {
                 //   no redirect loop, and loading state is properly cleaned up.
                 const provider = new GoogleAuthProvider()
                 try {
-                    const result = await signInWithPopup(auth, provider)
-                    if (result.user) {
-                        navigate(from, { replace: true })
-                    }
+                    // No navigate() on success here either — same reasoning
+                    // as above, applies identically to the popup path.
+                    await signInWithPopup(auth, provider)
                 } catch (popupErr: any) {
                     if (isBenignPopupDismissal(popupErr)) {
                         setError(null)

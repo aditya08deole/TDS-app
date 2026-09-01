@@ -6,6 +6,8 @@ import { auth, db } from '../lib/firebase'
 import { initTokenRefresh, clearSession } from '../lib/tokenRefresh'
 import { redeemInviteApi, setDefaultRoleApi } from '../lib/api'
 import { getPendingInviteToken, clearPendingInviteToken } from '../lib/pendingInvite'
+import { Capacitor } from '@capacitor/core'
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication'
 
 export type Profile = {
     id: string
@@ -197,6 +199,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signOut = React.useCallback(async () => {
         // Fix #11: Clear session before signout
         await clearSession();
+
+        // On native (Capacitor) builds, native Google sign-in creates a
+        // session on the ANDROID layer that is entirely separate from the
+        // Firebase JS SDK's session — signing out of only one leaves the
+        // other alive. Per @capacitor-firebase/authentication's own docs,
+        // both layers need an explicit sign-out. Skipping the native one
+        // (as this previously did) leaves a stale native Google session on
+        // the device, which can make the NEXT native sign-in attempt behave
+        // inconsistently — exactly the kind of "picker shows, but never
+        // actually completes" symptom this was causing.
+        if (Capacitor.isNativePlatform()) {
+            try {
+                await FirebaseAuthentication.signOut();
+            } catch (err) {
+                console.warn('[AUTH] Native sign-out failed (continuing with web sign-out):', err);
+            }
+        }
+
         await firebaseSignOut(auth)
     }, [])
 

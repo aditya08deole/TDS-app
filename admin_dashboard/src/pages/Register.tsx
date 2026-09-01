@@ -108,9 +108,11 @@ export default function Register() {
         setLoading(true)
         try {
             await createUserWithEmailAndPassword(auth, email.trim(), password)
-            // AuthContext.fetchProfile picks up the invite token from the URL and
-            // calls redeemInviteApi automatically. Redirect to dashboard.
-            navigate('/', { replace: true })
+            // AuthContext.fetchProfile picks up the invite token and calls
+            // redeemInviteApi automatically. No navigate() here on purpose —
+            // see the useEffect watching `user` above; navigating immediately
+            // would race AuthContext's async state update and could bounce
+            // back to this page with no error shown at all.
         } catch (err: any) {
             setError(getAuthErrorMessage(err, 'Registration failed. Please try again.'))
         } finally {
@@ -127,19 +129,15 @@ export default function Register() {
                 if (result.credential?.idToken) {
                     const credential = GoogleAuthProvider.credential(result.credential.idToken)
                     await signInWithCredential(auth, credential)
-                    // Stay on /register?token=... — AuthContext.fetchProfile reads
-                    // the token straight from window.location.search.
-                    navigate('/', { replace: true })
+                    // No navigate() here — see the useEffect above.
                 } else {
                     throw new Error('Google Sign-In failed or was cancelled')
                 }
             } else {
                 const provider = new GoogleAuthProvider()
                 try {
-                    const result = await signInWithPopup(auth, provider)
-                    if (result.user) {
-                        navigate('/', { replace: true })
-                    }
+                    // No navigate() on success here either — same reasoning.
+                    await signInWithPopup(auth, provider)
                 } catch (popupErr: any) {
                     if (isBenignPopupDismissal(popupErr)) {
                         setError(null)
