@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getRedisClient } from '../../db/redis';
 import { requireRole } from '../middleware/roleGuard';
-import { RESOLVED_COOLDOWN_KEY, RESOLVED_COOLDOWN_TTL } from '../../services/notificationService';
+import { RESOLVED_COOLDOWN_KEY, RESOLVED_COOLDOWN_TTL, ACK_COOLDOWN_KEY, ACK_COOLDOWN_TTL } from '../../services/notificationService';
 
 const router = Router();
 
@@ -73,14 +73,30 @@ router.put('/:id/read', requireRole('viewer'), async (req: Request, res: Respons
 router.put('/:id/ack', requireRole('field_engineer'), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.uid || String(req.headers['x-user-id'] || 'unknown');
-    await getDb().collection('alerts').doc(req.params.id).set({
+    const alertRef = getDb().collection('alerts').doc(req.params.id);
+    const alertSnap = await alertRef.get();
+    const acknowledgedAt = new Date().toISOString();
+
+    await alertRef.set({
       status: 'acknowledged',
-      acknowledged_at: new Date().toISOString(),
+      acknowledged_at: acknowledgedAt,
       acknowledged_by: userId,
-      updated_at: new Date().toISOString(),
+      updated_at: acknowledgedAt,
     }, { merge: true });
 
-    res.json({ success: true, timestamp: new Date().toISOString() });
+    // Start the 1-hour quiet period — processThresholdBreach() checks this key
+    // and won't re-notify (or reopen the alert) until it expires, even if the
+    // device keeps reporting breaching readings in the meantime.
+    const deviceId = alertSnap.exists
+      ? (typeof alertSnap.data()!.device_id === 'object' && alertSnap.data()!.device_id !== null
+        ? (alertSnap.data()!.device_id as any).id
+        : String(alertSnap.data()!.device_id || ''))
+      : '';
+    if (deviceId) {
+      await getRedis().set(ACK_COOLDOWN_KEY(deviceId), '1', { EX: ACK_COOLDOWN_TTL });
+    }
+
+    res.json({ success: true, timestamp: acknowledgedAt });
   } catch (error) {
     console.error('Error acknowledging alert:', error);
     res.status(500).json({ success: false, error: 'Failed to acknowledge alert', timestamp: new Date().toISOString() });

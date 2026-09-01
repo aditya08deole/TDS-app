@@ -441,3 +441,35 @@ export async function getUserStatsApi(): Promise<UserRoleStats> {
     return result.data
   }, { useSwrPattern: false });
 }
+
+export type UserRole = 'viewer' | 'field_engineer' | 'admin' | 'super_admin'
+
+export interface DirectoryUser {
+  uid: string
+  email: string | null
+  name: string | null
+  role: UserRole
+  joined_at: string | null
+  invited_by: string | null
+}
+
+/** Full user directory — every real registered account (super_admin only) */
+export async function listUsersApi(): Promise<DirectoryUser[]> {
+  const endpoint = `/api/users`;
+  return dedupFetch(endpoint, async () => {
+    const response = await apiFetch(endpoint)
+    if (!response.ok) throw await apiErrorFromResponse(response, 'Failed to list users')
+    const result: ApiResponse<DirectoryUser[]> = await response.json()
+    return Array.isArray(result.data) ? result.data : []
+  }, { useSwrPattern: false });
+}
+
+/** Assign a role to an existing user by uid (super_admin only) */
+export async function setUserRoleApi(uid: string, role: UserRole): Promise<void> {
+  const response = await apiFetch(`/api/users/${uid}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  })
+  if (!response.ok) throw await apiErrorFromResponse(response, 'Failed to change user role')
+  invalidateCache('/api/users');
+}

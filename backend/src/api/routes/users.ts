@@ -73,7 +73,13 @@ router.post('/invite', requireRole('admin'), async (req: Request, res: Response)
             created_at: now,
         }).catch(() => {});
 
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
+        // Build the link from the actual request rather than the FRONTEND_URL
+        // env var — that var was stale/pointed at localhost in production,
+        // which is exactly what produced broken invite links. The app is a
+        // single unified origin (frontend + API on the same host, see the
+        // root Dockerfile), so the request's own origin is always correct in
+        // every environment with zero config needed.
+        const frontendUrl = `${req.protocol}://${req.get('host')}`;
         const inviteLink = `${frontendUrl}/register?token=${token}`;
 
         console.log(`✅ [INVITE] ${invitedByRole} ${invitedBy} generated invite for role '${role}' — expires ${expiresAt}`);
@@ -312,6 +318,95 @@ router.get('/stats', requireRole('viewer'), async (req: Request, res: Response) 
     } catch (error) {
         console.error('Error fetching user stats:', error);
         return res.status(500).json({ success: false, error: 'Failed to fetch user stats' });
+    }
+});
+
+const VALID_ROLES = ['viewer', 'field_engineer', 'admin', 'super_admin'];
+
+// ─── GET /api/users — List every real registered user (super_admin only) ─────
+/**
+ * Full user directory: uid, email, name, role, and when they joined, read
+ * directly from the `users` collection. This is what actually lets a
+ * super_admin see who has access and at what level — the invite-token list
+ * only shows generated links, not the real accounts that exist.
+ */
+router.get('/', requireRole('super_admin'), async (req: Request, res: Response) => {
+    try {
+        const snapshot = await getDb().collection('users').orderBy('joined_at', 'desc').get().catch(() =>
+            // joined_at may be missing on older/manually-created docs — fall back to unordered
+            getDb().collection('users').get()
+        );
+
+        const users = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                uid: doc.id,
+                email: data.email || null,
+                name: data.name || null,
+                role: data.role || 'viewer',
+                joined_at: data.joined_at || data.created_at || null,
+                invited_by: data.invited_by || null,
+            };
+        });
+
+        return res.json({ success: true, data: users, timestamp: new Date().toISOString() });
+    } catch (error) {
+        console.error('Error listing users:', error);
+        return res.status(500).json({ success: false, error: 'Failed to list users' });
+    }
+});
+
+// ─── PUT /api/users/:uid/role — Assign a role to an existing user (super_admin only) ───
+/**
+ * Lets a super_admin change any existing user's role directly, by uid, rather
+ * than only being able to set a role at invite-redemption time. Stricter than
+ * the invite system on purpose: an admin can invite someone in at a role, but
+ * only super_admin can reassign an already-existing account's access level.
+ */
+router.put('/:uid/role', requireRole('super_admin'), async (req: Request, res: Response) => {
+    try {
+        const { uid } = req.params;
+        const { role } = req.body;
+        const changedBy = (req as any).user?.uid;
+
+        if (!role || !VALID_ROLES.includes(role)) {
+            return res.status(400).json({
+                success: false,
+                error: `role must be one of: ${VALID_ROLES.join(', ')}`,
+            });
+        }
+
+        const userRef = getDb().collection('users').doc(uid);
+        const userSnap = await userRef.get();
+
+        if (!userSnap.exists) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        const previousRole = userSnap.data()?.role || 'viewer';
+        const now = new Date().toISOString();
+
+        await userRef.set({ role, updated_at: now, role_changed_by: changedBy }, { merge: true });
+
+        getDb().collection('audit_log').add({
+            action: 'role_changed',
+            uid,
+            previous_role: previousRole,
+            new_role: role,
+            changed_by: changedBy,
+            timestamp: now,
+        }).catch(() => {});
+
+        console.log(`✅ [ROLE CHANGE] ${changedBy} changed uid=${uid} role: ${previousRole} -> ${role}`);
+
+        return res.json({
+            success: true,
+            data: { uid, role, previous_role: previousRole },
+            timestamp: now,
+        });
+    } catch (error) {
+        console.error('Error changing user role:', error);
+        return res.status(500).json({ success: false, error: 'Failed to change user role' });
     }
 });
 

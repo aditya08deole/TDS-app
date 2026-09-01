@@ -3,7 +3,7 @@ import { getRedisClient, hset, hgetall } from '../db/redis';
 import { l1Cache } from '../db/cache';
 import { Device, SensorData } from '../types';
 import { TDS_CONFIG } from '../config/tdsConfig';
-import { isDeviceSuppressed, setDeviceSuppression } from './notificationService';
+import { processThresholdBreach } from './notificationService';
 
 // Lazy getters — only called after Firebase/Redis are initialized, never at import time
 function getDb() { return getFirestore(); }
@@ -160,65 +160,26 @@ async function checkThresholds(device: Device, reading: any, recordedAt: Date) {
 
         console.log(`🚨 Threshold breach for ${device.name}: ${reading.tds} PPM (Range: ${min}-${max})`);
 
-        // ── Per-Device Circuit Breaker ──
-        // Check both suppression keys BEFORE creating any alert or triggering FCM.
-        // This is the primary anti-spam gate — each device has its own independent key.
-        // Devices in cooldown still get their Redis state updated (last_tds, status)
-        // but no new Firestore alert or push notification is created.
-        const suppressed = await isDeviceSuppressed(device.id);
-        if (suppressed) {
-            // Still update device status in Redis so dashboard shows current TDS
-            await hset(`device:${device.id}`, { ...device, status: 'critical', last_tds: reading.tds });
-            return;
-        }
+        // Update device status/last reading in Redis immediately regardless of
+        // notification outcome, so the dashboard always shows current TDS.
+        await hset(`device:${device.id}`, { ...device, status: 'critical', last_tds: reading.tds });
 
-        // Check if we already have an open alert tracked in Redis
-        const openAlertIds = await getRedis().sMembers(`device:${device.id}:alerts:open`);
+        // processThresholdBreach owns the full alert lifecycle: create a new
+        // alert, re-notify on every reading while unacknowledged, or reopen
+        // after the 1-hour post-acknowledge quiet period if still breaching.
+        const locationName = device.location_name || device.name || device.id;
+        await processThresholdBreach(
+            device.id,
+            device.name,
+            locationName,
+            reading.tds,
+            min,
+            max,
+            recordedAt.toISOString(),
+        ).catch(e => console.error('processThresholdBreach failed', e));
 
-        if (openAlertIds.length === 0) {
-            const locationName = device.location_name || device.name || device.id;
-            const recordedAtISO = recordedAt.toISOString();
-            const alertData = {
-                device_id: device.id,
-                device_name: device.name,
-                location_name: locationName,
-                type: reading.tds > max ? 'TDS_HIGH' : 'TDS_LOW',
-                severity: 'critical',
-                message: `Critical TDS level detected at ${locationName}: ${reading.tds} ppm. Safe range is ${min}-${max} ppm.`,
-                value_at_time: reading.tds,
-                recorded_at: recordedAtISO,
-                status: 'open',
-                created_at: recordedAtISO,
-                updated_at: recordedAtISO
-            };
-
-            // Stable per-device alert ID — MUST match notificationService.triggerForceDeviceAlert's
-            // `active-alert-{deviceId}` scheme. Both this telemetry path and the ThingSpeak Ghost
-            // Engine can independently detect the same breach; using the same deterministic ID
-            // (instead of a random .add() ID here) means a race between the two collapses into a
-            // single merged document instead of two separate open alerts for the same device.
-            const alertId = `active-alert-${device.id}`;
-
-            // Update device status in Redis immediately (before Firestore write)
-            await hset(`device:${device.id}`, { ...device, status: 'critical' });
-
-            // Set 30-min suppression key BEFORE Firestore write
-            // This ensures no duplicate alerts even if the onSnapshot fires rapidly
-            await setDeviceSuppression(device.id);
-
-            // Write alert to Firestore — this triggers the onSnapshot listener
-            // which dispatches the FCM push notification
-            getDb().collection('alerts').doc(alertId).set(alertData, { merge: true }).then(() => {
-                getRedis().sAdd('alerts:all', alertId);
-                hset(`alert:${alertId}`, { ...alertData, id: alertId });
-                getRedis().sAdd(`device:${device.id}:alerts`, alertId);
-                getRedis().sAdd(`device:${device.id}:alerts:open`, alertId);
-                console.log(`✅ [ALERT CREATED] Alert ${alertId} for device ${device.id} written to Firestore`);
-            }).catch(e => console.error('Firestore alert sync failed', e));
-
-            getDb().collection('devices').doc(device.id).update({ status: 'critical', updated_at: new Date().toISOString() })
-                .catch(e => console.error('Firestore device status sync failed', e));
-        }
+        getDb().collection('devices').doc(device.id).update({ status: 'critical', updated_at: new Date().toISOString() })
+            .catch(e => console.error('Firestore device status sync failed', e));
     } else {
         // 2. Reading is safe. Check if we need to recover.
         if (device.status === 'critical') {

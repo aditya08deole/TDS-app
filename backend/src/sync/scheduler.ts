@@ -2,11 +2,7 @@ import cron from 'node-cron';
 import { syncFromFirebase } from '../services/syncService';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getRedisClient } from '../db/redis';
-import {
-    triggerForceDeviceAlert,
-    sendForcePushNotification,
-    isDeviceSuppressed,
-} from '../services/notificationService';
+import { triggerForceDeviceAlert } from '../services/notificationService';
 import { getAllDevices, updateDevice } from '../services/deviceService';
 import { getLatestThingSpeakReading } from '../services/thingSpeakService';
 
@@ -19,7 +15,6 @@ let scheduledTask: any = null;
 let cleanupTask: any = null;
 let heartbeatTask: any = null;
 let thingSpeakTask: any = null;
-let forceEngineTask: any = null; // Fix #10: Was untracked — leaked after stopScheduler()
 
 /**
  * ThingSpeak Autonomous Ghost Engine
@@ -41,8 +36,12 @@ export function startThingSpeakMonitorJob(): void {
                 if (!reading) continue;
 
                 const tds = reading.tds;
-                const maxLimit = device.safe_tds_max || 500;
-                const isCritical = tds >= maxLimit;
+                const maxLimit = device.safe_tds_max ?? 500;
+                const minLimit = device.safe_tds_min ?? 0;
+                // Fix: this previously only checked the upper bound, so a
+                // TDS_LOW breach (tds below safe_tds_min) was never detected
+                // by ThingSpeak polling — only by direct telemetry ingestion.
+                const isCritical = tds >= maxLimit || tds < minLimit;
 
                 await updateDevice(device.id, {
                     last_tds: tds,
@@ -51,20 +50,10 @@ export function startThingSpeakMonitorJob(): void {
                 });
 
                 if (isCritical) {
-                    // Check if device is in 30-min alert or resolved cooldown window
-                    const suppressed = await isDeviceSuppressed(device.id);
-                    if (suppressed) {
-                        console.log(`⏱️ [GHOST ENGINE] Device ${device.id} is in 30-min cooldown/resolution window — skipping.`);
-                        continue;
-                    }
-
                     criticalCount++;
-
-                    // Create/update the per-device alert and fire the initial FCM push.
-                    // Ongoing "still open" reminders are handled solely by the Force
-                    // Engine (see startHourlyReminderJob below) — this job no longer
-                    // sends its own separate "consolidated report" push, which used
-                    // to duplicate that and reference a fake SYSTEM_REPORT device.
+                    // triggerForceDeviceAlert -> processThresholdBreach owns the
+                    // full state machine internally (new alert / re-notify while
+                    // open / ack-cooldown / reopen), so no pre-check is needed here.
                     await triggerForceDeviceAlert(device.id, tds, reading.recorded_at);
                 }
             }
@@ -227,87 +216,7 @@ export function startDeviceHeartbeatJob(): void {
 }
 
 /**
- * Force Critical Engine — every 5 min, re-dispatches FCM for any open critical
- * alert whose last notification was >1 hour ago.
- *
- * This is now the SINGLE reminder mechanism for still-open critical alerts.
- * It used to run alongside two other overlapping systems: a Redis-driven
- * top-of-hour scan (sendHourlyReminders) and the Ghost Engine's own separate
- * "consolidated report" push. Both were removed — this job already covers
- * every open critical alert regardless of source, reading directly from
- * Firestore (the source of truth) with a precise per-alert 1-hour throttle,
- * so the other two were pure duplication that could fire within minutes of
- * each other for the same alert.
- *
- * Fix #10: forceEngineTask tracked in a module-level variable so
- * stopScheduler() can properly stop it.
- * Fix #22: Removed dynamic require() — functions imported statically at top.
- */
-export function startHourlyReminderJob(): void {
-    // Fix #10: Store handle in module-level variable so stopScheduler() can stop it
-    forceEngineTask = cron.schedule('*/5 * * * *', async () => {
-        try {
-            console.log('🚀 [FORCE ENGINE] Scanning for unresolved critical alerts...');
-            const db = getDb();
-            const snapshot = await db.collection('alerts')
-                .where('status', '==', 'open')
-                .where('severity', '==', 'critical')
-                .get();
-
-            if (snapshot.empty) return;
-
-            const now = Date.now();
-            const ONE_HOUR_MS = 60 * 60 * 1000;
-
-            for (const doc of snapshot.docs) {
-                const alert = doc.data();
-                const lastNotified = alert.last_notified_at ? new Date(alert.last_notified_at).getTime() : 0;
-
-                if (now - lastNotified >= ONE_HOUR_MS) {
-                    const alertData: any = { ...doc.data() };
-                    const deviceId: string = alertData.device_id;
-
-                    // Check if device is currently in 30-min resolved cooldown
-                    if (deviceId) {
-                        const suppressed = await isDeviceSuppressed(deviceId);
-                        if (suppressed) {
-                            console.log(`⏱️ [FORCE ENGINE] Device ${deviceId} is in 30-min cooldown/resolution — skipping re-delivery.`);
-                            continue;
-                        }
-                    }
-
-                    console.log(`🔥 [FORCE DISPATCH] Alert ${doc.id} still OPEN after 1hr. Forcing re-delivery...`);
-
-                    // Refresh with latest device reading
-                    if (deviceId && deviceId !== 'SYSTEM_REPORT') {
-                        try {
-                            const deviceDoc = await db.collection('devices').doc(deviceId).get();
-                            if (deviceDoc.exists) {
-                                const fresh = deviceDoc.data()!;
-                                if (fresh.last_tds != null)  alertData.value_at_time = fresh.last_tds;
-                                if (fresh.last_reading_at)   alertData.recorded_at   = fresh.last_reading_at;
-                                console.log(`🔄 [FORCE DISPATCH] Refreshed device ${deviceId}: ppm=${fresh.last_tds}`);
-                            }
-                        } catch (refreshErr) {
-                            console.warn(`⚠️ [FORCE DISPATCH] Could not refresh device ${deviceId}:`, refreshErr);
-                        }
-                    }
-
-                    // Dispatch FCM-only — send push notification reminder
-                    await sendForcePushNotification(doc.id, alertData, true);
-                }
-            }
-        } catch (error) {
-            console.error('❌ Force reminder engine failed:', error);
-        }
-    });
-
-    console.log('✅ Force Critical Engine active — checking every 5 minutes (sole reminder mechanism).');
-}
-
-/**
  * Stop all scheduler tasks.
- * Fix #10: forceEngineTask is now properly stopped.
  */
 export function stopScheduler(): void {
   const tasks: [string, any][] = [
@@ -315,7 +224,6 @@ export function stopScheduler(): void {
     ['Alert cleanup job', cleanupTask],
     ['Device heartbeat job', heartbeatTask],
     ['ThingSpeak monitor job', thingSpeakTask],
-    ['Force Critical Engine', forceEngineTask], // Fix #10: now tracked
   ];
 
   for (const [name, task] of tasks) {
@@ -329,7 +237,6 @@ export function stopScheduler(): void {
   cleanupTask = null;
   heartbeatTask = null;
   thingSpeakTask = null;
-  forceEngineTask = null; // Fix #10
 }
 
 /**
@@ -342,7 +249,6 @@ export function getSchedulerStatus(): any {
     cleanupRunning: !!cleanupTask,
     heartbeatRunning: !!heartbeatTask,
     thingSpeakMonitorRunning: !!thingSpeakTask,
-    forceEngineRunning: !!forceEngineTask, // Fix #10: now reported — sole reminder mechanism
     nextRun: scheduledTask ? 'Check logs' : 'Not running',
     interval: process.env.SYNC_INTERVAL_HOURS || '1 hour',
     alertRetentionHours: 24,

@@ -7,14 +7,13 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { initializeRedis, closeRedis, getRedisClient } from './db/redis';
-import { 
-    startScheduler, 
-    startAlertCleanupJob, 
-    startDeviceHeartbeatJob, 
-    startHourlyReminderJob, 
+import {
+    startScheduler,
+    startAlertCleanupJob,
+    startDeviceHeartbeatJob,
     startThingSpeakMonitorJob,
-    stopScheduler, 
-    getSchedulerStatus 
+    stopScheduler,
+    getSchedulerStatus
 } from './sync/scheduler';
 import { syncFromFirebase } from './services/syncService';
 import { flushSensorData, startTelemetryFlusher, stopTelemetryFlusher } from './services/telemetryService';
@@ -37,6 +36,12 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// Railway (and most PaaS platforms) terminate TLS at an edge proxy and forward
+// the original scheme via X-Forwarded-Proto. Without trust proxy, req.protocol
+// always reports 'http' even on a real https request — breaks anything that
+// builds an absolute URL from the request (e.g. invite links).
+app.set('trust proxy', 1);
 
 // ═══ MIDDLEWARE ═══
 // crossOriginOpenerPolicy defaults to 'same-origin' in helmet, which blocks the
@@ -232,7 +237,6 @@ app.get('/health', async (req, res) => {
         cleanup: sched.cleanupRunning ? 'active' : 'stopped',
         heartbeat: sched.heartbeatRunning ? 'active' : 'stopped',
         thingspeak_monitor: sched.thingSpeakMonitorRunning ? 'active' : 'stopped',
-        force_engine: sched.forceEngineRunning ? 'active' : 'stopped', // sole reminder mechanism for still-open critical alerts
       },
       scheduler_detail: sched,
       environment: process.env.NODE_ENV || 'development'
@@ -335,10 +339,10 @@ async function start() {
     // Start device heartbeat monitoring (every 5 min)
     startDeviceHeartbeatJob();
 
-    // Start hourly notification reminders
-    startHourlyReminderJob();
-
-    // Start autonomous ThingSpeak monitoring (Ghost Engine — every 2 min)
+    // Start autonomous ThingSpeak monitoring (Ghost Engine — every 10 min).
+    // Reminder/reopen behavior for still-breaching devices is now handled
+    // entirely by processThresholdBreach() as new telemetry arrives — see
+    // notificationService.ts — rather than a separate periodic sweep.
     startThingSpeakMonitorJob();
 
     try {

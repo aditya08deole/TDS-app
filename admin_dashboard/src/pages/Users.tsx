@@ -3,8 +3,9 @@ import { ShieldCheck, Users as UsersIcon, UserPlus, Link2, Copy, Check, Clock, T
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { useState, useEffect, useCallback } from 'react'
+import { useAuth } from '../context/AuthContext'
 import { useRole, ROLE_DISPLAY_NAMES } from '../context/RoleContext'
-import { generateInviteApi, listInvitesApi, revokeInviteApi, getUserStatsApi, type InviteToken, type UserRoleStats } from '../lib/api'
+import { generateInviteApi, listInvitesApi, revokeInviteApi, getUserStatsApi, listUsersApi, setUserRoleApi, type InviteToken, type UserRoleStats, type DirectoryUser, type UserRole } from '../lib/api'
 import { cn } from '@/lib/utils'
 
 type InviteRole = 'field_engineer' | 'viewer' | 'admin'
@@ -15,8 +16,25 @@ const ROLE_OPTIONS: { value: InviteRole; label: string; desc: string; color: str
     { value: 'admin', label: 'Admin', desc: 'Full control + can invite others', color: 'text-purple-400 border-purple-500/30 bg-purple-500/10' },
 ]
 
+const DIRECTORY_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+    { value: 'viewer', label: 'User' },
+    { value: 'field_engineer', label: 'Maintenance' },
+    { value: 'admin', label: 'Admin' },
+    { value: 'super_admin', label: 'Super Admin' },
+]
+
+// Covers all 4 roles — unlike ROLE_OPTIONS below, which only lists the 3
+// roles that can be granted via invite (super_admin can't be invited).
+const DIRECTORY_ROLE_COLORS: Record<UserRole, string> = {
+    viewer: 'text-blue-400 border-blue-500/30 bg-blue-500/10',
+    field_engineer: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+    admin: 'text-purple-400 border-purple-500/30 bg-purple-500/10',
+    super_admin: 'text-cyan-400 border-cyan-500/30 bg-cyan-500/10',
+}
+
 export default function Users() {
     const { hasPermission, isSuperAdmin, role } = useRole()
+    const { user } = useAuth()
     const canInvite = hasPermission('invite_users')
 
     const [inviteRole, setInviteRole] = useState<InviteRole>('field_engineer')
@@ -29,6 +47,10 @@ export default function Users() {
     const [loadingInvites, setLoadingInvites] = useState(false)
     const [revoking, setRevoking] = useState<string | null>(null)
     const [userStats, setUserStats] = useState<UserRoleStats | null>(null)
+
+    const [directory, setDirectory] = useState<DirectoryUser[]>([])
+    const [loadingDirectory, setLoadingDirectory] = useState(false)
+    const [changingRoleFor, setChangingRoleFor] = useState<string | null>(null)
 
     const loadInvites = useCallback(async () => {
         if (!canInvite) return
@@ -54,10 +76,38 @@ export default function Users() {
         }
     }, [])
 
+    const loadDirectory = useCallback(async () => {
+        if (!isSuperAdmin) return
+        setLoadingDirectory(true)
+        try {
+            const data = await listUsersApi()
+            setDirectory(data)
+        } catch (err) {
+            console.error('Failed to load user directory:', err)
+        } finally {
+            setLoadingDirectory(false)
+        }
+    }, [isSuperAdmin])
+
     useEffect(() => {
         loadInvites()
         loadUserStats()
-    }, [loadInvites, loadUserStats])
+        loadDirectory()
+    }, [loadInvites, loadUserStats, loadDirectory])
+
+    const handleRoleChange = async (uid: string, newRole: UserRole) => {
+        setChangingRoleFor(uid)
+        try {
+            await setUserRoleApi(uid, newRole)
+            setDirectory(prev => prev.map(u => u.uid === uid ? { ...u, role: newRole } : u))
+            toast.success('Role updated', { description: `Now: ${ROLE_DISPLAY_NAMES[newRole]}` })
+            loadUserStats() // counts changed
+        } catch (err: any) {
+            toast.error('Failed to change role', { description: err.message })
+        } finally {
+            setChangingRoleFor(null)
+        }
+    }
 
     const handleGenerate = async () => {
         setGenerating(true)
@@ -326,6 +376,92 @@ export default function Users() {
                                             </td>
                                         </tr>
                                     ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </GlassCard>
+            )}
+
+            {/* All Users Directory — super_admin only: see every real account and reassign roles */}
+            {isSuperAdmin && (
+                <GlassCard className="overflow-hidden p-0">
+                    <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                        <div>
+                            <h3 className="font-bold text-foreground text-sm">All Users</h3>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                {directory.length} real account{directory.length === 1 ? '' : 's'} — change anyone's role directly
+                            </p>
+                        </div>
+                        <button
+                            onClick={loadDirectory}
+                            disabled={loadingDirectory}
+                            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+                        >
+                            <RefreshCw className={cn('w-3.5 h-3.5', loadingDirectory && 'animate-spin')} />
+                            Refresh
+                        </button>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                            <thead>
+                                <tr className="border-b border-white/10 text-left text-muted-foreground">
+                                    <th className="px-5 py-3 font-medium">Email</th>
+                                    <th className="px-5 py-3 font-medium">Joined</th>
+                                    <th className="px-5 py-3 font-medium text-right">Role</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {loadingDirectory ? (
+                                    Array.from({ length: 3 }).map((_, i) => (
+                                        <tr key={i} className="border-b border-white/5 animate-pulse">
+                                            {Array.from({ length: 3 }).map((__, j) => (
+                                                <td key={j} className="px-5 py-4">
+                                                    <div className="h-3 bg-white/5 rounded w-24" />
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))
+                                ) : directory.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={3} className="px-5 py-8 text-center text-muted-foreground">
+                                            No users found.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    directory.map(u => {
+                                        const isSelf = u.uid === user?.uid
+                                        return (
+                                            <tr key={u.uid} className="border-b border-white/5 hover:bg-white/3 transition-colors">
+                                                <td className="px-5 py-3.5">
+                                                    <span className="text-foreground/90">{u.email || u.uid}</span>
+                                                    {isSelf && (
+                                                        <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold uppercase tracking-wider">You</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-5 py-3.5 text-muted-foreground">{u.joined_at ? formatDate(u.joined_at) : '—'}</td>
+                                                <td className="px-5 py-3.5 text-right">
+                                                    {isSelf ? (
+                                                        <span className={cn('px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', DIRECTORY_ROLE_COLORS[u.role])}>
+                                                            {ROLE_DISPLAY_NAMES[u.role]}
+                                                        </span>
+                                                    ) : (
+                                                        <select
+                                                            value={u.role}
+                                                            disabled={changingRoleFor === u.uid}
+                                                            onChange={(e) => handleRoleChange(u.uid, e.target.value as UserRole)}
+                                                            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-foreground disabled:opacity-50 focus:outline-none focus:border-cyan-500/50"
+                                                        >
+                                                            {DIRECTORY_ROLE_OPTIONS.map(opt => (
+                                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                            ))}
+                                                        </select>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })
                                 )}
                             </tbody>
                         </table>

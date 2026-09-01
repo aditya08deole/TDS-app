@@ -13,10 +13,14 @@ function getRedis() { return getRedisClient(); }
 // Cache of all registered FCM tokens
 export const FCM_TOKEN_CACHE_KEY = 'cache:fcm_tokens';
 
-// Per-device 30-minute suppression key — set when first alert fires
-// Prevents notification spam for the same device within 30 minutes
-const SUPPRESSION_KEY = (deviceId: string) => `notif:suppressed:${deviceId}`;
-const SUPPRESSION_TTL = 30 * 60; // 30 minutes in seconds
+// Per-device 1-hour quiet period — set when an operator ACKNOWLEDGES an alert.
+// While active, a still-breaching device does not re-notify. Once it expires,
+// if the device is still breaching on the next reading, the alert reopens
+// (back to 'open') and a reminder fires. This is the ONLY cooldown that gates
+// notifications during an active breach — an unacknowledged ('open') alert is
+// never suppressed and re-notifies on every new breaching reading instead.
+export const ACK_COOLDOWN_KEY = (deviceId: string) => `notif:ack_cooldown:${deviceId}`;
+export const ACK_COOLDOWN_TTL = 60 * 60; // 1 hour in seconds
 
 // Per-device 30-minute resolved cooldown — set when admin/maintenance resolves an alert
 // Prevents re-notification even if TDS is still breaching, for 30 minutes post-resolution
@@ -76,24 +80,25 @@ async function withRetry<T>(operation: () => Promise<T>, retries = 1): Promise<T
 // ─── Suppression Check ────────────────────────────────────────────────────────
 
 /**
- * Industry-standard per-device circuit breaker.
- * Returns true if we should SKIP sending a notification for this device.
+ * Per-device circuit breaker. Returns true if we should SKIP sending a
+ * notification for this device right now.
  *
  * Two suppression sources:
- * 1. Recent alert already sent (30-min cooldown after first notification)
- * 2. Alert was manually resolved (30-min grace period post-resolution)
+ * 1. An operator just acknowledged the alert (1-hour quiet period)
+ * 2. An operator just manually resolved the alert (30-min grace period)
+ *
+ * An 'open' (unacknowledged) alert is NEVER suppressed by this check — it
+ * re-notifies on every new breaching reading. See processThresholdBreach().
  */
 export async function isDeviceSuppressed(deviceId: string): Promise<boolean> {
     const redis = getRedis();
 
-    // Check 1: Was a notification already sent recently for this device?
-    const suppressed = await redis.exists(SUPPRESSION_KEY(deviceId));
-    if (suppressed === 1) {
-        console.log(`🔕 [SUPPRESSED] Device ${deviceId} is in 30-min alert cooldown — skipping`);
+    const ackCooldown = await redis.exists(ACK_COOLDOWN_KEY(deviceId));
+    if (ackCooldown === 1) {
+        console.log(`🔕 [ACK COOLDOWN] Device ${deviceId} was recently acknowledged — skipping for 1hr`);
         return true;
     }
 
-    // Check 2: Was this device's alert manually resolved recently?
     const resolvedCooldown = await redis.exists(RESOLVED_COOLDOWN_KEY(deviceId));
     if (resolvedCooldown === 1) {
         console.log(`🔕 [RESOLVED COOLDOWN] Device ${deviceId} was recently resolved — skipping for 30min`);
@@ -104,12 +109,12 @@ export async function isDeviceSuppressed(deviceId: string): Promise<boolean> {
 }
 
 /**
- * Mark a device as "notified" — suppresses further alerts for 30 minutes.
- * Called immediately after a notification is successfully dispatched.
+ * Start the 1-hour post-acknowledge quiet period for a device.
+ * Called when an operator acknowledges an alert (PUT /api/alerts/:id/ack).
  */
-export async function setDeviceSuppression(deviceId: string): Promise<void> {
-    await getRedis().set(SUPPRESSION_KEY(deviceId), '1', { EX: SUPPRESSION_TTL });
-    console.log(`🔒 [SUPPRESSION SET] Device ${deviceId} suppressed for 30 minutes`);
+export async function setAckCooldown(deviceId: string): Promise<void> {
+    await getRedis().set(ACK_COOLDOWN_KEY(deviceId), '1', { EX: ACK_COOLDOWN_TTL });
+    console.log(`🔒 [ACK COOLDOWN SET] Device ${deviceId} quiet for 1 hour`);
 }
 
 /**
@@ -198,23 +203,17 @@ export async function sendPushNotification(alertId: string, alertData: any, isRe
     try {
         const deviceId = alertData.device_id || '';
 
-        // ── MANDATORY PER-DEVICE SUPPRESSION & RESOLVED COOLDOWN GATE ──
+        // ── HARD STOP: resolved cooldown ──
+        // Callers (processThresholdBreach) already decide WHEN to call this
+        // based on the open/acknowledged state machine, including the 1-hour
+        // ack cooldown — so this function no longer re-checks that. It keeps
+        // only the resolved-cooldown check as a safety net: no code path
+        // should ever page someone about a device an operator just resolved.
         if (deviceId) {
-            const redis = getRedis();
-            // 1. HARD STOP: If device was manually resolved in last 30 min, BLOCK ALL DISPATCH (reminders included)
-            const resolvedCooldown = await redis.exists(RESOLVED_COOLDOWN_KEY(deviceId));
+            const resolvedCooldown = await getRedis().exists(RESOLVED_COOLDOWN_KEY(deviceId));
             if (resolvedCooldown === 1) {
                 console.log(`🔒 [FCM GATE] Device ${deviceId} was recently RESOLVED — hard stop active for 30min`);
                 return;
-            }
-
-            // 2. Alert Cooldown: If notification sent in last 30 min, block repeat dispatches
-            if (!isReminder) {
-                const suppressed = await redis.exists(SUPPRESSION_KEY(deviceId));
-                if (suppressed === 1) {
-                    console.log(`🔕 [FCM GATE] Device ${deviceId} is in 30-min alert cooldown — DISPATCH BLOCKED`);
-                    return;
-                }
             }
         }
 
@@ -535,7 +534,7 @@ export function startNotificationListeners(): void {
                     `device:${deviceId}:alerts`,
                     `device:${deviceId}:alerts:open`,
                     `device:${deviceId}:uptime_records`,
-                    SUPPRESSION_KEY(deviceId),
+                    ACK_COOLDOWN_KEY(deviceId),
                     RESOLVED_COOLDOWN_KEY(deviceId),
                 ];
 
@@ -585,67 +584,139 @@ export function startNotificationListeners(): void {
     }, (error) => { console.error('❌ Firestore Subscription Listener Error:', error); });
 }
 
-// ─── Force Critical Alert (Ghost Engine / ThingSpeak) ────────────────────────
+// ─── Threshold Breach State Machine ──────────────────────────────────────────
 
 /**
- * Triggered by the ThingSpeak Ghost Engine for a single device.
- * Uses a stable per-device alert ID to update the same Firestore card
- * and fires an FCM notification if it's been more than 1 hour since last notify.
+ * The single source of truth for what happens when a device is found to be
+ * breaching its safe TDS range. Called from every detection path (direct
+ * telemetry ingestion, the ThingSpeak Ghost Engine) so behavior is identical
+ * regardless of how the breach was discovered.
+ *
+ * State machine, keyed on the alert's current status:
+ *
+ *   no alert / status 'resolved'  → create a fresh 'open' alert, notify immediately
+ *   status 'open'                 → still unacknowledged: update the reading and
+ *                                    notify again on THIS breach too — no cooldown
+ *                                    while unacknowledged, by design
+ *   status 'acknowledged'         → stay quiet for 1 hour (ACK_COOLDOWN_KEY). Once
+ *                                    that expires, if a new reading is still
+ *                                    breaching, reopen the alert (back to 'open')
+ *                                    and send a reminder — re-entering the 'open'
+ *                                    behavior above until acknowledged again
+ *
+ * Manual resolution (RESOLVED_COOLDOWN_KEY, 30 min) is a hard stop above all of
+ * this — set by the operator resolve action, unrelated to the ack cooldown.
  */
-export async function triggerForceDeviceAlert(deviceId: string, tds: number, timestamp: string): Promise<void> {
-    // ── Per-Device Suppression & Cooldown Gate ──
-    // Check if device is in 30-min alert cooldown OR 30-min resolved cooldown.
-    // Respects operator resolution: if resolved, wait 30 min before allowing new alerts for this device.
-    const suppressed = await isDeviceSuppressed(deviceId);
-    if (suppressed) {
-        console.log(`⏱️ [GHOST] Device ${deviceId} is currently suppressed/in cooldown (30-min window). Skipping alert update & push.`);
+export async function processThresholdBreach(
+    deviceId: string,
+    deviceName: string,
+    locationName: string,
+    tds: number,
+    minThreshold: number,
+    maxThreshold: number,
+    recordedAtISO: string,
+): Promise<void> {
+    const db = getDb();
+    const redis = getRedis();
+
+    const resolvedCooldown = await redis.exists(RESOLVED_COOLDOWN_KEY(deviceId));
+    if (resolvedCooldown === 1) {
+        console.log(`⏱️ [BREACH] Device ${deviceId} was recently resolved — skipping for 30min`);
         return;
     }
 
+    const alertId = `active-alert-${deviceId}`;
+    const alertRef = db.collection('alerts').doc(alertId);
+    const snap = await alertRef.get();
+    const existing = snap.exists ? snap.data()! : null;
+    const status = existing?.status;
+
+    const type = tds > maxThreshold ? 'TDS_HIGH' : 'TDS_LOW';
+    const message = `Critical TDS level detected at ${locationName}: ${tds} ppm. Safe range is ${minThreshold}-${maxThreshold} ppm.`;
+
+    if (!existing || status === 'resolved') {
+        const alertData = {
+            device_id: deviceId,
+            device_name: deviceName,
+            location_name: locationName,
+            type,
+            severity: 'critical',
+            message,
+            value_at_time: tds,
+            recorded_at: recordedAtISO,
+            status: 'open',
+            created_at: recordedAtISO,
+            updated_at: recordedAtISO,
+        };
+        await alertRef.set(alertData, { merge: true });
+        await redis.sAdd('alerts:all', alertId);
+        await redis.sAdd(`device:${deviceId}:alerts`, alertId);
+        await redis.sAdd(`device:${deviceId}:alerts:open`, alertId);
+        console.log(`✅ [BREACH] New alert ${alertId} for device ${deviceId} — ${tds} ppm`);
+        await sendPushNotification(alertId, { ...alertData, device_id: deviceId }, false);
+        return;
+    }
+
+    if (status === 'open') {
+        // Unacknowledged — nag on every new breaching reading, no cooldown.
+        const updateData = { value_at_time: tds, recorded_at: recordedAtISO, updated_at: recordedAtISO, message, type };
+        await alertRef.update(updateData);
+        console.log(`🔔 [BREACH] Alert ${alertId} still open/unacknowledged — re-notifying (${tds} ppm)`);
+        // isReminder=true bypasses the 10-min per-alertId dedupe, which exists
+        // to protect against double-firing the SAME event, not to block these
+        // intentional repeat notifications for a genuinely new reading.
+        await sendPushNotification(alertId, { ...existing, ...updateData, device_id: deviceId }, true);
+        return;
+    }
+
+    if (status === 'acknowledged') {
+        const ackCooling = await redis.exists(ACK_COOLDOWN_KEY(deviceId));
+        if (ackCooling === 1) {
+            console.log(`🔕 [BREACH] Device ${deviceId} acknowledged <1hr ago — staying quiet`);
+            return;
+        }
+
+        // 1-hour post-ack grace period expired and it's still breaching — reopen.
+        const updateData = {
+            status: 'open',
+            value_at_time: tds,
+            recorded_at: recordedAtISO,
+            updated_at: recordedAtISO,
+            message,
+            type,
+            reopened_at: recordedAtISO,
+        };
+        await alertRef.update(updateData);
+        await redis.sAdd(`device:${deviceId}:alerts:open`, alertId);
+        console.log(`♻️ [BREACH] Alert ${alertId} reopened — still breaching 1hr after acknowledge`);
+        await sendPushNotification(alertId, { ...existing, ...updateData, device_id: deviceId }, true);
+    }
+}
+
+// ─── Force Critical Alert (Ghost Engine / ThingSpeak) ────────────────────────
+
+/**
+ * Triggered by the ThingSpeak Ghost Engine for a single device. Thin wrapper
+ * around processThresholdBreach() — the state machine is identical regardless
+ * of whether the breach was found via direct telemetry or ThingSpeak polling.
+ */
+export async function triggerForceDeviceAlert(deviceId: string, tds: number, timestamp: string): Promise<void> {
     const db = getDb();
     const deviceSnap = await db.collection('devices').doc(deviceId).get();
     if (!deviceSnap.exists) return;
 
     const deviceData = deviceSnap.data() as any;
-    const alertId = `active-alert-${deviceId}`; // Stable ID for this device
+    const maxThreshold = deviceData.safe_tds_max ?? 500;
+    const minThreshold = deviceData.safe_tds_min ?? 0;
+    const locationName = deviceData.location_name || deviceData.name || 'N/A';
 
-    const existingAlert = await db.collection('alerts').doc(alertId).get();
-    const isNew = !existingAlert.exists || existingAlert.data()?.status !== 'open';
-
-    const alertData = {
-        device_id: deviceId,
-        device_name: deviceData.name || deviceId,
-        location_name: deviceData.location_name || deviceData.name || 'N/A',
-        message: `CRITICAL TDS DETECTED: ${tds} PPM (Autonomous Scan)`,
-        severity: 'critical',
-        status: 'open',
-        value_at_time: tds,
-        recorded_at: timestamp,
-        created_at: isNew ? timestamp : existingAlert.data()?.created_at,
-        updated_at: timestamp,
-        type: 'AUTO_SCAN',
-    };
-
-    // Persist to Firestore
-    try {
-        await db.collection('alerts').doc(alertId).set(alertData, { merge: true });
-        console.log(`📡 [GHOST] Updated alert: ${alertId} | TDS=${tds} PPM`);
-    } catch (e) {
-        console.error('[GHOST] Failed to update ghost alert record', e);
-    }
-
-    // Fire FCM if brand new or last notify was >1 hour ago
-    const lastNotified = existingAlert.data()?.last_notified_at
-        ? new Date(existingAlert.data()!.last_notified_at).getTime()
-        : 0;
-    const ONE_HOUR_MS = 60 * 60 * 1000;
-
-    if (isNew || (Date.now() - lastNotified >= ONE_HOUR_MS)) {
-        console.log(`🔥 [GHOST] FCM notification for device ${deviceId} | TDS=${tds} PPM`);
-        await sendPushNotification(alertId, alertData, false);
-        await setDeviceSuppression(deviceId);
-    }
+    await processThresholdBreach(
+        deviceId,
+        deviceData.name || deviceId,
+        locationName,
+        tds,
+        minThreshold,
+        maxThreshold,
+        timestamp,
+    );
 }
-
-// Export sendPushNotification for use by the scheduler's force engine
-export { sendPushNotification as sendForcePushNotification };
