@@ -10,7 +10,7 @@ import 'leaflet/dist/leaflet.css'
 import { cn } from '@/lib/utils'
 import {
     Maximize2, Minimize2, Layers, X, Droplets, Thermometer, MapPin,
-    WifiOff, RefreshCw, TrendingUp, TrendingDown, AlertCircle, Activity
+    WifiOff, RefreshCw, TrendingUp, TrendingDown, AlertCircle
 } from 'lucide-react'
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts'
 import type { ParsedSensorData } from '../lib/thingspeak'
@@ -114,13 +114,13 @@ function DeviceTelemetryWindow({
             <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3.5 min-w-0">
                     <div
-                        className="relative w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg shrink-0"
+                        className="relative w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg shrink-0"
                         style={{ background: statusBg, border: `1.5px solid ${statusColor}50` }}
                     >
                         {device.status === 'offline' ? (
                             <WifiOff className="w-5 h-5" style={{ color: statusColor }} />
                         ) : (
-                            <Droplets className="w-6 h-6" style={{ color: statusColor }} />
+                            <Droplets className="w-5 h-5" style={{ color: statusColor }} />
                         )}
                         {device.status !== 'offline' && (
                             <div className="absolute inset-0 rounded-2xl animate-ping opacity-25" style={{ background: statusColor }} />
@@ -137,22 +137,13 @@ function DeviceTelemetryWindow({
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                    <span
-                        className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shadow-xs"
-                        style={{ background: statusBg, color: statusColor, borderColor: `${statusColor}40` }}
-                    >
-                        <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: statusColor }} />
-                        {ppmStatus.label}
-                    </span>
-                    <button
-                        onClick={onClose}
-                        className="p-2 rounded-full bg-white/10 hover:bg-rose-500 text-muted-foreground hover:text-white transition-all shadow-sm active:scale-90 border border-white/10"
-                        title="Close details"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
+                <button
+                    onClick={onClose}
+                    className="p-2 rounded-full bg-white/10 hover:bg-rose-500 text-muted-foreground hover:text-white transition-all shadow-sm active:scale-90 border border-white/10 shrink-0"
+                    title="Close details"
+                >
+                    <X className="w-4 h-4" />
+                </button>
             </div>
 
             {/* Tab Selector */}
@@ -174,17 +165,7 @@ function DeviceTelemetryWindow({
                                     : "text-muted-foreground hover:text-foreground"
                             )}
                         >
-                            {tab === 'overview' ? (
-                                <>
-                                    <Activity className="w-3.5 h-3.5" />
-                                    <span>Telemetry & Trends</span>
-                                </>
-                            ) : (
-                                <>
-                                    <RefreshCw className="w-3.5 h-3.5" />
-                                    <span>Recent Logs ({chartData.length})</span>
-                                </>
-                            )}
+                            {tab === 'overview' ? 'Historic Trend' : 'History'}
                         </button>
                     )
                 })}
@@ -219,9 +200,6 @@ function DeviceTelemetryWindow({
                                 </span>
                                 <span className="text-xs font-black text-muted-foreground uppercase">ppm</span>
                             </div>
-                            <div className="text-[9px] text-muted-foreground font-semibold mt-1">
-                                Safe Threshold: {customMin ?? 35}-{customMax ?? 175} ppm
-                            </div>
                         </div>
 
                         {/* Temperature Metric Card */}
@@ -246,22 +224,12 @@ function DeviceTelemetryWindow({
                                 </span>
                                 <span className="text-xs font-black text-muted-foreground uppercase">°C</span>
                             </div>
-                            <div className="text-[9px] text-muted-foreground font-semibold mt-1">
-                                Node #{device.node_number || device.id.slice(0, 5)}
-                            </div>
                         </div>
                     </div>
 
-                    {/* 24-Hour TDS Trend Analysis Graph */}
+                    {/* Historic Trend Graph */}
                     <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 shadow-inner">
-                        <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-                                <Activity className="w-3 h-3 text-cyan-400" />
-                                Live Telemetry Stream
-                            </span>
-                            <span className="text-[9.5px] font-mono text-cyan-400 font-bold">{chartData.length} Samples</span>
-                        </div>
-                        <div className="h-[90px] w-full">
+                        <div className="h-[95px] w-full">
                             {chartData.length > 0 ? (
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={chartData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
