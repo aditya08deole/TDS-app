@@ -1,6 +1,7 @@
 import { GlassCard } from '@/components/GlassCard'
-import { ShieldCheck, Users as UsersIcon, UserPlus, Link2, Copy, Check, Clock, Trash2, RefreshCw, Wrench, User, MessageCircle, Mail, Search, ListChecks } from 'lucide-react'
+import { ShieldCheck, Users as UsersIcon, UserPlus, Link2, Copy, Check, Clock, Trash2, RefreshCw, Wrench, User, MessageCircle, Mail, Search, ListChecks, KeyRound, Inbox, ArrowRight, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
@@ -52,6 +53,7 @@ export default function Users() {
     const [loadingDirectory, setLoadingDirectory] = useState(false)
     const [changingRoleFor, setChangingRoleFor] = useState<string | null>(null)
     const [directorySearch, setDirectorySearch] = useState('')
+    const [pendingRoleChange, setPendingRoleChange] = useState<{ uid: string; email: string; from: UserRole; to: UserRole } | null>(null)
 
     const loadInvites = useCallback(async () => {
         if (!canInvite) return
@@ -96,17 +98,28 @@ export default function Users() {
         loadDirectory()
     }, [loadInvites, loadUserStats, loadDirectory])
 
-    const handleRoleChange = async (uid: string, newRole: UserRole) => {
+    // Selecting a new role in the table opens a confirmation dialog rather
+    // than applying instantly — a stray click on the dropdown shouldn't be
+    // able to silently regrade someone's access.
+    const requestRoleChange = (u: DirectoryUser, newRole: UserRole) => {
+        if (newRole === u.role) return
+        setPendingRoleChange({ uid: u.uid, email: u.email || u.uid, from: u.role, to: newRole })
+    }
+
+    const confirmRoleChange = async () => {
+        if (!pendingRoleChange) return
+        const { uid, to } = pendingRoleChange
         setChangingRoleFor(uid)
         try {
-            await setUserRoleApi(uid, newRole)
-            setDirectory(prev => prev.map(u => u.uid === uid ? { ...u, role: newRole } : u))
-            toast.success('Role updated', { description: `Now: ${ROLE_DISPLAY_NAMES[newRole]}` })
+            await setUserRoleApi(uid, to)
+            setDirectory(prev => prev.map(u => u.uid === uid ? { ...u, role: to } : u))
+            toast.success('Role updated', { description: `Now: ${ROLE_DISPLAY_NAMES[to]}` })
             loadUserStats() // counts changed
         } catch (err: any) {
             toast.error('Failed to change role', { description: err.message })
         } finally {
             setChangingRoleFor(null)
+            setPendingRoleChange(null)
         }
     }
 
@@ -357,9 +370,14 @@ export default function Users() {
             {canInvite && (
                 <GlassCard className="overflow-hidden p-0">
                     <div className="p-5 border-b border-white/10 flex items-center justify-between">
-                        <div>
-                            <h3 className="font-bold text-foreground text-sm">Active Invite Tokens</h3>
-                            <p className="text-xs text-muted-foreground mt-0.5">{invites.length} invite(s) issued</p>
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                                <KeyRound className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-foreground text-sm">Active Invite Tokens</h3>
+                                <p className="text-xs text-muted-foreground mt-0.5">{invites.length} invite(s) issued</p>
+                            </div>
                         </div>
                         <button
                             onClick={loadInvites}
@@ -396,8 +414,9 @@ export default function Users() {
                                     ))
                                 ) : invites.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-5 py-8 text-center text-muted-foreground">
-                                            No invites issued yet. Generate one above.
+                                        <td colSpan={6} className="px-8 py-10 text-center">
+                                            <Inbox className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                                            <p className="text-muted-foreground">No invites issued yet. Generate one above.</p>
                                         </td>
                                     </tr>
                                 ) : (
@@ -446,11 +465,16 @@ export default function Users() {
             {isSuperAdmin && (
                 <GlassCard className="overflow-hidden p-0">
                     <div className="p-5 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <div>
-                            <h3 className="font-bold text-foreground text-sm">All Users</h3>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                {directory.length} real account{directory.length === 1 ? '' : 's'} — change anyone's role directly
-                            </p>
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                                <UsersIcon className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-foreground text-sm">All Users</h3>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    {directory.length} real account{directory.length === 1 ? '' : 's'} — change anyone's role directly
+                                </p>
+                            </div>
                         </div>
                         <div className="flex items-center gap-3">
                             <div className="relative">
@@ -496,8 +520,11 @@ export default function Users() {
                                     ))
                                 ) : filteredDirectory.length === 0 ? (
                                     <tr>
-                                        <td colSpan={3} className="px-5 py-8 text-center text-muted-foreground">
-                                            {directorySearch ? `No users match "${directorySearch}".` : 'No users found.'}
+                                        <td colSpan={3} className="px-8 py-10 text-center">
+                                            <Search className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                                            <p className="text-muted-foreground">
+                                                {directorySearch ? `No users match "${directorySearch}".` : 'No users found.'}
+                                            </p>
                                         </td>
                                     </tr>
                                 ) : (
@@ -530,7 +557,7 @@ export default function Users() {
                                                         <select
                                                             value={u.role}
                                                             disabled={changingRoleFor === u.uid}
-                                                            onChange={(e) => handleRoleChange(u.uid, e.target.value as UserRole)}
+                                                            onChange={(e) => requestRoleChange(u, e.target.value as UserRole)}
                                                             className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-foreground disabled:opacity-50 focus:outline-none focus:border-cyan-500/50"
                                                         >
                                                             {DIRECTORY_ROLE_OPTIONS.map(opt => (
@@ -551,7 +578,10 @@ export default function Users() {
 
             {/* Role Hierarchy Reference */}
             <GlassCard className="p-5 space-y-3">
-                <h3 className="text-sm font-bold text-foreground">Role Hierarchy</h3>
+                <div className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-muted-foreground" />
+                    <h3 className="text-sm font-bold text-foreground">Role Hierarchy</h3>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     {[
                         { role: 'Super Admin', color: 'text-cyan-400', desc: 'Full system access, manages all admins' },
@@ -566,6 +596,50 @@ export default function Users() {
                     ))}
                 </div>
             </GlassCard>
+
+            {/* Role Change Confirmation */}
+            <Dialog open={!!pendingRoleChange} onOpenChange={(open) => { if (!open) setPendingRoleChange(null) }}>
+                <DialogContent className="max-w-md bg-slate-950 border-white/10 text-foreground">
+                    <DialogHeader>
+                        <div className="w-11 h-11 rounded-xl bg-amber-500/15 flex items-center justify-center mb-2">
+                            <AlertTriangle className="w-5 h-5 text-amber-400" />
+                        </div>
+                        <DialogTitle>Change this person's role?</DialogTitle>
+                        <DialogDescription>
+                            {pendingRoleChange?.email} — this takes effect immediately and changes what they can see and do.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {pendingRoleChange && (
+                        <div className="flex items-center justify-center gap-3 py-2">
+                            <span className={cn('px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider', DIRECTORY_ROLE_COLORS[pendingRoleChange.from])}>
+                                {ROLE_DISPLAY_NAMES[pendingRoleChange.from]}
+                            </span>
+                            <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                            <span className={cn('px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider', DIRECTORY_ROLE_COLORS[pendingRoleChange.to])}>
+                                {ROLE_DISPLAY_NAMES[pendingRoleChange.to]}
+                            </span>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setPendingRoleChange(null)}
+                            className="border-white/10"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={confirmRoleChange}
+                            disabled={!!changingRoleFor}
+                            className="bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 font-bold gap-1.5"
+                        >
+                            {changingRoleFor ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Applying...</> : 'Confirm Change'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
