@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { Capacitor } from '@capacitor/core'
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication'
 import { capturePendingInviteToken } from '../lib/pendingInvite'
+import { getAuthErrorMessage, isBenignPopupDismissal } from '../lib/authErrors'
 
 // Custom Google Icon (matches Login.tsx)
 const GoogleIcon = () => (
@@ -89,16 +90,7 @@ export default function Register() {
             // calls redeemInviteApi automatically. Redirect to dashboard.
             navigate('/', { replace: true })
         } catch (err: any) {
-            const code = err?.code || ''
-            if (code === 'auth/email-already-in-use') {
-                setError('An account with this email already exists. Please login instead.')
-            } else if (code === 'auth/weak-password') {
-                setError('Password is too weak. Use at least 8 characters with numbers.')
-            } else if (code === 'auth/invalid-email') {
-                setError('Invalid email address.')
-            } else {
-                setError(err.message || 'Registration failed. Please try again.')
-            }
+            setError(getAuthErrorMessage(err, 'Registration failed. Please try again.'))
         } finally {
             setLoading(false)
         }
@@ -127,10 +119,10 @@ export default function Register() {
                 }
             }
         } catch (err: any) {
-            if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+            if (isBenignPopupDismissal(err)) {
                 setError(null)
             } else {
-                setError(err.message || 'Google sign-up failed. Please try again.')
+                setError(getAuthErrorMessage(err, 'Google sign-up failed. Please try again.'))
             }
         } finally {
             setLoading(false)

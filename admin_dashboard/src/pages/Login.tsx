@@ -13,6 +13,7 @@ import {
 import { Lock, Mail, AlertCircle, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
 import { capturePendingInviteToken } from '../lib/pendingInvite'
+import { getAuthErrorMessage, isBenignPopupDismissal } from '../lib/authErrors'
 
 // Custom Google Icon
 const GoogleIcon = () => (
@@ -96,13 +97,7 @@ export default function Login() {
             }
         } catch (err: any) {
             console.error('Auth failed:', err)
-            if (err.code === 'auth/invalid-credential') {
-                setError("Invalid email or password. Please check your credentials.")
-            } else if (err.code === 'auth/email-already-in-use') {
-                setError("An account with this email already exists. Try signing in.")
-            } else {
-                setError(err.message || 'Authentication failed')
-            }
+            setError(getAuthErrorMessage(err, 'Authentication failed. Please try again.'))
         } finally {
             setLoading(false)
         }
@@ -138,18 +133,10 @@ export default function Login() {
         } catch (err: any) {
             console.error('Google login failed:', err)
             // User closed the popup — not a real error
-            if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
-                setError(null) // silently clear
+            if (isBenignPopupDismissal(err)) {
+                setError(null)
             } else {
-                let errorMessage = 'Google login failed';
-                if (err instanceof Error) {
-                    errorMessage = err.message;
-                } else if (typeof err === 'object' && err !== null) {
-                    try { errorMessage = JSON.stringify(err); } catch { errorMessage = String(err); }
-                } else {
-                    errorMessage = String(err);
-                }
-                setError(`Google Login Error: ${errorMessage}`);
+                setError(getAuthErrorMessage(err, 'Google login failed. Please try again.'))
             }
         } finally {
             setLoading(false)
@@ -173,7 +160,7 @@ export default function Login() {
                 // Don't reveal if email exists for security
                 setSuccessMessage(`If an account exists for ${email}, a reset email has been sent.`)
             } else {
-                setError(err.message || 'Failed to send reset email')
+                setError(getAuthErrorMessage(err, 'Failed to send reset email. Please try again.'))
             }
         } finally {
             setLoading(false)
