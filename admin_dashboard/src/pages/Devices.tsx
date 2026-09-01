@@ -902,7 +902,7 @@ export default function Devices() {
                                         <td className="p-3 font-mono text-muted-foreground">{device.node_number || '—'}</td>
                                         <td className="p-3 font-mono text-muted-foreground">{device.thingspeak_channel_id || '—'}</td>
                                         <td className="p-3 font-mono font-bold text-cyan-400">
-                                            {device.latest_tds != null ? `${device.latest_tds} PPM` : '—'}
+                                            {device.latest_tds != null ? `${Math.round(Number(device.latest_tds))} PPM` : '—'}
                                         </td>
                                         <td className="p-3">
                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${

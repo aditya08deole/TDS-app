@@ -110,7 +110,7 @@ function parseEntry(entry: ThingSpeakEntry, mapping: FieldMapping): ParsedSensor
     }
     
     return {
-        tds: validatedTds,
+        tds: Math.round(validatedTds),
         temperature: temperature,
         voltage: voltage,
         timestamp: entry.created_at,

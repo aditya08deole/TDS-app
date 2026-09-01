@@ -75,7 +75,7 @@ export function CategorizedDeviceList({
                                         {/* TDS Value */}
                                         {device.latest_tds !== undefined && (
                                             <span className="text-xs text-green-600 dark:text-green-500 font-medium">
-                                                {device.latest_tds} ppm
+                                                {Math.round(Number(device.latest_tds))} ppm
                                             </span>
                                         )}
                                         {/* Connectivity Badge */}
@@ -141,7 +141,7 @@ export function CategorizedDeviceList({
                                         {/* TDS Value */}
                                         {device.latest_tds !== undefined && (
                                             <span className="text-xs text-red-500 font-medium">
-                                                {device.latest_tds} ppm
+                                                {Math.round(Number(device.latest_tds))} ppm
                                             </span>
                                         )}
                                         {/* Connectivity Badge */}

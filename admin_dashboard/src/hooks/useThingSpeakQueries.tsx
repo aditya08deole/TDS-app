@@ -190,7 +190,8 @@ export function useAllDevicesThingSpeakData(devices: Device[]) {
             const live = batchMap.get(device.id);
             const tsData = fallbackQueries[index]?.data;
 
-            const latest_tds = live?.latest_tds ?? tsData?.tds ?? device.last_tds;
+            const raw_tds = live?.latest_tds ?? tsData?.tds ?? device.last_tds;
+            const latest_tds = raw_tds != null && !isNaN(Number(raw_tds)) ? Math.round(Number(raw_tds)) : undefined;
             const latest_temperature = live?.latest_temperature ?? tsData?.temperature ?? device.last_temperature;
             const latest_voltage = live?.latest_voltage ?? tsData?.voltage ?? device.last_voltage;
             const last_reading_at = live?.last_reading_at || tsData?.timestamp || device.last_reading_at || (device as any).last_seen_at;

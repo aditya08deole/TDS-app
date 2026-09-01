@@ -196,7 +196,7 @@ function DeviceTelemetryWindow({
                             </div>
                             <div className="flex items-baseline gap-1.5 mt-2">
                                 <span className="text-3xl font-black font-mono tracking-tighter" style={{ color: statusColor }}>
-                                    {device.latest_tds != null ? device.latest_tds : '--'}
+                                    {device.latest_tds != null ? Math.round(Number(device.latest_tds)) : '--'}
                                 </span>
                                 <span className="text-xs font-black text-muted-foreground uppercase">ppm</span>
                             </div>

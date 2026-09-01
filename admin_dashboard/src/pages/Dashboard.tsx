@@ -565,7 +565,7 @@ export default function Dashboard() {
                                 </div>
                                 <div className="mt-3">
                                     <div className="text-xl font-bold font-mono text-foreground">
-                                        {device.latest_tds || '--'} <span className="text-[10px] text-muted-foreground font-normal">ppm</span>
+                                        {device.latest_tds != null ? Math.round(Number(device.latest_tds)) : '--'} <span className="text-[10px] text-muted-foreground font-normal">ppm</span>
                                     </div>
                                     <div className="text-[11px] text-muted-foreground">{device.latest_temperature || '--'}°C</div>
                                 </div>

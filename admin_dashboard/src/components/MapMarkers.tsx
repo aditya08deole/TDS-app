@@ -36,7 +36,7 @@ export const createWhiteTransparentMarker = (device: DeviceLocation, theme: MapT
     const customMin = device.safe_tds_min != null ? Number(device.safe_tds_min) : undefined
     const customMax = device.safe_tds_max != null ? Number(device.safe_tds_max) : undefined
     const ppmStatus = getPpmStatus(device.latest_tds, device.status || 'offline', theme, customMin, customMax)
-    const ppmValue = device.latest_tds || '--'
+    const ppmValue = device.latest_tds != null ? Math.round(Number(device.latest_tds)) : '--'
     const displayName = getDeviceDisplayName(device)
     
     const scale = Math.max(0.4, Math.min(1.1, zoom / 15))
