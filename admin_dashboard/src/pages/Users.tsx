@@ -210,15 +210,21 @@ export default function Users() {
         <div className="space-y-6 max-w-[1600px] mx-auto pb-20">
 
             {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground">User Management</h1>
-                    <p className="text-muted-foreground mt-1 text-sm">
-                        Manage access hierarchy — invite maintenance staff and users via secure links
-                    </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
+                        <UsersIcon className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight text-foreground">User Management</h1>
+                        <p className="text-muted-foreground mt-0.5 text-sm">
+                            Invite people, see who has access, and control exactly what they can do
+                        </p>
+                    </div>
                 </div>
-                <div className="px-3 py-1.5 rounded-lg glass-system-inset text-xs font-bold uppercase tracking-wider text-cyan-400 border border-cyan-500/30">
-                    Your role: {ROLE_DISPLAY_NAMES[role] || role}
+                <div className="px-3.5 py-2 rounded-xl glass-system-inset text-xs font-bold uppercase tracking-wider text-cyan-400 border border-cyan-500/30 flex items-center gap-2 self-start sm:self-auto">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    You: {ROLE_DISPLAY_NAMES[role] || role}
                 </div>
             </div>
 
@@ -389,75 +395,107 @@ export default function Users() {
                         </button>
                     </div>
 
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                            <thead>
-                                <tr className="border-b border-white/10 text-left text-muted-foreground">
-                                    <th className="px-5 py-3 font-medium">Token</th>
-                                    <th className="px-5 py-3 font-medium">Role</th>
-                                    <th className="px-5 py-3 font-medium">Created</th>
-                                    <th className="px-5 py-3 font-medium">Expires</th>
-                                    <th className="px-5 py-3 font-medium">Status</th>
-                                    <th className="px-5 py-3 font-medium text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {loadingInvites ? (
-                                    Array.from({ length: 3 }).map((_, i) => (
-                                        <tr key={i} className="border-b border-white/5 animate-pulse">
-                                            {Array.from({ length: 6 }).map((__, j) => (
-                                                <td key={j} className="px-5 py-4">
-                                                    <div className="h-3 bg-white/5 rounded w-24" />
+                    {loadingInvites ? (
+                        <div className="p-5 space-y-3">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                                <div key={i} className="h-12 bg-white/5 rounded-lg animate-pulse" />
+                            ))}
+                        </div>
+                    ) : invites.length === 0 ? (
+                        <div className="px-8 py-12 text-center">
+                            <Inbox className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                            <p className="text-muted-foreground text-sm">No invites issued yet. Generate one above.</p>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Mobile: stacked cards */}
+                            <div className="md:hidden divide-y divide-white/5">
+                                {invites.map(invite => (
+                                    <div key={invite.id} className="p-4 space-y-2.5">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <code className="font-mono text-xs text-foreground/70">{invite.token_preview}</code>
+                                            {invite.status === 'pending' && (
+                                                <button
+                                                    onClick={() => handleRevoke(invite.id)}
+                                                    disabled={revoking === invite.id}
+                                                    className="text-red-400/60 hover:text-red-400 transition-colors disabled:opacity-40 shrink-0"
+                                                    title="Revoke invite"
+                                                >
+                                                    {revoking === invite.id
+                                                        ? <RefreshCw className="w-4 h-4 animate-spin" />
+                                                        : <Trash2 className="w-4 h-4" />
+                                                    }
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className={cn('px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', getRoleBadge(invite.role))}>
+                                                {ROLE_DISPLAY_NAMES[invite.role as keyof typeof ROLE_DISPLAY_NAMES] || invite.role}
+                                            </span>
+                                            <span className={cn('px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', getStatusBadge(invite.status))}>
+                                                {invite.status}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Created {formatDate(invite.created_at)} · Expires {formatDate(invite.expires_at)}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Desktop: full table */}
+                            <div className="overflow-x-auto hidden md:block">
+                                <table className="w-full text-xs">
+                                    <thead>
+                                        <tr className="border-b border-white/10 text-left text-muted-foreground">
+                                            <th className="px-5 py-3 font-medium">Token</th>
+                                            <th className="px-5 py-3 font-medium">Role</th>
+                                            <th className="px-5 py-3 font-medium">Created</th>
+                                            <th className="px-5 py-3 font-medium">Expires</th>
+                                            <th className="px-5 py-3 font-medium">Status</th>
+                                            <th className="px-5 py-3 font-medium text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {invites.map(invite => (
+                                            <tr key={invite.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
+                                                <td className="px-5 py-3.5">
+                                                    <code className="font-mono text-foreground/70">{invite.token_preview}</code>
                                                 </td>
-                                            ))}
-                                        </tr>
-                                    ))
-                                ) : invites.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={6} className="px-8 py-10 text-center">
-                                            <Inbox className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                                            <p className="text-muted-foreground">No invites issued yet. Generate one above.</p>
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    invites.map(invite => (
-                                        <tr key={invite.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-                                            <td className="px-5 py-3.5">
-                                                <code className="font-mono text-foreground/70">{invite.token_preview}</code>
-                                            </td>
-                                            <td className="px-5 py-3.5">
-                                                <span className={cn('px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', getRoleBadge(invite.role))}>
-                                                    {ROLE_DISPLAY_NAMES[invite.role as keyof typeof ROLE_DISPLAY_NAMES] || invite.role}
-                                                </span>
-                                            </td>
-                                            <td className="px-5 py-3.5 text-muted-foreground">{formatDate(invite.created_at)}</td>
-                                            <td className="px-5 py-3.5 text-muted-foreground">{formatDate(invite.expires_at)}</td>
-                                            <td className="px-5 py-3.5">
-                                                <span className={cn('px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', getStatusBadge(invite.status))}>
-                                                    {invite.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-5 py-3.5 text-right">
-                                                {invite.status === 'pending' && (
-                                                    <button
-                                                        onClick={() => handleRevoke(invite.id)}
-                                                        disabled={revoking === invite.id}
-                                                        className="text-red-400/60 hover:text-red-400 transition-colors disabled:opacity-40"
-                                                        title="Revoke invite"
-                                                    >
-                                                        {revoking === invite.id
-                                                            ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                                            : <Trash2 className="w-3.5 h-3.5" />
-                                                        }
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                                <td className="px-5 py-3.5">
+                                                    <span className={cn('px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', getRoleBadge(invite.role))}>
+                                                        {ROLE_DISPLAY_NAMES[invite.role as keyof typeof ROLE_DISPLAY_NAMES] || invite.role}
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-3.5 text-muted-foreground">{formatDate(invite.created_at)}</td>
+                                                <td className="px-5 py-3.5 text-muted-foreground">{formatDate(invite.expires_at)}</td>
+                                                <td className="px-5 py-3.5">
+                                                    <span className={cn('px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', getStatusBadge(invite.status))}>
+                                                        {invite.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-3.5 text-right">
+                                                    {invite.status === 'pending' && (
+                                                        <button
+                                                            onClick={() => handleRevoke(invite.id)}
+                                                            disabled={revoking === invite.id}
+                                                            className="text-red-400/60 hover:text-red-400 transition-colors disabled:opacity-40"
+                                                            title="Revoke invite"
+                                                        >
+                                                            {revoking === invite.id
+                                                                ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                                : <Trash2 className="w-3.5 h-3.5" />
+                                                            }
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
                 </GlassCard>
             )}
 
@@ -498,81 +536,126 @@ export default function Users() {
                         </div>
                     </div>
 
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                            <thead>
-                                <tr className="border-b border-white/10 text-left text-muted-foreground">
-                                    <th className="px-5 py-3 font-medium">Email</th>
-                                    <th className="px-5 py-3 font-medium">Joined</th>
-                                    <th className="px-5 py-3 font-medium text-right">Role</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {loadingDirectory ? (
-                                    Array.from({ length: 3 }).map((_, i) => (
-                                        <tr key={i} className="border-b border-white/5 animate-pulse">
-                                            {Array.from({ length: 3 }).map((__, j) => (
-                                                <td key={j} className="px-5 py-4">
-                                                    <div className="h-3 bg-white/5 rounded w-24" />
-                                                </td>
-                                            ))}
-                                        </tr>
-                                    ))
-                                ) : filteredDirectory.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={3} className="px-8 py-10 text-center">
-                                            <Search className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                                            <p className="text-muted-foreground">
-                                                {directorySearch ? `No users match "${directorySearch}".` : 'No users found.'}
-                                            </p>
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    filteredDirectory.map(u => {
-                                        const isSelf = u.uid === user?.uid
-                                        const initial = (u.email || u.uid).charAt(0).toUpperCase()
-                                        return (
-                                            <tr key={u.uid} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-                                                <td className="px-5 py-3.5">
-                                                    <div className="flex items-center gap-2.5">
-                                                        <div className={cn(
-                                                            'w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
-                                                            DIRECTORY_ROLE_COLORS[u.role]
-                                                        )}>
-                                                            {initial}
-                                                        </div>
-                                                        <span className="text-foreground/90">{u.email || u.uid}</span>
+                    {loadingDirectory ? (
+                        <div className="p-5 space-y-3">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                                <div key={i} className="h-10 bg-white/5 rounded-lg animate-pulse" />
+                            ))}
+                        </div>
+                    ) : filteredDirectory.length === 0 ? (
+                        <div className="px-8 py-12 text-center">
+                            <Search className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                            <p className="text-muted-foreground text-sm">
+                                {directorySearch ? `No users match "${directorySearch}".` : 'No users found.'}
+                            </p>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Mobile: stacked cards — a table here would force horizontal
+                                scrolling, which reads as unfinished on a phone/PWA. */}
+                            <div className="md:hidden divide-y divide-white/5">
+                                {filteredDirectory.map(u => {
+                                    const isSelf = u.uid === user?.uid
+                                    const initial = (u.email || u.uid).charAt(0).toUpperCase()
+                                    return (
+                                        <div key={u.uid} className="p-4 space-y-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className={cn(
+                                                    'w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
+                                                    DIRECTORY_ROLE_COLORS[u.role]
+                                                )}>
+                                                    {initial}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-sm text-foreground/90 truncate">{u.email || u.uid}</span>
                                                         {isSelf && (
-                                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold uppercase tracking-wider">You</span>
+                                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold uppercase tracking-wider shrink-0">You</span>
                                                         )}
                                                     </div>
-                                                </td>
-                                                <td className="px-5 py-3.5 text-muted-foreground">{u.joined_at ? formatDate(u.joined_at) : '—'}</td>
-                                                <td className="px-5 py-3.5 text-right">
-                                                    {isSelf ? (
-                                                        <span className={cn('px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', DIRECTORY_ROLE_COLORS[u.role])}>
-                                                            {ROLE_DISPLAY_NAMES[u.role]}
-                                                        </span>
-                                                    ) : (
-                                                        <select
-                                                            value={u.role}
-                                                            disabled={changingRoleFor === u.uid}
-                                                            onChange={(e) => requestRoleChange(u, e.target.value as UserRole)}
-                                                            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-foreground disabled:opacity-50 focus:outline-none focus:border-cyan-500/50"
-                                                        >
-                                                            {DIRECTORY_ROLE_OPTIONS.map(opt => (
-                                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        )
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                        Joined {u.joined_at ? formatDate(u.joined_at) : '—'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {isSelf ? (
+                                                <span className={cn('inline-block px-2.5 py-1 rounded-lg border text-[11px] font-bold uppercase tracking-wider', DIRECTORY_ROLE_COLORS[u.role])}>
+                                                    {ROLE_DISPLAY_NAMES[u.role]}
+                                                </span>
+                                            ) : (
+                                                <select
+                                                    value={u.role}
+                                                    disabled={changingRoleFor === u.uid}
+                                                    onChange={(e) => requestRoleChange(u, e.target.value as UserRole)}
+                                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs font-bold text-foreground disabled:opacity-50 focus:outline-none focus:border-cyan-500/50"
+                                                >
+                                                    {DIRECTORY_ROLE_OPTIONS.map(opt => (
+                                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                        </div>
+                                    )
+                                })}
+                            </div>
+
+                            {/* Desktop: full table */}
+                            <div className="overflow-x-auto hidden md:block">
+                                <table className="w-full text-xs">
+                                    <thead>
+                                        <tr className="border-b border-white/10 text-left text-muted-foreground">
+                                            <th className="px-5 py-3 font-medium">Email</th>
+                                            <th className="px-5 py-3 font-medium">Joined</th>
+                                            <th className="px-5 py-3 font-medium text-right">Role</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredDirectory.map(u => {
+                                            const isSelf = u.uid === user?.uid
+                                            const initial = (u.email || u.uid).charAt(0).toUpperCase()
+                                            return (
+                                                <tr key={u.uid} className="border-b border-white/5 hover:bg-white/3 transition-colors">
+                                                    <td className="px-5 py-3.5">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className={cn(
+                                                                'w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
+                                                                DIRECTORY_ROLE_COLORS[u.role]
+                                                            )}>
+                                                                {initial}
+                                                            </div>
+                                                            <span className="text-foreground/90">{u.email || u.uid}</span>
+                                                            {isSelf && (
+                                                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold uppercase tracking-wider">You</span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-5 py-3.5 text-muted-foreground">{u.joined_at ? formatDate(u.joined_at) : '—'}</td>
+                                                    <td className="px-5 py-3.5 text-right">
+                                                        {isSelf ? (
+                                                            <span className={cn('px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', DIRECTORY_ROLE_COLORS[u.role])}>
+                                                                {ROLE_DISPLAY_NAMES[u.role]}
+                                                            </span>
+                                                        ) : (
+                                                            <select
+                                                                value={u.role}
+                                                                disabled={changingRoleFor === u.uid}
+                                                                onChange={(e) => requestRoleChange(u, e.target.value as UserRole)}
+                                                                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-foreground disabled:opacity-50 focus:outline-none focus:border-cyan-500/50"
+                                                            >
+                                                                {DIRECTORY_ROLE_OPTIONS.map(opt => (
+                                                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
                 </GlassCard>
             )}
 
