@@ -101,9 +101,14 @@ function initializeFirebase() {
     }
 
     // Strategy 2: Load from JSON file path (FIREBASE_SERVICE_ACCOUNT_PATH or default)
+    // __dirname here is dist/ (this file compiles to dist/server.js), and the
+    // file lives one level up at backend/firebase-service-account.json — was
+    // '../../' (matching envVerifier.ts, which is one level deeper at
+    // dist/scripts/ so '../../' is correct THERE), which resolved a directory
+    // above the backend folder entirely and could never find the file.
     if (!serviceAccount) {
       const filePath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
-        || path.resolve(__dirname, '../../firebase-service-account.json');
+        || path.resolve(__dirname, '../firebase-service-account.json');
       if (fs.existsSync(filePath)) {
         console.log(`📄 Loading Firebase service account from file: ${filePath}`);
         serviceAccount = JSON.parse(fs.readFileSync(filePath, 'utf8'));
