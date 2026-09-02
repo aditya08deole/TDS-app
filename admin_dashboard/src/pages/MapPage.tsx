@@ -108,7 +108,7 @@ function DeviceTelemetryWindow({
     const statusBg = isSafe ? 'rgba(0, 223, 129, 0.12)' : isCritical ? 'rgba(255, 0, 85, 0.12)' : 'rgba(129, 140, 248, 0.12)'
 
     return (
-        <div className="relative w-full rounded-[2.2rem] liquid-glass-stack backdrop-blur-3xl bg-slate-950/95 dark:bg-[#070b14]/98 border border-white/25 dark:border-white/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85),0_0_30px_rgba(6,182,212,0.2)] text-white p-5 flex flex-col gap-4 select-none animate-in fade-in slide-in-from-bottom-8 duration-300">
+        <div className="relative w-full rounded-[2.2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/20 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.25)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85),0_0_30px_rgba(6,182,212,0.2)] text-foreground p-5 flex flex-col gap-4 select-none animate-in fade-in slide-in-from-bottom-8 duration-300">
             {/* Top Specular Light Rim Streak */}
             <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-white/80 to-transparent pointer-events-none z-10" />
 
@@ -133,10 +133,10 @@ function DeviceTelemetryWindow({
                             own name — using it here duplicated the location line right
                             below it (same text twice). This heading now always shows the
                             device's own name/id, so the location appears exactly once. */}
-                        <h3 className="text-base font-black text-white tracking-tight leading-tight truncate">
+                        <h3 className="text-base font-black text-foreground tracking-tight leading-tight truncate">
                             {device.name || getDeviceDisplayName(device)}
                         </h3>
-                        <p className="text-sm font-bold text-white flex items-center gap-1.5 mt-0.5 truncate">
+                        <p className="text-sm font-bold text-foreground flex items-center gap-1.5 mt-0.5 truncate">
                             <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                             <span className="truncate">{device.location_name || 'Location not specified'}</span>
                         </p>
@@ -145,7 +145,7 @@ function DeviceTelemetryWindow({
 
                 <button
                     onClick={onClose}
-                    className="p-2 rounded-full bg-white/10 hover:bg-rose-500 text-slate-400 hover:text-white transition-all shadow-sm active:scale-90 border border-white/10 shrink-0"
+                    className="p-2 rounded-full bg-slate-100 dark:bg-white/10 hover:bg-rose-500 text-muted-foreground hover:text-white transition-all shadow-sm active:scale-90 border border-slate-200 dark:border-white/10 shrink-0"
                     title="Close details"
                 >
                     <X className="w-4 h-4" />
@@ -168,7 +168,7 @@ function DeviceTelemetryWindow({
                                         : isCritical
                                             ? "bg-rose-500 text-white shadow-md shadow-rose-500/25 font-black"
                                             : "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/25 font-black"
-                                    : "text-slate-400 hover:text-white"
+                                    : "text-muted-foreground hover:text-foreground"
                             )}
                         >
                             {tab === 'overview' ? 'Historic Trend' : 'History'}
@@ -188,7 +188,7 @@ function DeviceTelemetryWindow({
                                     <div className="p-1 rounded-md bg-cyan-500/15 text-cyan-400">
                                         <Droplets className="w-3.5 h-3.5" />
                                     </div>
-                                    <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-400">TDS Level</span>
+                                    <span className="text-[10.5px] font-black uppercase tracking-wider text-muted-foreground">TDS Level</span>
                                 </div>
                                 {tdsTrend !== 0 && (
                                     <div className={cn(
@@ -204,7 +204,7 @@ function DeviceTelemetryWindow({
                                 <span className="text-3xl font-black font-mono tracking-tighter" style={{ color: statusColor }}>
                                     {device.latest_tds != null ? Math.round(Number(device.latest_tds)) : '--'}
                                 </span>
-                                <span className="text-xs font-black text-slate-400 uppercase">ppm</span>
+                                <span className="text-xs font-black text-muted-foreground uppercase">ppm</span>
                             </div>
                         </div>
 
@@ -215,7 +215,7 @@ function DeviceTelemetryWindow({
                                     <div className="p-1 rounded-md bg-amber-500/15 text-amber-400">
                                         <Thermometer className="w-3.5 h-3.5" />
                                     </div>
-                                    <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-400">Temperature</span>
+                                    <span className="text-[10.5px] font-black uppercase tracking-wider text-muted-foreground">Temperature</span>
                                 </div>
                                 {tempTrend !== 0 && (
                                     <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/15 text-amber-400">
@@ -228,7 +228,7 @@ function DeviceTelemetryWindow({
                                 <span className="text-3xl font-black font-mono tracking-tighter text-amber-400">
                                     {device.latest_temperature != null ? Number(device.latest_temperature).toFixed(1) : '--'}
                                 </span>
-                                <span className="text-xs font-black text-slate-400 uppercase">°C</span>
+                                <span className="text-xs font-black text-muted-foreground uppercase">°C</span>
                             </div>
                         </div>
                     </div>
@@ -251,7 +251,7 @@ function DeviceTelemetryWindow({
                                                     const data = payload[0].payload
                                                     return (
                                                         <div className="p-2 rounded-xl bg-slate-900/95 border border-white/20 shadow-xl text-xs font-mono">
-                                                            <div className="text-slate-400 text-[9.5px]">{data.time}</div>
+                                                            <div className="text-muted-foreground text-[9.5px]">{data.time}</div>
                                                             <div className="font-bold text-cyan-400">{data.tds} ppm</div>
                                                             <div className="font-bold text-amber-400">{data.temp} °C</div>
                                                         </div>
@@ -271,7 +271,7 @@ function DeviceTelemetryWindow({
                                     </AreaChart>
                                 </ResponsiveContainer>
                             ) : (
-                                <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                                <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
                                     {isLoading ? 'Fetching telemetry stream...' : 'No historical data available'}
                                 </div>
                             )}
@@ -284,7 +284,7 @@ function DeviceTelemetryWindow({
                     {chartData.length > 0 ? (
                         chartData.slice().reverse().map((d, i) => (
                             <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/5 text-xs hover:border-cyan-500/30 transition-all">
-                                <span className="font-mono text-slate-400 text-[11px]">{d.time}</span>
+                                <span className="font-mono text-muted-foreground text-[11px]">{d.time}</span>
                                 <div className="flex items-center gap-4">
                                     <div className="flex items-center gap-1">
                                         <Droplets className="w-3 h-3 text-cyan-400" />
@@ -298,14 +298,14 @@ function DeviceTelemetryWindow({
                             </div>
                         ))
                     ) : (
-                        <div className="text-center py-8 text-xs text-slate-400">No recent telemetry logs</div>
+                        <div className="text-center py-8 text-xs text-muted-foreground">No recent telemetry logs</div>
                     )}
                 </div>
             )}
 
             {/* Footer */}
             <div className="flex items-center justify-between pt-2.5 border-t border-white/10 text-[10px]">
-                <div className="flex items-center gap-1.5 text-slate-400 font-semibold">
+                <div className="flex items-center gap-1.5 text-muted-foreground font-semibold">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                     <span>Sync: {device.last_reading_at ? new Date(device.last_reading_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Live Connected'}</span>
                 </div>
@@ -596,24 +596,38 @@ export default function MapPage() {
                     </button>
                 </div>
 
-                {/* Device Telemetry Inspector — same slide-in Sheet pattern the
-                    Devices page used for its device detail view, now used here
-                    instead: bottom sheet on mobile, right-docked drawer on
-                    desktop, with a proper overlay backdrop. */}
-                <Sheet open={!!selectedDevice} onOpenChange={(open) => !open && setSelectedDevice(null)}>
-                    <SheetContent
-                        side={isMobile ? 'bottom' : 'right'}
-                        className="p-0 border-0 bg-transparent shadow-none w-full sm:max-w-[560px] max-h-[90vh] sm:max-h-full overflow-y-auto custom-scrollbar [&>button]:hidden"
-                    >
-                        {selectedDevice && (
+                {/* Device Telemetry Inspector — mobile keeps the slide-in bottom
+                    Sheet (with backdrop). Desktop/website goes back to the
+                    original compact floating card in the bottom-right corner:
+                    the right-docked full-height Sheet made this too large and
+                    pinned to the top of the screen on desktop, which is what
+                    the user reported. */}
+                {isMobile ? (
+                    <Sheet open={!!selectedDevice} onOpenChange={(open) => !open && setSelectedDevice(null)}>
+                        <SheetContent
+                            side="bottom"
+                            className="p-0 border-0 bg-transparent shadow-none w-full max-h-[90vh] overflow-y-auto custom-scrollbar [&>button]:hidden"
+                        >
+                            {selectedDevice && (
+                                <DeviceTelemetryWindow
+                                    device={selectedDevice}
+                                    theme={theme}
+                                    onClose={() => setSelectedDevice(null)}
+                                />
+                            )}
+                        </SheetContent>
+                    </Sheet>
+                ) : (
+                    selectedDevice && (
+                        <div className="fixed bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:bottom-6 sm:w-[420px] md:w-[460px] z-[9999] max-h-[85vh] overflow-y-auto custom-scrollbar">
                             <DeviceTelemetryWindow
                                 device={selectedDevice}
                                 theme={theme}
                                 onClose={() => setSelectedDevice(null)}
                             />
-                        )}
-                    </SheetContent>
-                </Sheet>
+                        </div>
+                    )
+                )}
             </div>
         </div>
     )
