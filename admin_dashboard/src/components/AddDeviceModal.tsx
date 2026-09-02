@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-    X, Check, AlertCircle, RefreshCw, Radio, MapPin, Key,
-    Sliders, Navigation, ArrowRight, ArrowLeft, ShieldCheck, Cpu, Zap
+    X, Check, RefreshCw, Radio, MapPin, Key,
+    Sliders, Navigation, ArrowRight, ArrowLeft, ShieldCheck, Cpu
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { type Device } from '../types'
-import { useTestThingSpeakConnection } from '../hooks/useDeviceQueries'
 import { toast } from 'sonner'
 
 interface AddDeviceModalProps {
@@ -45,10 +45,6 @@ export function AddDeviceModal({
         safe_tds_max: '175',
     })
 
-    // ThingSpeak Testing state
-    const { mutateAsync: testConnection, isPending: testingConnection } = useTestThingSpeakConnection()
-    const [testResult, setTestResult] = useState<{ success: boolean; message?: string } | null>(null)
-
     // Load initial data for editing
     useEffect(() => {
         if (initialData && isEditing) {
@@ -69,7 +65,6 @@ export function AddDeviceModal({
                 safe_tds_max: initialData.safe_tds_max?.toString() || '175',
             })
             setStep(1)
-            setTestResult(null)
         } else if (!isOpen) {
             resetForm()
         }
@@ -93,7 +88,6 @@ export function AddDeviceModal({
             safe_tds_max: '175',
         })
         setStep(1)
-        setTestResult(null)
     }
 
     // Auto-fill browser GPS location
@@ -117,31 +111,6 @@ export function AddDeviceModal({
             },
             { timeout: 10000, enableHighAccuracy: true }
         )
-    }
-
-    // Test ThingSpeak connection
-    const handleTestConnection = async () => {
-        if (!formData.thingspeak_channel_id) {
-            toast.error('Please enter a ThingSpeak Channel ID first')
-            return
-        }
-        setTestResult(null)
-        try {
-            const res = await testConnection({
-                channelId: formData.thingspeak_channel_id,
-                readKey: formData.thingspeak_read_key
-            })
-            if (res.success) {
-                setTestResult({ success: true, message: `Connected! Last entry #${res.lastEntryId || 0}` })
-                toast.success('ThingSpeak Channel Verified Successfully!')
-            } else {
-                setTestResult({ success: false, message: res.error || 'Channel connection failed' })
-                toast.error(res.error || 'ThingSpeak test failed')
-            }
-        } catch (err: any) {
-            setTestResult({ success: false, message: err.message || 'Connection test failed' })
-            toast.error('Connection test failed')
-        }
     }
 
     const handleFormSubmit = async (e: React.FormEvent) => {
@@ -192,13 +161,13 @@ export function AddDeviceModal({
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    className="relative w-full max-w-2xl bg-card/90 backdrop-blur-2xl border border-white/20 rounded-3xl shadow-2xl text-card-foreground overflow-hidden my-8"
+                    className="relative w-full max-w-2xl glass-system-parent rounded-3xl shadow-2xl text-foreground overflow-hidden my-8"
                 >
                     {/* Top Specular Streak */}
                     <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent pointer-events-none z-10" />
 
                     {/* Header */}
-                    <div className="flex items-center justify-between p-6 border-b border-border/40">
+                    <div className="flex items-center justify-between p-6 border-b border-white/10">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
                                 <Cpu className="w-5 h-5 text-cyan-400" />
@@ -215,14 +184,14 @@ export function AddDeviceModal({
 
                         <button
                             onClick={onClose}
-                            className="p-2 rounded-full bg-secondary/80 hover:bg-destructive hover:text-white transition-all border border-border/40"
+                            className="p-2 glass-system-micro hover:bg-destructive hover:text-white transition-all"
                         >
                             <X className="w-4 h-4" />
                         </button>
                     </div>
 
                     {/* Step Navigation Bar */}
-                    <div className="flex items-center justify-between px-8 py-3 bg-secondary/40 border-b border-border/30 text-xs font-semibold">
+                    <div className="flex items-center justify-between px-8 py-3 bg-white/5 border-b border-white/10 text-xs font-semibold">
                         {[
                             { num: 1, label: 'Deployment & Identity', icon: MapPin },
                             { num: 2, label: 'ThingSpeak Keys', icon: Key },
@@ -272,7 +241,7 @@ export function AddDeviceModal({
                                             value={formData.name}
                                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                             placeholder="e.g., EvaraTDS Node 01"
-                                            className="w-full bg-secondary/50 border border-border/50 rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 outline-none"
+                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none"
                                         />
                                     </div>
 
@@ -286,7 +255,7 @@ export function AddDeviceModal({
                                             value={formData.location_name}
                                             onChange={(e) => setFormData({ ...formData, location_name: e.target.value })}
                                             placeholder="e.g., Tank A - IIITH Reservoir Block 3"
-                                            className="w-full bg-secondary/50 border border-border/50 rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 outline-none"
+                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none"
                                         />
                                     </div>
 
@@ -299,7 +268,7 @@ export function AddDeviceModal({
                                             value={formData.node_number}
                                             onChange={(e) => setFormData({ ...formData, node_number: e.target.value })}
                                             placeholder="e.g., SV-NODE-001"
-                                            className="w-full bg-secondary/50 border border-border/50 rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:border-cyan-500 outline-none"
+                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none"
                                         />
                                     </div>
 
@@ -312,13 +281,13 @@ export function AddDeviceModal({
                                             value={formData.sim_number}
                                             onChange={(e) => setFormData({ ...formData, sim_number: e.target.value })}
                                             placeholder="e.g., +91-9876543210"
-                                            className="w-full bg-secondary/50 border border-border/50 rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:border-cyan-500 outline-none"
+                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none"
                                         />
                                     </div>
                                 </div>
 
                                 {/* Geo Location Box */}
-                                <div className="p-4 rounded-2xl bg-secondary/30 border border-border/40 space-y-3">
+                                <div className="p-4 rounded-2xl glass-system-child space-y-3">
                                     <div className="flex items-center justify-between">
                                         <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                                             <Navigation className="w-3.5 h-3.5 text-cyan-400" /> Map GPS Coordinates
@@ -341,7 +310,7 @@ export function AddDeviceModal({
                                                 value={formData.latitude}
                                                 onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
                                                 placeholder="e.g., 17.4455"
-                                                className="w-full bg-secondary/70 border border-border/40 rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
+                                                className="w-full glass-system-inset rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
                                             />
                                         </div>
 
@@ -353,7 +322,7 @@ export function AddDeviceModal({
                                                 value={formData.longitude}
                                                 onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
                                                 placeholder="e.g., 78.3489"
-                                                className="w-full bg-secondary/70 border border-border/40 rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
+                                                className="w-full glass-system-inset rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
                                             />
                                         </div>
                                     </div>
@@ -379,7 +348,7 @@ export function AddDeviceModal({
                                         value={formData.thingspeak_channel_id}
                                         onChange={(e) => setFormData({ ...formData, thingspeak_channel_id: e.target.value })}
                                         placeholder="e.g., 2713286"
-                                        className="w-full bg-secondary/50 border border-border/50 rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground focus:border-cyan-500 outline-none"
+                                        className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground outline-none"
                                     />
                                 </div>
 
@@ -393,7 +362,7 @@ export function AddDeviceModal({
                                             value={formData.thingspeak_read_key}
                                             onChange={(e) => setFormData({ ...formData, thingspeak_read_key: e.target.value })}
                                             placeholder="e.g., XXXXXXXXXXXXXX"
-                                            className="w-full bg-secondary/50 border border-border/50 rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground focus:border-cyan-500 outline-none"
+                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground outline-none"
                                         />
                                     </div>
 
@@ -406,47 +375,18 @@ export function AddDeviceModal({
                                             value={formData.thingspeak_write_key}
                                             onChange={(e) => setFormData({ ...formData, thingspeak_write_key: e.target.value })}
                                             placeholder="e.g., YYYYYYYYYYYYYY"
-                                            className="w-full bg-secondary/50 border border-border/50 rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground focus:border-cyan-500 outline-none"
+                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground outline-none"
                                         />
                                     </div>
                                 </div>
 
-                                {/* Test Connection Bar */}
-                                <div className="p-4 rounded-2xl bg-secondary/30 border border-border/40 flex items-center justify-between gap-4">
-                                    <div>
-                                        <p className="text-xs font-bold text-foreground">Verify Channel Credentials</p>
-                                        <p className="text-[11px] text-muted-foreground">Test if ThingSpeak returns valid feed data</p>
-                                    </div>
-
-                                    <Button
-                                        type="button"
-                                        onClick={handleTestConnection}
-                                        disabled={testingConnection || !formData.thingspeak_channel_id}
-                                        className="bg-cyan-500 hover:bg-cyan-600 text-black font-bold text-xs gap-1.5 px-4 h-9 rounded-xl shrink-0"
-                                    >
-                                        {testingConnection ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                                        Test Connection
-                                    </Button>
-                                </div>
-
-                                {/* Test Result Indicator */}
-                                {testResult && (
-                                    <div className={`p-3 rounded-xl border text-xs font-bold flex items-center gap-2 ${
-                                        testResult.success
-                                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                                            : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
-                                    }`}>
-                                        {testResult.success ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                                        <span>{testResult.message}</span>
-                                    </div>
-                                )}
                             </motion.div>
                         )}
 
                         {/* STEP 3: Sensor Field Mapping & Threshold Bounds */}
                         {step === 3 && (
                             <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
-                                <div className="p-4 rounded-2xl bg-secondary/30 border border-border/40 space-y-3">
+                                <div className="p-4 rounded-2xl glass-system-child space-y-3">
                                     <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                                         <Sliders className="w-3.5 h-3.5 text-cyan-400" /> ThingSpeak Field Numbers
                                     </h4>
@@ -454,41 +394,53 @@ export function AddDeviceModal({
                                     <div className="grid grid-cols-3 gap-3">
                                         <div>
                                             <label className="text-[11px] text-muted-foreground block mb-1">TDS Sensor</label>
-                                            <select
-                                                value={formData.tds_field_number}
-                                                onChange={(e) => setFormData({ ...formData, tds_field_number: Number(e.target.value) })}
-                                                className="w-full bg-secondary/70 border border-border/40 rounded-lg px-3 py-2 text-xs text-foreground outline-none"
+                                            <Select
+                                                value={String(formData.tds_field_number)}
+                                                onValueChange={(v) => setFormData({ ...formData, tds_field_number: Number(v) })}
                                             >
-                                                {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>Field {n}</option>)}
-                                            </select>
+                                                <SelectTrigger className="w-full h-9 glass-system-inset text-xs text-foreground">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
+                                                    {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <SelectItem key={n} value={String(n)}>Field {n}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
 
                                         <div>
                                             <label className="text-[11px] text-muted-foreground block mb-1">Temperature</label>
-                                            <select
-                                                value={formData.temperature_field_number}
-                                                onChange={(e) => setFormData({ ...formData, temperature_field_number: Number(e.target.value) })}
-                                                className="w-full bg-secondary/70 border border-border/40 rounded-lg px-3 py-2 text-xs text-foreground outline-none"
+                                            <Select
+                                                value={String(formData.temperature_field_number)}
+                                                onValueChange={(v) => setFormData({ ...formData, temperature_field_number: Number(v) })}
                                             >
-                                                {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>Field {n}</option>)}
-                                            </select>
+                                                <SelectTrigger className="w-full h-9 glass-system-inset text-xs text-foreground">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
+                                                    {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <SelectItem key={n} value={String(n)}>Field {n}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
 
                                         <div>
                                             <label className="text-[11px] text-muted-foreground block mb-1">Voltage / Battery</label>
-                                            <select
-                                                value={formData.voltage_field_number}
-                                                onChange={(e) => setFormData({ ...formData, voltage_field_number: Number(e.target.value) })}
-                                                className="w-full bg-secondary/70 border border-border/40 rounded-lg px-3 py-2 text-xs text-foreground outline-none"
+                                            <Select
+                                                value={String(formData.voltage_field_number)}
+                                                onValueChange={(v) => setFormData({ ...formData, voltage_field_number: Number(v) })}
                                             >
-                                                {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>Field {n}</option>)}
-                                            </select>
+                                                <SelectTrigger className="w-full h-9 glass-system-inset text-xs text-foreground">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
+                                                    {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <SelectItem key={n} value={String(n)}>Field {n}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
                                 </div>
 
                                 {/* Safe TDS Threshold Bounds */}
-                                <div className="p-4 rounded-2xl bg-secondary/30 border border-border/40 space-y-3">
+                                <div className="p-4 rounded-2xl glass-system-child space-y-3">
                                     <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
                                         Safe TDS Threshold Range (PPM)
                                     </h4>
@@ -501,7 +453,7 @@ export function AddDeviceModal({
                                                 value={formData.safe_tds_min}
                                                 onChange={(e) => setFormData({ ...formData, safe_tds_min: e.target.value })}
                                                 placeholder="35"
-                                                className="w-full bg-secondary/70 border border-border/40 rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
+                                                className="w-full glass-system-inset rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
                                             />
                                         </div>
 
@@ -512,7 +464,7 @@ export function AddDeviceModal({
                                                 value={formData.safe_tds_max}
                                                 onChange={(e) => setFormData({ ...formData, safe_tds_max: e.target.value })}
                                                 placeholder="175"
-                                                className="w-full bg-secondary/70 border border-border/40 rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
+                                                className="w-full glass-system-inset rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
                                             />
                                         </div>
                                     </div>
@@ -541,6 +493,7 @@ export function AddDeviceModal({
                             {step < 3 ? (
                                 <Button
                                     type="button"
+                                    variant="ghost"
                                     onClick={() => setStep((step + 1) as any)}
                                     className="bg-cyan-500 hover:bg-cyan-600 text-black font-bold text-xs gap-1.5 px-6 rounded-xl"
                                 >
@@ -549,6 +502,7 @@ export function AddDeviceModal({
                             ) : (
                                 <Button
                                     type="submit"
+                                    variant="ghost"
                                     disabled={submitting}
                                     className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold text-xs gap-2 px-8 h-10 rounded-xl shadow-lg shadow-cyan-500/25"
                                 >

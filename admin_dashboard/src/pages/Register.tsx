@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { auth } from '../lib/firebase'
 import { GlassCard } from '@/components/GlassCard'
 import { Button } from '@/components/ui/button'
-import { Eye, EyeOff, UserPlus, ShieldCheck, AlertTriangle } from 'lucide-react'
+import { Eye, EyeOff, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Capacitor } from '@capacitor/core'
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication'
@@ -193,23 +193,19 @@ export default function Register() {
 
                 {/* Logo / Header */}
                 <div className="text-center space-y-2">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center mx-auto shadow-lg shadow-cyan-500/30">
-                        <ShieldCheck className="w-7 h-7 text-white" />
-                    </div>
-                    <h1 className="text-2xl font-bold text-foreground tracking-tight">Join EvaraTDS</h1>
+                    <h1 className="text-2xl font-bold text-foreground tracking-tight">Create Your Account</h1>
                     <p className="text-sm text-muted-foreground">
                         {inviteToken
-                            ? 'You\'ve been invited — create your account to accept'
-                            : 'Create your account to access the dashboard'
+                            ? 'You have been invited to EvaraTDS — set a password to accept'
+                            : 'Sign up to access the EvaraTDS dashboard'
                         }
                     </p>
                 </div>
 
                 {/* Invite Badge */}
                 {inviteToken && (
-                    <div className="flex items-center gap-3 p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 text-sm">
-                        <UserPlus className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span className="text-emerald-400 font-medium">Invite link detected — your role will be assigned automatically</span>
+                    <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 text-sm text-emerald-400 font-medium text-center">
+                        Invitation confirmed — your role will be assigned automatically after sign-up
                     </div>
                 )}
 
@@ -304,9 +300,15 @@ export default function Register() {
                             </div>
                         )}
 
-                        {/* Submit */}
+                        {/* Submit — variant="ghost" so this custom gradient background
+                            actually renders. The default/outline Button variants apply
+                            glass-system-child, whose background is set with !important;
+                            that unconditionally wins over any bg-* class passed in via
+                            className, which is exactly what made this button (and the
+                            Google button below) render as a plain, textless white box. */}
                         <Button
                             type="submit"
+                            variant="ghost"
                             disabled={loading}
                             className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold h-11 rounded-xl shadow-lg shadow-cyan-500/25 transition-all active:scale-[0.98]"
                         >
@@ -323,10 +325,10 @@ export default function Register() {
                         {/* Google Sign-Up — stays on this page so the invite token in the URL is preserved */}
                         <Button
                             type="button"
-                            variant="outline"
+                            variant="ghost"
                             onClick={handleGoogleRegister}
                             disabled={loading}
-                            className="w-full h-11 rounded-xl flex items-center justify-center gap-2.5 font-medium text-sm border-white/15 bg-white/5 hover:bg-white/10 text-foreground/80"
+                            className="w-full h-11 rounded-xl flex items-center justify-center gap-2.5 font-medium text-sm border border-white/15 bg-white/5 hover:bg-white/10 text-foreground/80"
                         >
                             <GoogleIcon />
                             <span>Continue with Google</span>

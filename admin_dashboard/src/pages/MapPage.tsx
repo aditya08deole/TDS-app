@@ -599,7 +599,7 @@ export default function MapPage() {
                 <Sheet open={!!selectedDevice} onOpenChange={(open) => !open && setSelectedDevice(null)}>
                     <SheetContent
                         side={isMobile ? 'bottom' : 'right'}
-                        className="p-0 border-0 bg-transparent shadow-none w-full sm:max-w-[460px] max-h-[85vh] sm:max-h-full overflow-y-auto custom-scrollbar [&>button]:hidden"
+                        className="p-0 border-0 bg-transparent shadow-none w-full sm:max-w-[560px] max-h-[90vh] sm:max-h-full overflow-y-auto custom-scrollbar [&>button]:hidden"
                     >
                         {selectedDevice && (
                             <DeviceTelemetryWindow

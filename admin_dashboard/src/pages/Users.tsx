@@ -718,21 +718,20 @@ export default function Users() {
 
             {/* Role Change Confirmation */}
             <Dialog open={!!pendingRoleChange} onOpenChange={(open) => { if (!open) setPendingRoleChange(null) }}>
-                {/* bg-card/border-border/text-foreground is the established pattern used by
-                    every other Dialog in this app (QRCodeGenerator, QRCodeScanner) — it's a
-                    theme-matched pair that adapts to light/dark mode together. The previous
-                    bg-slate-950 was a static color that doesn't change with theme, while
-                    text-foreground does (it becomes black in light mode) — black text on a
-                    hardcoded near-black background, which is exactly the "card was black,
-                    nothing visible" bug reported. */}
-                <DialogContent className="max-w-md bg-card border-border text-foreground">
+                {/* glass-system-parent is the proven frosted-glass card treatment used
+                    throughout the app (Settings, AddDeviceModal, the Map device panel) —
+                    a real backdrop blur plus a light/dark-matched translucent fill, rather
+                    than a flat bg-card that can read as a plain dark box next to the
+                    app's other glassy surfaces. */}
+                <DialogContent className="max-w-md glass-system-parent text-foreground">
                     <DialogHeader>
                         <div className="w-11 h-11 rounded-xl bg-amber-500/15 flex items-center justify-center mb-2">
                             <AlertTriangle className="w-5 h-5 text-amber-400" />
                         </div>
-                        <DialogTitle>Change this person's role?</DialogTitle>
+                        <DialogTitle>Confirm Role Change</DialogTitle>
                         <DialogDescription>
-                            {pendingRoleChange?.email} — this takes effect immediately and changes what they can see and do.
+                            You're about to change access for <span className="text-foreground/90 font-medium">{pendingRoleChange?.email}</span>.
+                            This takes effect immediately and changes what they can see and do.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -757,6 +756,7 @@ export default function Users() {
                             Cancel
                         </Button>
                         <Button
+                            variant="ghost"
                             onClick={confirmRoleChange}
                             disabled={!!changingRoleFor}
                             className="bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 font-bold gap-1.5"
