@@ -572,17 +572,17 @@ export default function Users() {
                                     const isSelf = u.uid === user?.uid
                                     const initial = (u.email || u.uid).charAt(0).toUpperCase()
                                     return (
-                                        <div key={u.uid} className="p-4 space-y-3">
-                                            <div className="flex items-center gap-3">
+                                        <div key={u.uid} className="p-3.5 space-y-2.5">
+                                            <div className="flex items-center gap-2.5">
                                                 <div className={cn(
-                                                    'w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
+                                                    'w-[31px] h-[31px] rounded-full flex items-center justify-center text-[11px] font-bold shrink-0',
                                                     DIRECTORY_ROLE_COLORS[u.role]
                                                 )}>
                                                     {initial}
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-center gap-1.5">
-                                                        <span className="text-sm text-foreground/90 truncate font-mono">{u.email || u.uid}</span>
+                                                        <span className="text-[12px] text-foreground/90 truncate font-mono">{u.email || u.uid}</span>
                                                         {isSelf && (
                                                             <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold uppercase tracking-wider shrink-0">You</span>
                                                         )}
@@ -594,13 +594,13 @@ export default function Users() {
                                                             <Copy className="w-3 h-3" />
                                                         </button>
                                                     </div>
-                                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                                    <p className="text-[10px] text-muted-foreground mt-0.5">
                                                         Joined {u.joined_at ? formatDate(u.joined_at) : '—'}
                                                     </p>
                                                 </div>
                                             </div>
                                             {isSelf ? (
-                                                <span className={cn('inline-block px-2.5 py-1 rounded-lg border text-[11px] font-bold uppercase tracking-wider', DIRECTORY_ROLE_COLORS[u.role])}>
+                                                <span className={cn('inline-block px-2 py-0.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider', DIRECTORY_ROLE_COLORS[u.role])}>
                                                     {ROLE_DISPLAY_NAMES[u.role]}
                                                 </span>
                                             ) : (
@@ -609,10 +609,10 @@ export default function Users() {
                                                     disabled={changingRoleFor === u.uid}
                                                     onValueChange={(value) => requestRoleChange(u, value as UserRole)}
                                                 >
-                                                    <SelectTrigger className="w-full h-9 bg-white/5 border-white/10 text-xs font-bold text-foreground disabled:opacity-50">
+                                                    <SelectTrigger className="w-full h-8 bg-white/5 border-white/10 text-[11px] font-bold text-foreground disabled:opacity-50">
                                                         <SelectValue />
                                                     </SelectTrigger>
-                                                    <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
+                                                    <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
                                                         {DIRECTORY_ROLE_OPTIONS.map(opt => (
                                                             <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                                                         ))}
@@ -629,9 +629,9 @@ export default function Users() {
                                 <table className="w-full text-xs">
                                     <thead>
                                         <tr className="border-b border-white/10 text-left text-muted-foreground">
-                                            <th className="px-5 py-3 font-medium">Email</th>
-                                            <th className="px-5 py-3 font-medium">Joined</th>
-                                            <th className="px-5 py-3 font-medium text-right">Role</th>
+                                            <th className="px-4 py-2.5 font-medium">Email</th>
+                                            <th className="px-4 py-2.5 font-medium">Joined</th>
+                                            <th className="px-4 py-2.5 font-medium text-right">Role</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -640,10 +640,10 @@ export default function Users() {
                                             const initial = (u.email || u.uid).charAt(0).toUpperCase()
                                             return (
                                                 <tr key={u.uid} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-                                                    <td className="px-5 py-3.5">
-                                                        <div className="flex items-center gap-2.5">
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex items-center gap-2">
                                                             <div className={cn(
-                                                                'w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
+                                                                'w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0',
                                                                 DIRECTORY_ROLE_COLORS[u.role]
                                                             )}>
                                                                 {initial}
@@ -661,8 +661,8 @@ export default function Users() {
                                                             </button>
                                                         </div>
                                                     </td>
-                                                    <td className="px-5 py-3.5 text-muted-foreground">{u.joined_at ? formatDate(u.joined_at) : '—'}</td>
-                                                    <td className="px-5 py-3.5 text-right">
+                                                    <td className="px-4 py-3 text-muted-foreground">{u.joined_at ? formatDate(u.joined_at) : '—'}</td>
+                                                    <td className="px-4 py-3 text-right">
                                                         {isSelf ? (
                                                             <span className={cn('px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', DIRECTORY_ROLE_COLORS[u.role])}>
                                                                 {ROLE_DISPLAY_NAMES[u.role]}
@@ -676,7 +676,7 @@ export default function Users() {
                                                                 <SelectTrigger className="w-auto h-8 ml-auto bg-white/5 border-white/10 text-[11px] font-bold text-foreground disabled:opacity-50">
                                                                     <SelectValue />
                                                                 </SelectTrigger>
-                                                                <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
+                                                                <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
                                                                     {DIRECTORY_ROLE_OPTIONS.map(opt => (
                                                                         <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                                                                     ))}
@@ -718,12 +718,11 @@ export default function Users() {
 
             {/* Role Change Confirmation */}
             <Dialog open={!!pendingRoleChange} onOpenChange={(open) => { if (!open) setPendingRoleChange(null) }}>
-                {/* glass-system-parent is the proven frosted-glass card treatment used
-                    throughout the app (Settings, AddDeviceModal, the Map device panel) —
-                    a real backdrop blur plus a light/dark-matched translucent fill, rather
-                    than a flat bg-card that can read as a plain dark box next to the
-                    app's other glassy surfaces. */}
-                <DialogContent className="max-w-md glass-system-parent text-foreground">
+                {/* A translucent/glassy card sitting on top of the Dialog's own dark
+                    backdrop (bg-black/80) read as an opaque black box regardless of
+                    theme — a plain, solid, theme-matched surface is what actually
+                    stays clearly readable here. */}
+                <DialogContent className="max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-foreground">
                     <DialogHeader>
                         <div className="w-11 h-11 rounded-xl bg-amber-500/15 flex items-center justify-center mb-2">
                             <AlertTriangle className="w-5 h-5 text-amber-400" />
@@ -749,9 +748,9 @@ export default function Users() {
 
                     <DialogFooter>
                         <Button
-                            variant="outline"
+                            variant="ghost"
                             onClick={() => setPendingRoleChange(null)}
-                            className="border-white/10"
+                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground"
                         >
                             Cancel
                         </Button>
@@ -759,7 +758,7 @@ export default function Users() {
                             variant="ghost"
                             onClick={confirmRoleChange}
                             disabled={!!changingRoleFor}
-                            className="bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 font-bold gap-1.5"
+                            className="bg-white text-slate-900 border border-slate-300 hover:bg-slate-100 font-bold gap-1.5"
                         >
                             {changingRoleFor ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Applying...</> : 'Confirm Change'}
                         </Button>

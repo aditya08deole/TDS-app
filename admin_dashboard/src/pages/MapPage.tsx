@@ -129,10 +129,14 @@ function DeviceTelemetryWindow({
                         )}
                     </div>
                     <div className="flex flex-col min-w-0">
+                        {/* getDeviceDisplayName() prefers location_name over the device's
+                            own name — using it here duplicated the location line right
+                            below it (same text twice). This heading now always shows the
+                            device's own name/id, so the location appears exactly once. */}
                         <h3 className="text-base font-black text-white tracking-tight leading-tight truncate">
-                            {getDeviceDisplayName(device)}
+                            {device.name || getDeviceDisplayName(device)}
                         </h3>
-                        <p className="text-xs font-semibold text-slate-400 flex items-center gap-1.5 mt-0.5 truncate">
+                        <p className="text-sm font-bold text-white flex items-center gap-1.5 mt-0.5 truncate">
                             <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                             <span className="truncate">{device.location_name || 'Location not specified'}</span>
                         </p>

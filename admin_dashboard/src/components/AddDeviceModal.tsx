@@ -161,13 +161,13 @@ export function AddDeviceModal({
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    className="relative w-full max-w-2xl glass-system-parent rounded-3xl shadow-2xl text-foreground overflow-hidden my-8"
+                    className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl text-foreground overflow-hidden my-8"
                 >
                     {/* Top Specular Streak */}
                     <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent pointer-events-none z-10" />
 
                     {/* Header */}
-                    <div className="flex items-center justify-between p-6 border-b border-white/10">
+                    <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
                                 <Cpu className="w-5 h-5 text-cyan-400" />
@@ -184,14 +184,14 @@ export function AddDeviceModal({
 
                         <button
                             onClick={onClose}
-                            className="p-2 glass-system-micro hover:bg-destructive hover:text-white transition-all"
+                            className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-destructive hover:text-white transition-all"
                         >
                             <X className="w-4 h-4" />
                         </button>
                     </div>
 
                     {/* Step Navigation Bar */}
-                    <div className="flex items-center justify-between px-8 py-3 bg-white/5 border-b border-white/10 text-xs font-semibold">
+                    <div className="flex items-center justify-between px-8 py-3 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-xs font-semibold">
                         {[
                             { num: 1, label: 'Deployment & Identity', icon: MapPin },
                             { num: 2, label: 'ThingSpeak Keys', icon: Key },
@@ -241,7 +241,7 @@ export function AddDeviceModal({
                                             value={formData.name}
                                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                             placeholder="e.g., EvaraTDS Node 01"
-                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none"
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none focus:border-cyan-500"
                                         />
                                     </div>
 
@@ -255,7 +255,7 @@ export function AddDeviceModal({
                                             value={formData.location_name}
                                             onChange={(e) => setFormData({ ...formData, location_name: e.target.value })}
                                             placeholder="e.g., Tank A - IIITH Reservoir Block 3"
-                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none"
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none focus:border-cyan-500"
                                         />
                                     </div>
 
@@ -268,7 +268,7 @@ export function AddDeviceModal({
                                             value={formData.node_number}
                                             onChange={(e) => setFormData({ ...formData, node_number: e.target.value })}
                                             placeholder="e.g., SV-NODE-001"
-                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none"
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none focus:border-cyan-500"
                                         />
                                     </div>
 
@@ -281,13 +281,13 @@ export function AddDeviceModal({
                                             value={formData.sim_number}
                                             onChange={(e) => setFormData({ ...formData, sim_number: e.target.value })}
                                             placeholder="e.g., +91-9876543210"
-                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none"
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-foreground outline-none focus:border-cyan-500"
                                         />
                                     </div>
                                 </div>
 
                                 {/* Geo Location Box */}
-                                <div className="p-4 rounded-2xl glass-system-child space-y-3">
+                                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
                                     <div className="flex items-center justify-between">
                                         <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                                             <Navigation className="w-3.5 h-3.5 text-cyan-400" /> Map GPS Coordinates
@@ -310,7 +310,7 @@ export function AddDeviceModal({
                                                 value={formData.latitude}
                                                 onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
                                                 placeholder="e.g., 17.4455"
-                                                className="w-full glass-system-inset rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
+                                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none focus:border-cyan-500"
                                             />
                                         </div>
 
@@ -322,7 +322,7 @@ export function AddDeviceModal({
                                                 value={formData.longitude}
                                                 onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
                                                 placeholder="e.g., 78.3489"
-                                                className="w-full glass-system-inset rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
+                                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none focus:border-cyan-500"
                                             />
                                         </div>
                                     </div>
@@ -348,7 +348,7 @@ export function AddDeviceModal({
                                         value={formData.thingspeak_channel_id}
                                         onChange={(e) => setFormData({ ...formData, thingspeak_channel_id: e.target.value })}
                                         placeholder="e.g., 2713286"
-                                        className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground outline-none"
+                                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground outline-none focus:border-cyan-500"
                                     />
                                 </div>
 
@@ -362,7 +362,7 @@ export function AddDeviceModal({
                                             value={formData.thingspeak_read_key}
                                             onChange={(e) => setFormData({ ...formData, thingspeak_read_key: e.target.value })}
                                             placeholder="e.g., XXXXXXXXXXXXXX"
-                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground outline-none"
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground outline-none focus:border-cyan-500"
                                         />
                                     </div>
 
@@ -375,7 +375,7 @@ export function AddDeviceModal({
                                             value={formData.thingspeak_write_key}
                                             onChange={(e) => setFormData({ ...formData, thingspeak_write_key: e.target.value })}
                                             placeholder="e.g., YYYYYYYYYYYYYY"
-                                            className="w-full glass-system-inset rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground outline-none"
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-foreground outline-none focus:border-cyan-500"
                                         />
                                     </div>
                                 </div>
@@ -386,7 +386,7 @@ export function AddDeviceModal({
                         {/* STEP 3: Sensor Field Mapping & Threshold Bounds */}
                         {step === 3 && (
                             <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
-                                <div className="p-4 rounded-2xl glass-system-child space-y-3">
+                                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
                                     <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                                         <Sliders className="w-3.5 h-3.5 text-cyan-400" /> ThingSpeak Field Numbers
                                     </h4>
@@ -398,10 +398,10 @@ export function AddDeviceModal({
                                                 value={String(formData.tds_field_number)}
                                                 onValueChange={(v) => setFormData({ ...formData, tds_field_number: Number(v) })}
                                             >
-                                                <SelectTrigger className="w-full h-9 glass-system-inset text-xs text-foreground">
+                                                <SelectTrigger className="w-full h-9 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-foreground">
                                                     <SelectValue />
                                                 </SelectTrigger>
-                                                <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
+                                                <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
                                                     {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <SelectItem key={n} value={String(n)}>Field {n}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
@@ -413,10 +413,10 @@ export function AddDeviceModal({
                                                 value={String(formData.temperature_field_number)}
                                                 onValueChange={(v) => setFormData({ ...formData, temperature_field_number: Number(v) })}
                                             >
-                                                <SelectTrigger className="w-full h-9 glass-system-inset text-xs text-foreground">
+                                                <SelectTrigger className="w-full h-9 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-foreground">
                                                     <SelectValue />
                                                 </SelectTrigger>
-                                                <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
+                                                <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
                                                     {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <SelectItem key={n} value={String(n)}>Field {n}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
@@ -428,10 +428,10 @@ export function AddDeviceModal({
                                                 value={String(formData.voltage_field_number)}
                                                 onValueChange={(v) => setFormData({ ...formData, voltage_field_number: Number(v) })}
                                             >
-                                                <SelectTrigger className="w-full h-9 glass-system-inset text-xs text-foreground">
+                                                <SelectTrigger className="w-full h-9 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-foreground">
                                                     <SelectValue />
                                                 </SelectTrigger>
-                                                <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
+                                                <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
                                                     {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <SelectItem key={n} value={String(n)}>Field {n}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
@@ -440,7 +440,7 @@ export function AddDeviceModal({
                                 </div>
 
                                 {/* Safe TDS Threshold Bounds */}
-                                <div className="p-4 rounded-2xl glass-system-child space-y-3">
+                                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
                                     <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
                                         Safe TDS Threshold Range (PPM)
                                     </h4>
@@ -453,7 +453,7 @@ export function AddDeviceModal({
                                                 value={formData.safe_tds_min}
                                                 onChange={(e) => setFormData({ ...formData, safe_tds_min: e.target.value })}
                                                 placeholder="35"
-                                                className="w-full glass-system-inset rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
+                                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none focus:border-cyan-500"
                                             />
                                         </div>
 
@@ -464,7 +464,7 @@ export function AddDeviceModal({
                                                 value={formData.safe_tds_max}
                                                 onChange={(e) => setFormData({ ...formData, safe_tds_max: e.target.value })}
                                                 placeholder="175"
-                                                className="w-full glass-system-inset rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none"
+                                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none focus:border-cyan-500"
                                             />
                                         </div>
                                     </div>
@@ -476,7 +476,7 @@ export function AddDeviceModal({
                         )}
 
                         {/* Footer Action Buttons */}
-                        <div className="flex items-center justify-between pt-4 border-t border-border/40">
+                        <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800">
                             {step > 1 ? (
                                 <Button
                                     type="button"
