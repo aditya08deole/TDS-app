@@ -1,18 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ROLE_DISPLAY_NAMES } from '../context/RoleContext'
-import { db } from '../lib/firebase'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
 import {
-    Bell, LogOut, Moon, Save, Loader2, CheckCircle,
+    Bell, LogOut, Moon,
     Layout, BellRing, Droplets, Volume2, VolumeX, Info
 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { useNotification } from '../context/NotificationContext'
-import { toast } from 'sonner'
 import {
     Select,
     SelectContent,
@@ -23,113 +20,30 @@ import {
 
 import { useTheme } from '../context/ThemeContext'
 
-interface UserSettings {
-    notifications_enabled: boolean
-    whatsapp_alerts: boolean
-    ntfy_alerts: boolean
-    ifttt_alerts: boolean
-    dark_mode: boolean
-}
-
-type SettingsTab = 'general' | 'notifications' | 'data' | 'account'
+type SettingsTab = 'general' | 'notifications' | 'account'
 
 export default function Settings() {
     const { user, profile, signOut } = useAuth()
     const { theme, setTheme } = useTheme()
     const navigate = useNavigate()
     const [activeTab, setActiveTab] = useState<SettingsTab>('general')
-    const [loading, setLoading] = useState(false)
-    const [saving, setSaving] = useState(false)
-    const [saved, setSaved] = useState(false)
 
-    const { 
-        soundEnabled, 
-        toggleSound, 
-        subscribe, 
-        isSubscribed, 
+    const {
+        soundEnabled,
+        toggleSound,
+        subscribe,
+        isSubscribed,
         testSound,
         testNotification,
         soundProfile,
         setSoundProfile,
-        permission, 
-        loading: notificationLoading 
+        permission,
+        loading: notificationLoading
     } = useNotification()
-
-    // Initial state setup (only once or when user loads)
-    const [settings, setSettings] = useState<UserSettings>({
-        notifications_enabled: true,
-        whatsapp_alerts: true,
-        ntfy_alerts: true,
-        ifttt_alerts: false,
-        dark_mode: theme === 'dark'
-    })
-
-    // Load user settings
-    useEffect(() => {
-        const loadSettings = async () => {
-            if (!user) return
-            setLoading(true)
-            try {
-                const docRef = doc(db, 'user_settings', user.uid)
-                const docSnap = await getDoc(docRef)
-                if (docSnap.exists()) {
-                    const data = docSnap.data()
-                    setSettings({
-                        notifications_enabled: data.notifications_enabled ?? true,
-                        whatsapp_alerts: data.whatsapp_alerts ?? true,
-                        ntfy_alerts: data.ntfy_alerts ?? true,
-                        ifttt_alerts: data.ifttt_alerts ?? false,
-                        dark_mode: theme === 'dark'
-                    })
-                }
-            } catch (err) {
-                console.log('No settings found, using defaults', err)
-            }
-            setLoading(false)
-        }
-        loadSettings()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user])
-
-
-
-    const saveSettings = async () => {
-        if (!user) return
-        setSaving(true)
-        try {
-            const docRef = doc(db, 'user_settings', user.uid)
-            const finalSettings = {
-                ...settings,
-                dark_mode: theme === 'dark' // Ensure we save the current active theme
-            }
-            await setDoc(docRef, {
-                ...finalSettings,
-                user_id: user.uid,
-                updated_at: new Date().toISOString()
-            }, { merge: true })
-            setSaved(true)
-            toast.success('Settings saved successfully', {
-                description: 'System preferences have been updated.'
-            })
-            setTimeout(() => setSaved(false), 2000)
-        } catch (err) {
-            console.error('Failed to save settings:', err)
-            toast.error('Failed to save settings')
-        }
-        setSaving(false)
-    }
 
     const handleLogout = async () => {
         await signOut()
         navigate('/login')
-    }
-
-    const toggleSetting = (key: keyof UserSettings) => {
-        if (key === 'dark_mode') {
-            setTheme(theme === 'dark' ? 'light' : 'dark')
-            return
-        }
-        setSettings(prev => ({ ...prev, [key]: !prev[key] }))
     }
 
     const menuItems = [
@@ -137,14 +51,6 @@ export default function Settings() {
         { id: 'notifications', label: 'Notifications', icon: Bell },
         { id: 'account', label: 'Water Quality Guide', icon: Droplets },
     ]
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-[calc(100vh-140px)]">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-            </div>
-        )
-    }
 
     return (
         <div className="flex flex-col lg:flex-row gap-6 animate-fade-in text-left px-4 pt-2 md:pt-0">
@@ -214,7 +120,7 @@ export default function Settings() {
                                     </div>
                                     <Switch
                                         checked={theme === 'dark'}
-                                        onCheckedChange={() => toggleSetting('dark_mode')}
+                                        onCheckedChange={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                                     />
                                 </div>
                             </div>
@@ -371,17 +277,6 @@ export default function Settings() {
                             </p>
                         </div>
                     )}
-
-                    <div className="pt-6 border-t border-accent">
-                        <Button
-                            onClick={saveSettings}
-                            disabled={saving}
-                            className="font-medium min-w-[140px]"
-                        >
-                            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : saved ? <CheckCircle className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                            {saved ? 'Saved' : 'Save Changes'}
-                        </Button>
-                    </div>
 
                 </div>
             </GlassCard>
