@@ -13,6 +13,11 @@ dist-ssr
 *.local
 .env
 .env.*
+# .env.production has no secrets (just the public Railway API URL) and is
+# committed on purpose — it's what pins production builds against
+# .env.local overrides that only make sense on a specific dev machine
+# (see .env.production's own header comment for the full story).
+!.env.production
 
 # Firebase
 .firebase/
