@@ -50,13 +50,19 @@ app.set('trust proxy', 1);
 // the promise never resolves, so login silently hangs. 'same-origin-allow-popups'
 // keeps the COOP protection while allowing that handshake.
 //
-// contentSecurityPolicy: helmet's defaults lock connect-src and frame-src down
-// to 'self' only. Firebase Auth's popup sign-in depends on a hidden helper
-// iframe served from the Firebase auth domain (*.firebaseapp.com) plus fetch
-// calls to Google's identity/Firestore/FCM/Remote Config APIs (*.googleapis.com)
-// — none same-origin, so the default CSP silently blocked them. The browser
-// doesn't surface "blocked by CSP" to the Firebase SDK as a distinct error; it
-// just fails, and Firebase Auth reports it as the generic "auth/internal-error".
+// contentSecurityPolicy: helmet's defaults lock connect-src, frame-src AND
+// script-src down to 'self' only. Firebase Auth's popup/redirect sign-in
+// depends on: a hidden helper iframe served from the Firebase auth domain
+// (*.firebaseapp.com), fetch calls to Google's identity/Firestore/FCM/Remote
+// Config APIs (*.googleapis.com), AND a script loaded directly from
+// apis.google.com (gapi's iframe/postMessage relay library) — note
+// apis.google.com is NOT covered by a *.googleapis.com wildcard, it's a
+// completely different domain, so the earlier connect-src/frame-src-only fix
+// still left script-src blocking it. None of this is same-origin, so the
+// default CSP silently blocked it. The browser doesn't surface "blocked by
+// CSP" to the Firebase SDK as a distinct error; it just fails, and Firebase
+// Auth reports it as the generic "auth/internal-error" — on BOTH the popup
+// and the full-page redirect fallback, since both rely on this same script.
 // Also allow the frontend's direct ThingSpeak API calls (api.thingspeak.com)
 // and Google profile photo images (img-src) so avatars aren't broken either.
 app.use(helmet({
@@ -68,9 +74,11 @@ app.use(helmet({
       // helmet sees two different keys for the same directive and throws
       // "Content-Security-Policy received a duplicate directive" at boot.
       ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      'connect-src': ["'self'", 'https://*.googleapis.com', 'https://api.thingspeak.com'],
-      'frame-src': ["'self'", 'https://*.firebaseapp.com', 'https://accounts.google.com'],
+      'script-src': ["'self'", 'https://apis.google.com', 'https://www.gstatic.com'],
+      'connect-src': ["'self'", 'https://*.googleapis.com', 'https://apis.google.com', 'https://api.thingspeak.com'],
+      'frame-src': ["'self'", 'https://*.firebaseapp.com', 'https://accounts.google.com', 'https://apis.google.com'],
       'img-src': ["'self'", 'data:', 'https:'],
+      'style-src': ["'self'", 'https:', "'unsafe-inline'", 'https://www.gstatic.com'],
     },
   },
 }));
