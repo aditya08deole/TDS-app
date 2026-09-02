@@ -12,6 +12,7 @@ import {
     startAlertCleanupJob,
     startDeviceHeartbeatJob,
     startThingSpeakMonitorJob,
+    startInviteCleanupJob,
     stopScheduler,
     getSchedulerStatus
 } from './sync/scheduler';
@@ -364,6 +365,9 @@ async function start() {
     // entirely by processThresholdBreach() as new telemetry arrives — see
     // notificationService.ts — rather than a separate periodic sweep.
     startThingSpeakMonitorJob();
+
+    // Start invite token auto-cleanup (removes accepted/expired invites 30 min after, every 5 min)
+    startInviteCleanupJob();
 
     try {
       const syncResult = await syncFromFirebase('startup');

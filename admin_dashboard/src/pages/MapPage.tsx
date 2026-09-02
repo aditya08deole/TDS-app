@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import { useTheme } from '../context/ThemeContext'
+import { useUI } from '../context/UIContext'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { useDevices, useDeviceSubscription } from '../hooks/useDeviceQueries'
 import { useAllDevicesThingSpeakData, useDeviceThingSpeakChartData } from '../hooks/useThingSpeakQueries'
 import { getTDSStatus, getDeviceDisplayName, getConnectivityStatus } from '../lib/constants'
@@ -404,6 +406,7 @@ export default function MapPage() {
 
     const { resolvedTheme } = useTheme()
     const theme = useMemo(() => getMapTheme(resolvedTheme === 'dark'), [resolvedTheme])
+    const { isMobile } = useUI()
 
     const [isFullscreen, setIsFullscreen] = useState(false)
     const [mapStyle, setMapStyle] = useState<MapStyle>('street')
@@ -589,16 +592,24 @@ export default function MapPage() {
                     </button>
                 </div>
 
-                {/* Dedicated Floating Device Telemetry Inspector Window */}
-                {selectedDevice && (
-                    <div className="fixed bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:bottom-6 sm:w-[420px] md:w-[460px] z-[9999] max-h-[85vh] overflow-y-auto custom-scrollbar">
-                        <DeviceTelemetryWindow
-                            device={selectedDevice}
-                            theme={theme}
-                            onClose={() => setSelectedDevice(null)}
-                        />
-                    </div>
-                )}
+                {/* Device Telemetry Inspector — same slide-in Sheet pattern the
+                    Devices page used for its device detail view, now used here
+                    instead: bottom sheet on mobile, right-docked drawer on
+                    desktop, with a proper overlay backdrop. */}
+                <Sheet open={!!selectedDevice} onOpenChange={(open) => !open && setSelectedDevice(null)}>
+                    <SheetContent
+                        side={isMobile ? 'bottom' : 'right'}
+                        className="p-0 border-0 bg-transparent shadow-none w-full sm:max-w-[460px] max-h-[85vh] sm:max-h-full overflow-y-auto custom-scrollbar [&>button]:hidden"
+                    >
+                        {selectedDevice && (
+                            <DeviceTelemetryWindow
+                                device={selectedDevice}
+                                theme={theme}
+                                onClose={() => setSelectedDevice(null)}
+                            />
+                        )}
+                    </SheetContent>
+                </Sheet>
             </div>
         </div>
     )

@@ -2,6 +2,7 @@ import { GlassCard } from '@/components/GlassCard'
 import { ShieldCheck, Users as UsersIcon, UserPlus, Link2, Copy, Check, Clock, Trash2, RefreshCw, Wrench, User, MessageCircle, Mail, Search, ListChecks, KeyRound, Inbox, ArrowRight, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
@@ -104,6 +105,15 @@ export default function Users() {
     const requestRoleChange = (u: DirectoryUser, newRole: UserRole) => {
         if (newRole === u.role) return
         setPendingRoleChange({ uid: u.uid, email: u.email || u.uid, from: u.role, to: newRole })
+    }
+
+    const copyEmail = async (email: string) => {
+        try {
+            await navigator.clipboard.writeText(email)
+            toast.success('Email copied', { description: email })
+        } catch {
+            toast.error('Could not copy email')
+        }
     }
 
     const confirmRoleChange = async () => {
@@ -572,10 +582,17 @@ export default function Users() {
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-center gap-1.5">
-                                                        <span className="text-sm text-foreground/90 truncate">{u.email || u.uid}</span>
+                                                        <span className="text-sm text-foreground/90 truncate font-mono">{u.email || u.uid}</span>
                                                         {isSelf && (
                                                             <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold uppercase tracking-wider shrink-0">You</span>
                                                         )}
+                                                        <button
+                                                            onClick={() => copyEmail(u.email || u.uid)}
+                                                            className="p-1 text-muted-foreground/60 hover:text-foreground transition-colors shrink-0"
+                                                            title="Copy email"
+                                                        >
+                                                            <Copy className="w-3 h-3" />
+                                                        </button>
                                                     </div>
                                                     <p className="text-xs text-muted-foreground mt-0.5">
                                                         Joined {u.joined_at ? formatDate(u.joined_at) : '—'}
@@ -587,16 +604,20 @@ export default function Users() {
                                                     {ROLE_DISPLAY_NAMES[u.role]}
                                                 </span>
                                             ) : (
-                                                <select
+                                                <Select
                                                     value={u.role}
                                                     disabled={changingRoleFor === u.uid}
-                                                    onChange={(e) => requestRoleChange(u, e.target.value as UserRole)}
-                                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs font-bold text-foreground disabled:opacity-50 focus:outline-none focus:border-cyan-500/50"
+                                                    onValueChange={(value) => requestRoleChange(u, value as UserRole)}
                                                 >
-                                                    {DIRECTORY_ROLE_OPTIONS.map(opt => (
-                                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                                    ))}
-                                                </select>
+                                                    <SelectTrigger className="w-full h-9 bg-white/5 border-white/10 text-xs font-bold text-foreground disabled:opacity-50">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
+                                                        {DIRECTORY_ROLE_OPTIONS.map(opt => (
+                                                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
                                             )}
                                         </div>
                                     )
@@ -627,10 +648,17 @@ export default function Users() {
                                                             )}>
                                                                 {initial}
                                                             </div>
-                                                            <span className="text-foreground/90">{u.email || u.uid}</span>
+                                                            <span className="text-foreground/90 font-mono">{u.email || u.uid}</span>
                                                             {isSelf && (
                                                                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold uppercase tracking-wider">You</span>
                                                             )}
+                                                            <button
+                                                                onClick={() => copyEmail(u.email || u.uid)}
+                                                                className="p-1 text-muted-foreground/50 hover:text-foreground transition-colors"
+                                                                title="Copy email"
+                                                            >
+                                                                <Copy className="w-3 h-3" />
+                                                            </button>
                                                         </div>
                                                     </td>
                                                     <td className="px-5 py-3.5 text-muted-foreground">{u.joined_at ? formatDate(u.joined_at) : '—'}</td>
@@ -640,16 +668,20 @@ export default function Users() {
                                                                 {ROLE_DISPLAY_NAMES[u.role]}
                                                             </span>
                                                         ) : (
-                                                            <select
+                                                            <Select
                                                                 value={u.role}
                                                                 disabled={changingRoleFor === u.uid}
-                                                                onChange={(e) => requestRoleChange(u, e.target.value as UserRole)}
-                                                                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-foreground disabled:opacity-50 focus:outline-none focus:border-cyan-500/50"
+                                                                onValueChange={(value) => requestRoleChange(u, value as UserRole)}
                                                             >
-                                                                {DIRECTORY_ROLE_OPTIONS.map(opt => (
-                                                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                                                ))}
-                                                            </select>
+                                                                <SelectTrigger className="w-auto h-8 ml-auto bg-white/5 border-white/10 text-[11px] font-bold text-foreground disabled:opacity-50">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
+                                                                    {DIRECTORY_ROLE_OPTIONS.map(opt => (
+                                                                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
                                                         )}
                                                     </td>
                                                 </tr>

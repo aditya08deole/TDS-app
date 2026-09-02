@@ -15,6 +15,7 @@ let scheduledTask: any = null;
 let cleanupTask: any = null;
 let heartbeatTask: any = null;
 let thingSpeakTask: any = null;
+let inviteCleanupTask: any = null;
 
 /**
  * ThingSpeak Autonomous Ghost Engine
@@ -216,6 +217,50 @@ export function startDeviceHeartbeatJob(): void {
 }
 
 /**
+ * Invite Token Cleanup Job — runs every 5 minutes.
+ * Removes invite tokens 30 minutes after they were either redeemed (used)
+ * or expired, so the Manage Users invite list doesn't grow into a long,
+ * unmanageable history of every invite ever created — accepted/expired
+ * links just disappear shortly after they stop being actionable. Tokens
+ * still pending (unused and not yet expired) are always left alone.
+ */
+export function startInviteCleanupJob(): void {
+  inviteCleanupTask = cron.schedule('*/5 * * * *', async () => {
+    try {
+      const db = getDb();
+      const TTL_MINUTES = 30;
+      const cutoff = new Date(Date.now() - TTL_MINUTES * 60 * 1000);
+
+      const snapshot = await db.collection('invite_tokens').get();
+      if (snapshot.empty) return;
+
+      const batch = db.batch();
+      let deleteCount = 0;
+
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+        const usedLongEnoughAgo = data.used && data.used_at && new Date(data.used_at) <= cutoff;
+        const expiredLongEnoughAgo = !data.used && data.expires_at && new Date(data.expires_at) <= cutoff;
+
+        if (usedLongEnoughAgo || expiredLongEnoughAgo) {
+          batch.delete(doc.ref);
+          deleteCount++;
+        }
+      }
+
+      if (deleteCount > 0) {
+        await batch.commit();
+        console.log(`🧹 [CLEANUP] Deleted ${deleteCount} invite token(s) accepted/expired 30+ min ago.`);
+      }
+    } catch (error) {
+      console.error('❌ [CLEANUP] Invite token cleanup job failed:', error);
+    }
+  });
+
+  console.log('✅ Invite token cleanup job started — removes used/expired tokens after 30 min (runs every 5 min).');
+}
+
+/**
  * Stop all scheduler tasks.
  */
 export function stopScheduler(): void {
@@ -224,6 +269,7 @@ export function stopScheduler(): void {
     ['Alert cleanup job', cleanupTask],
     ['Device heartbeat job', heartbeatTask],
     ['ThingSpeak monitor job', thingSpeakTask],
+    ['Invite cleanup job', inviteCleanupTask],
   ];
 
   for (const [name, task] of tasks) {
@@ -237,6 +283,7 @@ export function stopScheduler(): void {
   cleanupTask = null;
   heartbeatTask = null;
   thingSpeakTask = null;
+  inviteCleanupTask = null;
 }
 
 /**
@@ -249,9 +296,11 @@ export function getSchedulerStatus(): any {
     cleanupRunning: !!cleanupTask,
     heartbeatRunning: !!heartbeatTask,
     thingSpeakMonitorRunning: !!thingSpeakTask,
+    inviteCleanupRunning: !!inviteCleanupTask,
     nextRun: scheduledTask ? 'Check logs' : 'Not running',
     interval: process.env.SYNC_INTERVAL_HOURS || '1 hour',
     alertRetentionHours: 24,
     thingSpeakPollIntervalMins: 10, // Actual cron: */10 * * * *
+    inviteTokenTtlMinutes: 30,
   };
 }
