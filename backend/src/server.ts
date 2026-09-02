@@ -90,15 +90,27 @@ const allowedOrigins = process.env.CORS_ORIGINS
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    // Allow requests with no origin (curl, server-to-server)
     if (!origin) return callback(null, true);
-    
+
+    // The Capacitor Android app (capacitor.config.ts: server.androidScheme =
+    // 'https', no custom hostname) serves the app's WebView from the fixed
+    // origin https://localhost and DOES send that as a real Origin header on
+    // every fetch — it is not origin-less like the comment above assumed.
+    // That origin was never in allowedOrigins (which only ever listed dev
+    // ports like localhost:5173), so every authenticated API call made from
+    // inside the native app — user list, alert ack/resolve, invite
+    // generation — was being rejected by CORS before it ever reached a
+    // route handler, while the exact same code running in a mobile browser
+    // (a real page origin that IS on the allowlist) worked fine.
+    const isNativeApp = origin === 'https://localhost' || origin === 'capacitor://localhost';
+
     // Check if origin is in explicit allowed list OR is a tunnel subdomain
     const isAllowed = allowedOrigins.some(allowed => origin === allowed || origin.startsWith(`${allowed}/`));
     const isTunnelDomain = origin.endsWith('.trycloudflare.com') || origin.endsWith('.ngrok-free.app') || origin.endsWith('.loca.lt');
     const allowAll = process.env.CORS_ALL_ORIGINS === 'true';
-    
-    if (isAllowed || isTunnelDomain || allowAll) {
+
+    if (isNativeApp || isAllowed || isTunnelDomain || allowAll) {
       callback(null, true);
     } else {
       console.warn(`⚠️ [CORS] Rejected request from origin: ${origin}`);
