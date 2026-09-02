@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { ROLE_DISPLAY_NAMES } from '../context/RoleContext'
 import { db } from '../lib/firebase'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import {
-    User, Bell, Shield, LogOut, Moon, Mail, ChevronRight, Save, Loader2, CheckCircle,
-    Globe, Lock, Layout, BellRing, UserCircle, Volume2, VolumeX
+    Bell, LogOut, Moon, Save, Loader2, CheckCircle,
+    Layout, BellRing, Droplets, Volume2, VolumeX, Info
 } from 'lucide-react'
 import { GlassCard } from '@/components/GlassCard'
 import { Button } from '@/components/ui/button'
@@ -24,7 +25,6 @@ import { useTheme } from '../context/ThemeContext'
 
 interface UserSettings {
     notifications_enabled: boolean
-    email_alerts: boolean
     whatsapp_alerts: boolean
     ntfy_alerts: boolean
     ifttt_alerts: boolean
@@ -34,7 +34,7 @@ interface UserSettings {
 type SettingsTab = 'general' | 'notifications' | 'data' | 'account'
 
 export default function Settings() {
-    const { user, signOut } = useAuth()
+    const { user, profile, signOut } = useAuth()
     const { theme, setTheme } = useTheme()
     const navigate = useNavigate()
     const [activeTab, setActiveTab] = useState<SettingsTab>('general')
@@ -58,7 +58,6 @@ export default function Settings() {
     // Initial state setup (only once or when user loads)
     const [settings, setSettings] = useState<UserSettings>({
         notifications_enabled: true,
-        email_alerts: false,
         whatsapp_alerts: true,
         ntfy_alerts: true,
         ifttt_alerts: false,
@@ -77,7 +76,6 @@ export default function Settings() {
                     const data = docSnap.data()
                     setSettings({
                         notifications_enabled: data.notifications_enabled ?? true,
-                        email_alerts: data.email_alerts ?? false,
                         whatsapp_alerts: data.whatsapp_alerts ?? true,
                         ntfy_alerts: data.ntfy_alerts ?? true,
                         ifttt_alerts: data.ifttt_alerts ?? false,
@@ -137,7 +135,7 @@ export default function Settings() {
     const menuItems = [
         { id: 'general', label: 'General', icon: Layout },
         { id: 'notifications', label: 'Notifications', icon: Bell },
-        { id: 'account', label: 'Account & Security', icon: UserCircle },
+        { id: 'account', label: 'Water Quality Guide', icon: Droplets },
     ]
 
     if (loading) {
@@ -180,7 +178,7 @@ export default function Settings() {
                         </div>
                         <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground truncate">{user?.email}</p>
-                            <p className="text-xs text-muted-foreground">Administrator</p>
+                            <p className="text-xs text-muted-foreground">{profile?.role ? ROLE_DISPLAY_NAMES[profile.role] : '—'}</p>
                         </div>
                     </div>
                     <Button
@@ -218,26 +216,6 @@ export default function Settings() {
                                         checked={theme === 'dark'}
                                         onCheckedChange={() => toggleSetting('dark_mode')}
                                     />
-                                </div>
-                                <div className="p-4 flex items-center justify-between">
-                                    <div className="flex items-center gap-4 text-left">
-                                        <div className="p-2.5 glass-system-micro border-white/10 text-purple-400"><Globe className="w-5 h-5" /></div>
-                                        <div>
-                                            <p className="text-foreground font-medium">Language</p>
-                                            <p className="text-xs text-muted-foreground">Regional preference</p>
-                                        </div>
-                                    </div>
-                                    <Select defaultValue="en">
-                                        <SelectTrigger className="w-[140px] h-9 glass-system-inset border-white/10 shadow-inner">
-                                            <SelectValue placeholder="Language" />
-                                        </SelectTrigger>
-                                        <SelectContent className="glass-system-parent border-white/20 shadow-2xl backdrop-blur-3xl">
-                                            <SelectItem value="en">English (US)</SelectItem>
-                                            <SelectItem value="hi">Hindi (IN)</SelectItem>
-                                            <SelectItem value="es">Español</SelectItem>
-                                            <SelectItem value="fr">Français</SelectItem>
-                                        </SelectContent>
-                                    </Select>
                                 </div>
                             </div>
                         </div>
@@ -346,21 +324,6 @@ export default function Settings() {
                                         Test Audio Alert
                                     </Button>
                                 </div>
-
-                                {/* Email Alerts */}
-                                <div className="p-4 flex items-center justify-between">
-                                    <div className="flex items-center gap-4">
-                                        <div className="p-2 rounded-lg bg-green-500/10 text-green-500"><Mail className="w-5 h-5" /></div>
-                                        <div>
-                                            <p className="text-foreground font-medium">Email Weekly Digest</p>
-                                            <p className="text-xs text-muted-foreground text-slate-400">Summary reports each Monday</p>
-                                        </div>
-                                    </div>
-                                    <Switch
-                                        checked={settings.email_alerts}
-                                        onCheckedChange={() => toggleSetting('email_alerts')}
-                                    />
-                                </div>
                             </div>
                         </div>
                     )}
@@ -368,48 +331,44 @@ export default function Settings() {
                     {activeTab === 'account' && (
                         <div className="space-y-6 animate-fade-in">
                             <div>
-                                <h2 className="text-xl font-bold text-foreground">Account & Security</h2>
-                                <p className="text-muted-foreground text-sm">Update profile and security keys</p>
+                                <h2 className="text-xl font-bold text-foreground">Water Quality Guide</h2>
+                                <p className="text-muted-foreground text-sm">TDS levels explained — for awareness only</p>
                             </div>
 
-                            <div className="bg-secondary/50 rounded-xl overflow-hidden border border-accent divide-y divide-accent">
-                                <div 
-                                    onClick={() => toast.info('Profile editing available in next update')}
-                                    className="p-4 flex items-center justify-between hover:bg-accent/50 cursor-pointer transition-colors"
-                                >
-                                    <div className="flex items-center gap-4 text-left">
-                                        <div className="p-2 rounded-lg bg-slate-500/10 text-slate-400"><User className="w-5 h-5" /></div>
-                                        <div>
-                                            <p className="text-foreground font-medium">Edit Profile</p>
-                                            <p className="text-xs text-muted-foreground">Name, Avatar</p>
-                                        </div>
-                                    </div>
-                                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                                </div>
-                                <div 
-                                    onClick={() => toast.info('Password management handled via Firebase Auth')}
-                                    className="p-4 flex items-center justify-between hover:bg-accent/50 cursor-pointer transition-colors"
-                                >
-                                    <div className="flex items-center gap-4 text-left">
-                                        <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500"><Lock className="w-5 h-5" /></div>
-                                        <div>
-                                            <p className="text-foreground font-medium">Change Password</p>
-                                            <p className="text-xs text-muted-foreground">Last changed 3 months ago</p>
-                                        </div>
-                                    </div>
-                                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                                </div>
-                                <div className="p-4 flex items-center justify-between hover:bg-accent/50 cursor-pointer transition-colors">
-                                    <div className="flex items-center gap-4 text-left">
-                                        <div className="p-2 rounded-lg bg-green-500/10 text-green-500"><Shield className="w-5 h-5" /></div>
-                                        <div>
-                                            <p className="text-foreground font-medium">2FA Authentication</p>
-                                            <p className="text-xs text-muted-foreground">Enabled</p>
-                                        </div>
-                                    </div>
-                                    <span className="text-xs text-green-500 font-medium bg-green-500/10 px-2 py-1 rounded">Active</span>
-                                </div>
+                            <div className="glass-system-parent rounded-2xl p-4 border-white/10 flex gap-3 items-start">
+                                <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                                <p className="text-sm text-muted-foreground leading-relaxed">
+                                    According to the <span className="text-foreground font-medium">World Health Organization (WHO)</span>, Total Dissolved Solids (TDS)
+                                    is mainly an indicator of how water <span className="text-foreground font-medium">tastes</span> — not whether it's safe to drink.
+                                    WHO has not set a strict health-based limit for TDS; the ratings below reflect palatability (taste), based on WHO's
+                                    Guidelines for Drinking-water Quality.
+                                </p>
                             </div>
+
+                            <div className="glass-system-parent rounded-2xl overflow-hidden border-white/10 divide-y divide-white/5 shadow-xl">
+                                {[
+                                    { range: '< 300 mg/L', rating: 'Excellent', color: 'text-emerald-400 bg-emerald-500/10' },
+                                    { range: '300 – 600 mg/L', rating: 'Good', color: 'text-cyan-400 bg-cyan-500/10' },
+                                    { range: '600 – 900 mg/L', rating: 'Fair', color: 'text-yellow-400 bg-yellow-500/10' },
+                                    { range: '900 – 1200 mg/L', rating: 'Poor', color: 'text-orange-400 bg-orange-500/10' },
+                                    { range: '> 1200 mg/L', rating: 'Unacceptable', color: 'text-red-400 bg-red-500/10' },
+                                ].map((row) => (
+                                    <div key={row.range} className="p-4 flex items-center justify-between">
+                                        <div className="flex items-center gap-4 text-left">
+                                            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400"><Droplets className="w-5 h-5" /></div>
+                                            <p className="text-foreground font-medium">{row.range}</p>
+                                        </div>
+                                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${row.color}`}>{row.rating}</span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                This is general awareness information, not a certified water safety assessment — it doesn't check for bacteria,
+                                heavy metals, or other contaminants. High TDS mostly affects taste and can indicate more dissolved minerals, while
+                                very low TDS isn't automatically "better," since some minerals are actually beneficial. For a full safety assessment,
+                                use certified lab testing.
+                            </p>
                         </div>
                     )}
 
