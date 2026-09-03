@@ -1,4 +1,4 @@
-import { Bell, AlertTriangle, MoreVertical, LayoutDashboard, Map as MapIcon, Smartphone, Settings, Users as UsersIcon, LogOut } from "lucide-react"
+import { Bell, AlertTriangle, MoreVertical, LayoutDashboard, Map as MapIcon, Smartphone, Settings, Users as UsersIcon, LogOut, Download } from "lucide-react"
 import { ThemeToggle } from "./ThemeToggle"
 import { Button } from "@/components/ui/button"
 import { useAlerts } from "../context/AlertContext"
@@ -45,6 +45,7 @@ export function TopBar() {
     const moreLinks: Array<{ title: string; url: string; icon: typeof AlertTriangle; permission?: Permission }> = [
         { title: "Alerts", url: "/alerts", icon: AlertTriangle },
         { title: "Manage Users", url: "/users", icon: UsersIcon, permission: "manage_users" },
+        { title: "Export Data", url: "/export", icon: Download },
         { title: "Settings", url: "/settings", icon: Settings },
     ]
 

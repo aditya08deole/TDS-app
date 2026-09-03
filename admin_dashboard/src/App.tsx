@@ -34,6 +34,7 @@ const ScanDevice = lazy(() => import('./pages/ScanDevice'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Users = lazy(() => import('./pages/Users'))
 const Register = lazy(() => import('./pages/Register'))
+const Export = lazy(() => import('./pages/Export'))
 
 // Loading Component
 const PageLoader = () => (
@@ -148,6 +149,11 @@ function RoutesWrapper() {
                 <Route path="settings" element={
                     <Suspense fallback={<PageLoader />}>
                         <Settings />
+                    </Suspense>
+                } />
+                <Route path="export" element={
+                    <Suspense fallback={<PageLoader />}>
+                        <Export />
                     </Suspense>
                 } />
             </Route>

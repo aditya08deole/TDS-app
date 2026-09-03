@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as deviceService from '../../services/deviceService';
+import { getThingSpeakFeedsInRange } from '../../services/thingSpeakService';
+import { getFirestore } from 'firebase-admin/firestore';
 import { ApiResponse, Device } from '../../types';
 import { requireRole } from '../middleware/roleGuard';
 
@@ -360,6 +362,116 @@ router.get('/:id/health-events', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch health events',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * GET /api/devices/:id/export?start=<ISO>&end=<ISO>&format=csv|json
+ *
+ * Downloads a device's historical readings for a date range, sourced live
+ * from ThingSpeak (the actual system of record for history here — this app
+ * only mirrors the LATEST reading per device, it doesn't keep its own full
+ * history). Transparently pages past ThingSpeak's 8000-rows-per-call limit,
+ * so a wide date range just works from the caller's side.
+ *
+ * requireRole('viewer') = any signed-in user, matching who can already see
+ * this device's data on screen — read-only, so no higher bar than that.
+ */
+router.get('/:id/export', requireRole('viewer'), async (req: Request, res: Response) => {
+  try {
+    const { start, end } = req.query;
+    const format = (req.query.format as string) === 'json' ? 'json' : 'csv';
+
+    if (!start || !end) {
+      return res.status(400).json({
+        success: false,
+        error: 'start and end query params are required (ISO 8601 dates)',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const startDate = new Date(start as string);
+    const endDate = new Date(end as string);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate >= endDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid date range — start must be a valid date before end',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const ONE_YEAR_MS = 366 * 24 * 60 * 60 * 1000;
+    if (endDate.getTime() - startDate.getTime() > ONE_YEAR_MS) {
+      return res.status(400).json({
+        success: false,
+        error: 'Date range too large — please request 1 year or less at a time',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const device = await deviceService.getDeviceById(req.params.id);
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        error: 'Device not found',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (!device.thingspeak_channel_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'This device has no ThingSpeak channel configured — nothing to export',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const readings = await getThingSpeakFeedsInRange(device, startDate.toISOString(), endDate.toISOString());
+
+    // Audit trail — matches the pattern already used for invites/role changes,
+    // so "who exported what, when" is answerable later if it ever matters.
+    const requester = (req as any).user;
+    getFirestore().collection('audit_log').add({
+      action: 'device_data_exported',
+      device_id: device.id,
+      device_name: device.name,
+      exported_by: requester?.uid,
+      exported_by_role: requester?.role,
+      range_start: startDate.toISOString(),
+      range_end: endDate.toISOString(),
+      row_count: readings.length,
+      format,
+      timestamp: new Date().toISOString(),
+    }).catch(() => {});
+
+    const safeName = (device.location_name || device.name || device.id).replace(/[^a-z0-9]+/gi, '-');
+    const fileDate = `${startDate.toISOString().slice(0, 10)}_to_${endDate.toISOString().slice(0, 10)}`;
+    const filename = `${safeName}_${fileDate}.${format}`;
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(JSON.stringify({ device: device.name, location: device.location_name, readings }, null, 2));
+    }
+
+    // CSV — quote every field and escape embedded quotes, the only two things
+    // that actually need it for these column types (timestamp + 3 numbers).
+    const escapeCsv = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const header = ['Timestamp', 'TDS (ppm)', 'Temperature (°C)', 'Voltage (V)'].map(escapeCsv).join(',');
+    const rows = readings.map(r => [r.recorded_at, r.tds, r.temperature, r.voltage].map(escapeCsv).join(','));
+    const csv = [header, ...rows].join('\r\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(csv);
+  } catch (error: any) {
+    console.error('Error exporting device data:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to export device data',
       timestamp: new Date().toISOString(),
     });
   }

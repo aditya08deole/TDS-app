@@ -264,6 +264,34 @@ export async function getDeviceSensorData(id: string, limit: number = 100): Prom
   }, { useSwrPattern: true });
 }
 
+/**
+ * Downloads a device's historical readings for a date range as a file
+ * (CSV or JSON). Unlike the rest of this file, this doesn't parse a JSON
+ * ApiResponse envelope — the backend streams back the actual file with a
+ * Content-Disposition header, so this returns the raw Blob plus the
+ * filename the server chose, ready to hand to a download trigger.
+ */
+export async function exportDeviceDataApi(
+  deviceId: string,
+  startIso: string,
+  endIso: string,
+  format: 'csv' | 'json' = 'csv'
+): Promise<{ blob: Blob; filename: string }> {
+  const params = new URLSearchParams({ start: startIso, end: endIso, format })
+  const response = await apiFetch(`/api/devices/${deviceId}/export?${params.toString()}`)
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.error || 'Failed to export device data')
+  }
+
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const match = disposition.match(/filename="?([^"]+)"?/)
+  const filename = match?.[1] || `export.${format}`
+
+  return { blob: await response.blob(), filename }
+}
+
 export async function getDeviceHealthEvents(id: string, limit: number = 50): Promise<any[]> {
   const endpoint = `${getBase()}/api/devices/${id}/health-events?limit=${limit}`;
   return dedupFetch(endpoint, async () => {

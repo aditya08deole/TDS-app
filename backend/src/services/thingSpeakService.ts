@@ -53,6 +53,76 @@ export async function getLatestThingSpeakReading(device: Device): Promise<any | 
     }
 }
 
+export interface ExportedReading {
+    recorded_at: string;
+    tds: number;
+    temperature: number;
+    voltage: number;
+}
+
+const THINGSPEAK_MAX_RESULTS_PER_CALL = 8000; // ThingSpeak's own hard cap per request
+const EXPORT_MAX_PAGES = 20; // safety ceiling: 20 * 8000 = up to 160k rows per export
+
+/**
+ * Fetches every reading for a device between start and end (inclusive),
+ * transparently paginating past ThingSpeak's 8000-rows-per-call limit.
+ *
+ * ThingSpeak has no "next page" cursor — the standard way to page through a
+ * large range is to re-issue the query with `start` moved to just after the
+ * last entry's timestamp returned by the previous call, and stop once a call
+ * returns fewer than the max (meaning we reached the end of the range).
+ */
+export async function getThingSpeakFeedsInRange(
+    device: Device,
+    startIso: string,
+    endIso: string
+): Promise<ExportedReading[]> {
+    if (!device.thingspeak_channel_id) return [];
+
+    const channelId = device.thingspeak_channel_id;
+    const readKey = device.thingspeak_read_key || '';
+    const tdsField = `field${device.tds_field_number || 1}`;
+    const tempField = `field${device.temperature_field_number || 2}`;
+    const voltField = `field${device.voltage_field_number || 3}`;
+
+    // ThingSpeak expects "YYYY-MM-DD HH:MM:SS" (UTC), not full ISO 8601.
+    const toThingSpeakDate = (iso: string) => iso.replace('T', ' ').replace(/\.\d{3}Z?$/, '').replace('Z', '');
+
+    const results: ExportedReading[] = [];
+    let cursorStart = startIso;
+
+    for (let page = 0; page < EXPORT_MAX_PAGES; page++) {
+        const url = `https://api.thingspeak.com/channels/${channelId}/feeds.json` +
+            `?api_key=${readKey}` +
+            `&start=${encodeURIComponent(toThingSpeakDate(cursorStart))}` +
+            `&end=${encodeURIComponent(toThingSpeakDate(endIso))}` +
+            `&results=${THINGSPEAK_MAX_RESULTS_PER_CALL}`;
+
+        const response = await axios.get<ThingSpeakResponse>(url, { timeout: 20000 });
+        const feeds = response.data?.feeds || [];
+
+        if (feeds.length === 0) break;
+
+        for (const feed of feeds) {
+            results.push({
+                recorded_at: feed.created_at,
+                tds: parseFloat(feed[tdsField]) || 0,
+                temperature: parseFloat(feed[tempField]) || 0,
+                voltage: parseFloat(feed[voltField]) || 0,
+            });
+        }
+
+        if (feeds.length < THINGSPEAK_MAX_RESULTS_PER_CALL) break; // exhausted the range
+
+        // Next page starts 1 second after the last entry we just received.
+        const lastTimestamp = new Date(feeds[feeds.length - 1].created_at);
+        lastTimestamp.setSeconds(lastTimestamp.getSeconds() + 1);
+        cursorStart = lastTimestamp.toISOString();
+    }
+
+    return results;
+}
+
 /**
  * Tests connection to a ThingSpeak channel with given Read Key.
  * Returns metadata about the channel if successful.

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Map as MapIcon, Smartphone, Bell, Settings, Users } from "lucide-react"
+import { LayoutDashboard, Map as MapIcon, Smartphone, Bell, Settings, Users, Download } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { useAlerts } from "../context/AlertContext"
@@ -22,6 +22,7 @@ export function MobileNav() {
         { title: "Devices", url: "/devices", icon: Smartphone },
         { title: "Alerts", url: "/alerts", icon: Bell, badge: alertCount },
         ...(hasPermission('manage_users') ? [{ title: "Users", url: "/users", icon: Users }] : []),
+        { title: "Export", url: "/export", icon: Download },
         { title: "Settings", url: "/settings", icon: Settings },
     ]
 
