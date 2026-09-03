@@ -32,6 +32,8 @@ export type Permission =
     | 'resolve_alert'
     // Phase 4: Invite management permission
     | 'invite_users'
+    // Activity log — super_admin only, unlike export_data which admins also have
+    | 'view_audit_log'
 
 // Permission matrix for each role
 const rolePermissions: Record<UserRole, Permission[]> = {
@@ -77,6 +79,7 @@ const rolePermissions: Record<UserRole, Permission[]> = {
         'maintenance_mode',
         'resolve_alert',   // ← Can mark alerts as resolved
         'invite_users',    // ← Can generate invite links for maintenance/users
+        'manage_users',    // ← Can view the user directory and change roles (except super_admin)
     ],
 
     // super_admin (you)
@@ -98,6 +101,7 @@ const rolePermissions: Record<UserRole, Permission[]> = {
         'maintenance_mode',
         'resolve_alert',   // ← Can mark alerts as resolved
         'invite_users',    // ← Can generate invite links for any role including admin
+        'view_audit_log',  // ← Only super_admin can see the Activity Log page
     ],
 }
 

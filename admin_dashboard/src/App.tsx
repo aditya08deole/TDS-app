@@ -161,7 +161,7 @@ function RoutesWrapper() {
                 } />
                 <Route path="activity-log" element={
                     <Suspense fallback={<PageLoader />}>
-                        <AuthGuard requiredRole="admin">
+                        <AuthGuard requiredRole="super_admin">
                             <ActivityLog />
                         </AuthGuard>
                     </Suspense>

@@ -107,7 +107,7 @@ export default function ActivityLog() {
                         <h1 className="text-2xl font-extrabold text-foreground tracking-tight">Activity Log</h1>
                         <span className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md bg-violet-500/10 text-violet-500 border border-violet-500/25 font-bold uppercase tracking-wider">
                             <ShieldCheck className="w-2.5 h-2.5" />
-                            Admin
+                            Super Admin
                         </span>
                     </div>
                     <p className="text-muted-foreground text-[13px] mt-1 leading-snug">

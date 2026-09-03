@@ -331,7 +331,7 @@ const VALID_ROLES = ['viewer', 'field_engineer', 'admin', 'super_admin'];
  * super_admin see who has access and at what level — the invite-token list
  * only shows generated links, not the real accounts that exist.
  */
-router.get('/', requireRole('super_admin'), async (req: Request, res: Response) => {
+router.get('/', requireRole('admin'), async (req: Request, res: Response) => {
     try {
         const snapshot = await getDb().collection('users').orderBy('joined_at', 'desc').get().catch(() =>
             // joined_at may be missing on older/manually-created docs — fall back to unordered
@@ -357,23 +357,33 @@ router.get('/', requireRole('super_admin'), async (req: Request, res: Response) 
     }
 });
 
-// ─── PUT /api/users/:uid/role — Assign a role to an existing user (super_admin only) ───
+// ─── PUT /api/users/:uid/role — Assign a role to an existing user (admin+) ───
 /**
- * Lets a super_admin change any existing user's role directly, by uid, rather
- * than only being able to set a role at invite-redemption time. Stricter than
- * the invite system on purpose: an admin can invite someone in at a role, but
- * only super_admin can reassign an already-existing account's access level.
+ * Lets an admin/super_admin change any existing user's role directly, by uid,
+ * rather than only being able to set a role at invite-redemption time.
+ *
+ * admin may assign any role EXCEPT super_admin — that one stays exclusive to
+ * an existing super_admin, so a plain admin can never escalate themselves or
+ * anyone else to the top tier.
  */
-router.put('/:uid/role', requireRole('super_admin'), async (req: Request, res: Response) => {
+router.put('/:uid/role', requireRole('admin'), async (req: Request, res: Response) => {
     try {
         const { uid } = req.params;
         const { role } = req.body;
         const changedBy = (req as any).user?.uid;
+        const changedByRole = (req as any).user?.role;
 
         if (!role || !VALID_ROLES.includes(role)) {
             return res.status(400).json({
                 success: false,
                 error: `role must be one of: ${VALID_ROLES.join(', ')}`,
+            });
+        }
+
+        if (role === 'super_admin' && changedByRole !== 'super_admin') {
+            return res.status(403).json({
+                success: false,
+                error: 'Only a super_admin can assign the super_admin role',
             });
         }
 

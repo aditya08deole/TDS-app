@@ -9,10 +9,10 @@ function getDb() { return getFirestore(); }
 /**
  * GET /api/audit-log
  * Lists audit_log entries (device exports, invites, role changes, alert
- * resolutions) newest-first. Admin+ only — this is the same bar as the
- * export_data permission it's mostly reporting on.
+ * resolutions) newest-first. super_admin only — this log includes who
+ * changed whose role, which is more sensitive than the export_data bar.
  */
-router.get('/', requireRole('admin'), async (req: Request, res: Response) => {
+router.get('/', requireRole('super_admin'), async (req: Request, res: Response) => {
   try {
     const limit = Math.min(Number(req.query.limit || 100), 500);
     const action = req.query.action ? String(req.query.action) : '';

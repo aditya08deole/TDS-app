@@ -28,10 +28,10 @@ export function MobileNav() {
         { title: "Alerts", url: "/alerts", icon: Bell, badge: alertCount },
     ]
 
-    const moreLinks: Array<{ title: string; url: string; icon: typeof Settings; permission?: 'manage_users' | 'export_data' }> = [
+    const moreLinks: Array<{ title: string; url: string; icon: typeof Settings; permission?: 'manage_users' | 'export_data' | 'view_audit_log' }> = [
         { title: "Manage Users", url: "/users", icon: Users, permission: "manage_users" },
         { title: "Export Data", url: "/export", icon: Download, permission: "export_data" },
-        { title: "Activity Log", url: "/activity-log", icon: History, permission: "export_data" },
+        { title: "Activity Log", url: "/activity-log", icon: History, permission: "view_audit_log" },
         { title: "Settings", url: "/settings", icon: Settings },
     ]
     const visibleMoreLinks = moreLinks.filter(link => !link.permission || hasPermission(link.permission))

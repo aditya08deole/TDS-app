@@ -38,6 +38,11 @@ export default function Users() {
     const { hasPermission, isSuperAdmin, role } = useRole()
     const { user } = useAuth()
     const canInvite = hasPermission('invite_users')
+    const canManageUsers = hasPermission('manage_users')
+    // Only super_admin can ever assign the super_admin role — matches the
+    // server-side check in PUT /api/users/:uid/role, so a plain admin never
+    // even sees it as a selectable option.
+    const directoryRoleOptions = isSuperAdmin ? DIRECTORY_ROLE_OPTIONS : DIRECTORY_ROLE_OPTIONS.filter(o => o.value !== 'super_admin')
 
     const [inviteRole, setInviteRole] = useState<InviteRole>('field_engineer')
     const [generatedLink, setGeneratedLink] = useState<string | null>(null)
@@ -81,7 +86,7 @@ export default function Users() {
     }, [])
 
     const loadDirectory = useCallback(async () => {
-        if (!isSuperAdmin) return
+        if (!canManageUsers) return
         setLoadingDirectory(true)
         try {
             const data = await listUsersApi()
@@ -91,7 +96,7 @@ export default function Users() {
         } finally {
             setLoadingDirectory(false)
         }
-    }, [isSuperAdmin])
+    }, [canManageUsers])
 
     useEffect(() => {
         loadInvites()
@@ -509,8 +514,8 @@ export default function Users() {
                 </GlassCard>
             )}
 
-            {/* All Users Directory — super_admin only: see every real account and reassign roles */}
-            {isSuperAdmin && (
+            {/* All Users Directory — admin+: see every real account and reassign roles (super_admin role itself stays super_admin-exclusive, enforced server-side) */}
+            {canManageUsers && (
                 <GlassCard className="overflow-hidden p-0">
                     <div className="p-5 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -613,7 +618,7 @@ export default function Users() {
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
-                                                        {DIRECTORY_ROLE_OPTIONS.map(opt => (
+                                                        {directoryRoleOptions.map(opt => (
                                                             <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                                                         ))}
                                                     </SelectContent>
@@ -677,7 +682,7 @@ export default function Users() {
                                                                     <SelectValue />
                                                                 </SelectTrigger>
                                                                 <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
-                                                                    {DIRECTORY_ROLE_OPTIONS.map(opt => (
+                                                                    {directoryRoleOptions.map(opt => (
                                                                         <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                                                                     ))}
                                                                 </SelectContent>

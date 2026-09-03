@@ -46,7 +46,7 @@ export function TopBar() {
         { title: "Alerts", url: "/alerts", icon: AlertTriangle },
         { title: "Manage Users", url: "/users", icon: UsersIcon, permission: "manage_users" },
         { title: "Export Data", url: "/export", icon: Download, permission: "export_data" },
-        { title: "Activity Log", url: "/activity-log", icon: History, permission: "export_data" },
+        { title: "Activity Log", url: "/activity-log", icon: History, permission: "view_audit_log" },
         { title: "Settings", url: "/settings", icon: Settings },
     ]
 

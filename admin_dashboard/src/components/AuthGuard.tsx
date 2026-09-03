@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 
 interface AuthGuardProps {
     children?: React.ReactNode
-    requiredRole?: 'admin' | 'field_engineer' | 'viewer'
+    requiredRole?: 'super_admin' | 'admin' | 'field_engineer' | 'viewer'
 }
 
 export default function AuthGuard({ children, requiredRole }: AuthGuardProps) {
@@ -36,7 +36,12 @@ export default function AuthGuard({ children, requiredRole }: AuthGuardProps) {
         const requiredRoleObject = requiredRole === 'admin' ? 'admin' : requiredRole
         const requiredRoleIndex = roleHierarchy.indexOf(requiredRoleObject)
 
-        if (userRoleIndex < requiredRoleIndex && !isAdmin) {
+        // isAdmin is true for BOTH 'admin' and 'super_admin' (see AuthContext), so it
+        // must never be used to bypass a super_admin-specific gate — otherwise a plain
+        // admin would slip through requiredRole="super_admin" via this escape hatch.
+        const canBypassViaIsAdmin = requiredRole !== 'super_admin' && isAdmin
+
+        if (userRoleIndex < requiredRoleIndex && !canBypassViaIsAdmin) {
             // User doesn't have sufficient permissions
             return (
                 <div className="h-screen w-screen flex items-center justify-center bg-slate-950">
