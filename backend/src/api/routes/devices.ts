@@ -376,10 +376,12 @@ router.get('/:id/health-events', async (req: Request, res: Response) => {
  * history). Transparently pages past ThingSpeak's 8000-rows-per-call limit,
  * so a wide date range just works from the caller's side.
  *
- * requireRole('viewer') = any signed-in user, matching who can already see
- * this device's data on screen — read-only, so no higher bar than that.
+ * Restricted to admin/super_admin — matches the 'export_data' permission
+ * in the frontend's RoleContext, which field_engineer and viewer do not
+ * have. Bulk historical data is treated as a step up from just viewing
+ * live readings on screen.
  */
-router.get('/:id/export', requireRole('viewer'), async (req: Request, res: Response) => {
+router.get('/:id/export', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const { start, end } = req.query;
     const format = (req.query.format as string) === 'json' ? 'json' : 'csv';

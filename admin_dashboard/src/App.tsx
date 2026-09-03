@@ -153,7 +153,9 @@ function RoutesWrapper() {
                 } />
                 <Route path="export" element={
                     <Suspense fallback={<PageLoader />}>
-                        <Export />
+                        <AuthGuard requiredRole="admin">
+                            <Export />
+                        </AuthGuard>
                     </Suspense>
                 } />
             </Route>

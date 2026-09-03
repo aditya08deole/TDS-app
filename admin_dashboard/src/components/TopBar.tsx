@@ -45,7 +45,7 @@ export function TopBar() {
     const moreLinks: Array<{ title: string; url: string; icon: typeof AlertTriangle; permission?: Permission }> = [
         { title: "Alerts", url: "/alerts", icon: AlertTriangle },
         { title: "Manage Users", url: "/users", icon: UsersIcon, permission: "manage_users" },
-        { title: "Export Data", url: "/export", icon: Download },
+        { title: "Export Data", url: "/export", icon: Download, permission: "export_data" },
         { title: "Settings", url: "/settings", icon: Settings },
     ]
 

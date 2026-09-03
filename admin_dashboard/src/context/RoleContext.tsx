@@ -55,7 +55,6 @@ const rolePermissions: Record<UserRole, Permission[]> = {
         'view_settings',
         'edit_settings',
         'maintenance_mode',
-        'export_data',
         'edit_device',
         'resolve_alert',   // ← Can mark alerts as resolved
     ],

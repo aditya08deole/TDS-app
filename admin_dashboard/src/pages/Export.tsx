@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { GlassCard } from '@/components/GlassCard'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Download, Loader2, CalendarRange } from 'lucide-react'
+import { Download, Loader2, CalendarRange, FileSpreadsheet, FileJson, DatabaseZap, MapPin } from 'lucide-react'
 import { useDevices } from '../hooks/useDeviceQueries'
 import { exportDeviceDataApi } from '../lib/api'
 import { toast } from 'sonner'
@@ -42,6 +42,7 @@ export default function Export() {
     }, [preset, customStart, customEnd])
 
     const rangeValid = start < end
+    const selectedDevice = devices.find(d => d.id === deviceId)
 
     const handleExport = async () => {
         if (!deviceId) {
@@ -79,11 +80,21 @@ export default function Export() {
 
     return (
         <div className="max-w-2xl mx-auto space-y-6 px-4 pt-2 md:pt-0 animate-fade-in text-left">
-            <div>
-                <h1 className="text-2xl font-bold text-foreground tracking-tight">Export Data</h1>
-                <p className="text-muted-foreground text-sm mt-0.5">
-                    Download a device's historical TDS, temperature, and voltage readings for a chosen date range.
-                </p>
+            <div className="flex items-start gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center shrink-0">
+                    <DatabaseZap className="w-5 h-5 text-cyan-400" />
+                </div>
+                <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <h1 className="text-2xl font-bold text-foreground tracking-tight">Export Data</h1>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold uppercase tracking-wider">
+                            Admin &amp; Super Admin
+                        </span>
+                    </div>
+                    <p className="text-muted-foreground text-sm mt-0.5">
+                        Download a device's historical TDS, temperature, and voltage readings for a chosen date range.
+                    </p>
+                </div>
             </div>
 
             <GlassCard className="p-6 space-y-5">
@@ -102,6 +113,12 @@ export default function Export() {
                             ))}
                         </SelectContent>
                     </Select>
+                    {selectedDevice && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-0.5">
+                            <MapPin className="w-3 h-3 shrink-0" />
+                            <span>{selectedDevice.location_name || 'No location set'} · Channel {selectedDevice.thingspeak_channel_id || '—'}</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Date Range Preset */}
@@ -155,30 +172,40 @@ export default function Export() {
                 {/* Format */}
                 <div className="space-y-1.5">
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Format</label>
-                    <div className="flex gap-2">
-                        {(['csv', 'json'] as const).map(f => (
+                    <div className="grid grid-cols-2 gap-2">
+                        {([
+                            { value: 'csv' as const, label: 'CSV', hint: 'Excel, Sheets', icon: FileSpreadsheet },
+                            { value: 'json' as const, label: 'JSON', hint: 'Developers, scripts', icon: FileJson },
+                        ]).map(f => (
                             <button
-                                key={f}
+                                key={f.value}
                                 type="button"
-                                onClick={() => setFormat(f)}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all border ${
-                                    format === f
-                                        ? 'bg-cyan-500 text-black border-cyan-500'
+                                onClick={() => setFormat(f.value)}
+                                className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-left transition-all border ${
+                                    format === f.value
+                                        ? 'bg-cyan-500/10 border-cyan-500 text-foreground'
                                         : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-muted-foreground hover:text-foreground'
                                 }`}
                             >
-                                {f}
+                                <f.icon className={`w-4 h-4 shrink-0 ${format === f.value ? 'text-cyan-400' : ''}`} />
+                                <span>
+                                    <span className="block text-xs font-bold">{f.label}</span>
+                                    <span className="block text-[10px] opacity-70">{f.hint}</span>
+                                </span>
                             </button>
                         ))}
                     </div>
                 </div>
 
                 {/* Range summary */}
-                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5">
-                    <CalendarRange className="w-3.5 h-3.5 shrink-0" />
-                    <span>
-                        {start.toLocaleString()} &rarr; {end.toLocaleString()}
-                    </span>
+                <div className="flex items-center gap-2.5 text-xs bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-3">
+                    <CalendarRange className="w-4 h-4 shrink-0 text-cyan-400" />
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Selected Range</span>
+                        <span className="text-foreground font-medium truncate">
+                            {start.toLocaleString()} &rarr; {end.toLocaleString()}
+                        </span>
+                    </div>
                 </div>
 
                 <Button
