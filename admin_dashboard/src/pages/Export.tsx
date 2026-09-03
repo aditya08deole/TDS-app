@@ -5,6 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Download, Loader2, CalendarRange, FileSpreadsheet, FileJson, DatabaseZap, MapPin } from 'lucide-react'
 import { useDevices } from '../hooks/useDeviceQueries'
 import { exportDeviceDataApi } from '../lib/api'
+import { saveOrShareBlob } from '../lib/downloadFile'
+import { Capacitor } from '@capacitor/core'
 import { toast } from 'sonner'
 
 type Preset = '24h' | '7d' | '30d' | 'custom'
@@ -63,14 +65,12 @@ export default function Export() {
                 return
             }
 
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = filename
-            a.click()
-            URL.revokeObjectURL(url)
+            await saveOrShareBlob(blob, filename)
 
-            toast.success('Export ready', { description: filename })
+            toast.success(
+                Capacitor.isNativePlatform() ? 'Export ready — choose where to save it' : 'Export ready',
+                { description: filename }
+            )
         } catch (err: any) {
             toast.error(err.message || 'Export failed')
         } finally {

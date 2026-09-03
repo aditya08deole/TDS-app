@@ -15,6 +15,7 @@ import {
     useDeviceSubscription
 } from '../hooks/useDeviceQueries'
 import { useAllDevicesThingSpeakData } from '../hooks/useThingSpeakQueries'
+import { saveOrShareBlob } from '../lib/downloadFile'
 import {
     Plus,
     Pencil,
@@ -165,7 +166,7 @@ export default function Devices() {
         setSelectionMode(false)
     }
 
-    const exportToCSV = () => {
+    const exportToCSV = async () => {
         const headers = ['ID', 'Name', 'Status', 'Latitude', 'Longitude', 'TS Channel', 'TS Read Key', 'Created At']
         const rows = filteredDevices.map(d => [
             d.id,
@@ -180,11 +181,10 @@ export default function Devices() {
 
         const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
         const blob = new Blob([csvContent], { type: 'text/csv' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `devices_${new Date().toISOString().split('T')[0]}.csv`
-        a.click()
+        // saveOrShareBlob (not a plain <a download>) — inside the Android app,
+        // a synthetic download click silently goes nowhere the user can find;
+        // this routes through the Filesystem + native share sheet instead.
+        await saveOrShareBlob(blob, `devices_${new Date().toISOString().split('T')[0]}.csv`)
     }
 
     const statusFilters: { value: StatusFilter; label: string; color: string }[] = [
