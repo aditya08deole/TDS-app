@@ -324,16 +324,6 @@ export async function sendPushNotification(alertId: string, alertData: any, isRe
 
         console.log(`[FCM] ✅ Alert ${alertId}: ${response.successCount}/${tokens.length} delivered, ${response.failureCount} failed`);
 
-        // ── Notification Audit Trail: Google Sheets (per-plant tab, one row per send) ──
-        // Fire-and-forget — logNotificationToSheet swallows its own errors so it
-        // can never delay or fail an actual alert dispatch.
-        logNotificationToSheet({
-            plantName: String(location),
-            tdsValue: ppm,
-            alertType: alertData.type,
-            timestampIST: time,
-        });
-
         // ── Stale Token Cleanup ──
         // If a token is invalid, remove it from Firestore and Redis cache immediately
         if (response.failureCount > 0) {
@@ -618,6 +608,21 @@ export function startNotificationListeners(): void {
  * Manual resolution (RESOLVED_COOLDOWN_KEY, 30 min) is a hard stop above all of
  * this — set by the operator resolve action, unrelated to the ack cooldown.
  */
+// Fire-and-forget — logNotificationToSheet swallows its own errors so it can
+// never delay or fail an actual breach/alert. Called once per notification
+// EVENT (new alert, unacknowledged re-notify, reopen-after-ack) — the same
+// three moments processThresholdBreach() would call sendPushNotification()
+// — rather than from inside sendPushNotification() itself, so a breach still
+// gets logged even when there are currently zero registered push tokens.
+function logBreachToSheet(locationName: string, tds: number, type: string, recordedAtISO: string): void {
+    logNotificationToSheet({
+        plantName: locationName,
+        tdsValue: tds,
+        alertType: type,
+        timestampIST: toIST(recordedAtISO),
+    });
+}
+
 export async function processThresholdBreach(
     deviceId: string,
     deviceName: string,
@@ -664,6 +669,7 @@ export async function processThresholdBreach(
         await redis.sAdd(`device:${deviceId}:alerts`, alertId);
         await redis.sAdd(`device:${deviceId}:alerts:open`, alertId);
         console.log(`✅ [BREACH] New alert ${alertId} for device ${deviceId} — ${tds} ppm`);
+        logBreachToSheet(locationName, tds, type, recordedAtISO);
         await sendPushNotification(alertId, { ...alertData, device_id: deviceId }, false);
         return;
     }
@@ -673,6 +679,7 @@ export async function processThresholdBreach(
         const updateData = { value_at_time: tds, recorded_at: recordedAtISO, updated_at: recordedAtISO, message, type };
         await alertRef.update(updateData);
         console.log(`🔔 [BREACH] Alert ${alertId} still open/unacknowledged — re-notifying (${tds} ppm)`);
+        logBreachToSheet(locationName, tds, type, recordedAtISO);
         // isReminder=true bypasses the 10-min per-alertId dedupe, which exists
         // to protect against double-firing the SAME event, not to block these
         // intentional repeat notifications for a genuinely new reading.
@@ -700,6 +707,7 @@ export async function processThresholdBreach(
         await alertRef.update(updateData);
         await redis.sAdd(`device:${deviceId}:alerts:open`, alertId);
         console.log(`♻️ [BREACH] Alert ${alertId} reopened — still breaching 1hr after acknowledge`);
+        logBreachToSheet(locationName, tds, type, recordedAtISO);
         await sendPushNotification(alertId, { ...existing, ...updateData, device_id: deviceId }, true);
     }
 }
