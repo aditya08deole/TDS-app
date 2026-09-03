@@ -71,6 +71,7 @@ router.post('/invite', requireRole('admin'), async (req: Request, res: Response)
             created_by: invitedBy,
             created_by_role: invitedByRole,
             created_at: now,
+            timestamp: now,
         }).catch(() => {});
 
         // Build the link from the actual request rather than the FRONTEND_URL

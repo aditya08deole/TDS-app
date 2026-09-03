@@ -1,4 +1,4 @@
-import { LayoutDashboard, Map as MapIcon, Smartphone, Bell, Settings, Users, Download, MoreHorizontal } from "lucide-react"
+import { LayoutDashboard, Map as MapIcon, Smartphone, Bell, Settings, Users, Download, History, MoreHorizontal } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { useAlerts } from "../context/AlertContext"
@@ -31,6 +31,7 @@ export function MobileNav() {
     const moreLinks: Array<{ title: string; url: string; icon: typeof Settings; permission?: 'manage_users' | 'export_data' }> = [
         { title: "Manage Users", url: "/users", icon: Users, permission: "manage_users" },
         { title: "Export Data", url: "/export", icon: Download, permission: "export_data" },
+        { title: "Activity Log", url: "/activity-log", icon: History, permission: "export_data" },
         { title: "Settings", url: "/settings", icon: Settings },
     ]
     const visibleMoreLinks = moreLinks.filter(link => !link.permission || hasPermission(link.permission))

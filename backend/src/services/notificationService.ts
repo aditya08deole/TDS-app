@@ -2,6 +2,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { getRedisClient, hset } from '../db/redis';
 import { Device, Alert } from '../types';
+import { logNotificationToSheet } from './sheetsService';
 
 // Lazy getters — called only after Firebase is initialized, never at import time
 function getDb() { return getFirestore(); }
@@ -322,6 +323,16 @@ export async function sendPushNotification(alertId: string, alertData: any, isRe
         });
 
         console.log(`[FCM] ✅ Alert ${alertId}: ${response.successCount}/${tokens.length} delivered, ${response.failureCount} failed`);
+
+        // ── Notification Audit Trail: Google Sheets (per-plant tab, one row per send) ──
+        // Fire-and-forget — logNotificationToSheet swallows its own errors so it
+        // can never delay or fail an actual alert dispatch.
+        logNotificationToSheet({
+            plantName: String(location),
+            tdsValue: ppm,
+            alertType: alertData.type,
+            timestampIST: time,
+        });
 
         // ── Stale Token Cleanup ──
         // If a token is invalid, remove it from Firestore and Redis cache immediately

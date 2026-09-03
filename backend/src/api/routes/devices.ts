@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import ExcelJS from 'exceljs';
 import * as deviceService from '../../services/deviceService';
 import { getThingSpeakFeedsInRange } from '../../services/thingSpeakService';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -384,7 +385,8 @@ router.get('/:id/health-events', async (req: Request, res: Response) => {
 router.get('/:id/export', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const { start, end } = req.query;
-    const format = (req.query.format as string) === 'json' ? 'json' : 'csv';
+    const requestedFormat = req.query.format as string;
+    const format = requestedFormat === 'json' ? 'json' : requestedFormat === 'excel' ? 'excel' : 'csv';
 
     if (!start || !end) {
       return res.status(400).json({
@@ -451,12 +453,58 @@ router.get('/:id/export', requireRole('admin'), async (req: Request, res: Respon
 
     const safeName = (device.location_name || device.name || device.id).replace(/[^a-z0-9]+/gi, '-');
     const fileDate = `${startDate.toISOString().slice(0, 10)}_to_${endDate.toISOString().slice(0, 10)}`;
-    const filename = `${safeName}_${fileDate}.${format}`;
+    const extension = format === 'excel' ? 'xlsx' : format;
+    const filename = `${safeName}_${fileDate}.${extension}`;
 
     if (format === 'json') {
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       return res.send(JSON.stringify({ device: device.name, location: device.location_name, readings }, null, 2));
+    }
+
+    if (format === 'excel') {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'EvaraTDS';
+      workbook.created = new Date();
+
+      const sheet = workbook.addWorksheet('Readings', {
+        views: [{ state: 'frozen', ySplit: 1 }], // freeze the header row
+      });
+
+      sheet.columns = [
+        { header: 'Timestamp', key: 'recorded_at', width: 22 },
+        { header: 'TDS (ppm)', key: 'tds', width: 14 },
+        { header: 'Temperature (°C)', key: 'temperature', width: 18 },
+        { header: 'Voltage (V)', key: 'voltage', width: 14 },
+      ];
+      sheet.getRow(1).font = { bold: true };
+      sheet.getRow(1).alignment = { vertical: 'middle' };
+      sheet.autoFilter = { from: 'A1', to: 'D1' };
+
+      for (const r of readings) {
+        sheet.addRow({ recorded_at: r.recorded_at, tds: r.tds, temperature: r.temperature, voltage: r.voltage });
+      }
+
+      // A small metadata sheet — device identity travels with the file
+      // instead of only living in the filename, useful once it's been
+      // renamed/moved/emailed around.
+      const infoSheet = workbook.addWorksheet('Device Info');
+      infoSheet.columns = [{ key: 'label', width: 18 }, { key: 'value', width: 40 }];
+      infoSheet.addRows([
+        { label: 'Device', value: device.name },
+        { label: 'Location', value: device.location_name || '—' },
+        { label: 'ThingSpeak Channel', value: device.thingspeak_channel_id },
+        { label: 'Range Start', value: startDate.toISOString() },
+        { label: 'Range End', value: endDate.toISOString() },
+        { label: 'Rows', value: readings.length },
+      ]);
+      infoSheet.getColumn('label').font = { bold: true };
+
+      const buffer = await workbook.xlsx.writeBuffer();
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(Buffer.from(buffer));
     }
 
     // CSV — quote every field and escape embedded quotes, the only two things

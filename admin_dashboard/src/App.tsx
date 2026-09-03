@@ -35,6 +35,7 @@ const Settings = lazy(() => import('./pages/Settings'))
 const Users = lazy(() => import('./pages/Users'))
 const Register = lazy(() => import('./pages/Register'))
 const Export = lazy(() => import('./pages/Export'))
+const ActivityLog = lazy(() => import('./pages/ActivityLog'))
 
 // Loading Component
 const PageLoader = () => (
@@ -155,6 +156,13 @@ function RoutesWrapper() {
                     <Suspense fallback={<PageLoader />}>
                         <AuthGuard requiredRole="admin">
                             <Export />
+                        </AuthGuard>
+                    </Suspense>
+                } />
+                <Route path="activity-log" element={
+                    <Suspense fallback={<PageLoader />}>
+                        <AuthGuard requiredRole="admin">
+                            <ActivityLog />
                         </AuthGuard>
                     </Suspense>
                 } />

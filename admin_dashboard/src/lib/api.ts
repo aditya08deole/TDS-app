@@ -266,16 +266,16 @@ export async function getDeviceSensorData(id: string, limit: number = 100): Prom
 
 /**
  * Downloads a device's historical readings for a date range as a file
- * (CSV or JSON). Unlike the rest of this file, this doesn't parse a JSON
- * ApiResponse envelope — the backend streams back the actual file with a
- * Content-Disposition header, so this returns the raw Blob plus the
+ * (CSV, Excel, or JSON). Unlike the rest of this file, this doesn't parse a
+ * JSON ApiResponse envelope — the backend streams back the actual file with
+ * a Content-Disposition header, so this returns the raw Blob plus the
  * filename the server chose, ready to hand to a download trigger.
  */
 export async function exportDeviceDataApi(
   deviceId: string,
   startIso: string,
   endIso: string,
-  format: 'csv' | 'json' = 'csv'
+  format: 'csv' | 'excel' | 'json' = 'csv'
 ): Promise<{ blob: Blob; filename: string }> {
   const params = new URLSearchParams({ start: startIso, end: endIso, format })
   const response = await apiFetch(`/api/devices/${deviceId}/export?${params.toString()}`)
@@ -290,6 +290,34 @@ export async function exportDeviceDataApi(
   const filename = match?.[1] || `export.${format}`
 
   return { blob: await response.blob(), filename }
+}
+
+// ─── Audit Log API ─────────────────────────────────────────────────────────
+
+export interface AuditLogEntry {
+  id: string
+  action: string
+  device_id?: string
+  device_name?: string
+  exported_by?: string
+  exported_by_role?: string
+  range_start?: string
+  range_end?: string
+  row_count?: number
+  format?: string
+  timestamp: string
+  [key: string]: unknown
+}
+
+/** Fetches recent audit log entries (device exports, invites, role changes). Admin+ only. */
+export async function fetchAuditLog(limit: number = 100): Promise<AuditLogEntry[]> {
+  const endpoint = `/api/audit-log?limit=${limit}`
+  return dedupFetch(endpoint, async () => {
+    const response = await apiFetch(endpoint)
+    if (!response.ok) throw new Error('Failed to fetch audit log')
+    const result: ApiResponse<AuditLogEntry[]> = await response.json()
+    return Array.isArray(result.data) ? result.data : []
+  }, { useSwrPattern: true });
 }
 
 export async function getDeviceHealthEvents(id: string, limit: number = 50): Promise<any[]> {

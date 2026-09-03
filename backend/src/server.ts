@@ -24,6 +24,7 @@ import notificationRoutes from './api/routes/notifications';
 import telemetryRoutes from './api/routes/telemetry';
 import alertsRoutes from './api/routes/alerts';
 import usersRoutes from './api/routes/users';
+import auditLogRoutes from './api/routes/auditLog';
 import { TDS_CONFIG } from './config/tdsConfig';
 import { getFrontendPath } from './utils/pathUtils';
 import { startNotificationListeners, warmFCMCache } from './services/notificationService';
@@ -120,7 +121,12 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-db-init-key', 'x-user-role', 'x-user-id']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-db-init-key', 'x-user-role', 'x-user-id'],
+  // Content-Disposition isn't in the CORS default header safelist, so without
+  // this the export routes' filename (plant name + date range) was invisible
+  // to the frontend on every cross-origin request — it always fell back to a
+  // generic "export.csv" instead of "<location>_<start>_to_<end>.csv".
+  exposedHeaders: ['Content-Disposition']
 }));
 
 app.use(morgan('combined'));
@@ -300,6 +306,11 @@ app.use('/api/telemetry', telemetryRoutes);
  * Users routes (invite token management, role assignment)
  */
 app.use('/api/users', usersRoutes);
+
+/**
+ * Audit log routes (export history, invites, role changes — admin+ only)
+ */
+app.use('/api/audit-log', auditLogRoutes);
 
 /**
  * Catch-all route to serve the frontend for SPA routing
