@@ -114,7 +114,8 @@ export function AlertProvider({ children }: { children: ReactNode }) {
                         }
                     } else {
                         // Update existing alert with latest TDS value (keeps it fresh)
-                        const existingDoc = snap.docs[0]
+                        // snap.empty is false in this branch, so docs[0] is guaranteed.
+                        const existingDoc = snap.docs[0]!
                         const tdsValue = device.latest_tds ?? 0
                         const tempValue = device.latest_temperature ?? 0
                         const isUnusuallyHigh = tdsValue > 300

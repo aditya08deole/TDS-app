@@ -90,12 +90,12 @@ function DeviceTelemetryWindow({
 
     const tdsTrend = useMemo(() => {
         if (chartData.length < 2) return 0
-        return chartData[chartData.length - 1].tds - chartData[chartData.length - 2].tds
+        return chartData[chartData.length - 1]!.tds - chartData[chartData.length - 2]!.tds
     }, [chartData])
 
     const tempTrend = useMemo(() => {
         if (chartData.length < 2) return 0
-        return chartData[chartData.length - 1].temp - chartData[chartData.length - 2].temp
+        return chartData[chartData.length - 1]!.temp - chartData[chartData.length - 2]!.temp
     }, [chartData])
 
     const customMin = device.safe_tds_min != null ? Number(device.safe_tds_min) : undefined

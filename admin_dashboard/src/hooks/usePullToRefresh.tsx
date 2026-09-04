@@ -36,14 +36,18 @@ export function usePullToRefresh({
         const scrollTop = window.scrollY || document.documentElement.scrollTop
         if (scrollTop > 5) return
 
-        startY.current = e.touches[0].clientY
+        const touch = e.touches[0]
+        if (!touch) return
+        startY.current = touch.clientY
         setIsPulling(true)
     }, [disabled, isRefreshing])
 
     const handleTouchMove = useCallback((e: React.TouchEvent) => {
         if (!isPulling || disabled || isRefreshing) return
 
-        currentY.current = e.touches[0].clientY
+        const touch = e.touches[0]
+        if (!touch) return
+        currentY.current = touch.clientY
         const diff = currentY.current - startY.current
 
         // Only allow pulling down, not up

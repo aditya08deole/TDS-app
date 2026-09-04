@@ -24,7 +24,7 @@ const isCapacitorNative = typeof window !== 'undefined' &&
 const RAILWAY_URL = 'https://graceful-vitality-production-e097.up.railway.app';
 
 // Fallback values — used if Remote Config is unavailable (e.g., no internet on first launch)
-const DEFAULTS: Record<string, string> = {
+const DEFAULTS: { api_url: string } = {
   api_url: isCapacitorNative
     ? RAILWAY_URL                                               // native APK → always Railway
     : import.meta.env.DEV

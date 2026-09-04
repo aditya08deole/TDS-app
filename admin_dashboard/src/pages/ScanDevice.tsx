@@ -39,7 +39,7 @@ export default function ScanDevice() {
                 <Scanner
                     onScan={(result) => {
                         if (result && result.length > 0) {
-                            handleScan(result[0].rawValue)
+                            handleScan(result[0]!.rawValue)
                         }
                     }}
                     components={{

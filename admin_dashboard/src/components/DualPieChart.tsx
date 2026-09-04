@@ -44,6 +44,7 @@ const CustomTooltip = ({ active, payload, allData, isDark }: CustomTooltipProps)
     if (!active || !payload || !payload.length) return null;
 
     const data = payload[0];
+    if (!data) return null;
     const total = allData.reduce((sum, item) => sum + item.value, 0);
     const percentage = total > 0 ? ((data.value / total) * 100).toFixed(1) : '0.0';
     const color = colorFor(data.name, isDark, data.payload.color);

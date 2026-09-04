@@ -137,8 +137,8 @@ function decodeToken(token: string): TokenInfo {
       throw new Error('Invalid token format');
     }
 
-    // Decode payload
-    const payload = JSON.parse(atob(parts[1]));
+    // Decode payload — parts.length === 3 is guaranteed above, so parts[1] exists.
+    const payload = JSON.parse(atob(parts[1]!));
     
     const expiresAt = (payload.exp || 0) * 1000; // Convert to milliseconds
     const issuedAt = (payload.iat || 0) * 1000;

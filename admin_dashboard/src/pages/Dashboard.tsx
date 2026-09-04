@@ -186,7 +186,7 @@ export default function Dashboard() {
 
     useEffect(() => {
         if (devicesList.length > 0 && !selectedLocation) {
-            setSelectedLocation(devicesList[0].id)
+            setSelectedLocation(devicesList[0]!.id)
         }
     }, [devicesList, selectedLocation])
 
@@ -261,9 +261,9 @@ export default function Dashboard() {
 
     const locationLabel = currentDevice ? getDeviceDisplayName(currentDevice) : 'No Device Selected'
     const latestTDS = currentDevice?.latest_tds ?? 0
-    const prevTDS = formattedChartData.length > 1 ? formattedChartData[formattedChartData.length - 2].tds : latestTDS
+    const prevTDS = formattedChartData.length > 1 ? formattedChartData[formattedChartData.length - 2]!.tds : latestTDS
     const tdsChange = typeof latestTDS === 'number' && typeof prevTDS === 'number' ? latestTDS - prevTDS : 0
-    const latestTemp = currentDevice?.latest_temperature ?? (formattedChartData.length > 0 ? formattedChartData[formattedChartData.length - 1].temp : 0)
+    const latestTemp = currentDevice?.latest_temperature ?? (formattedChartData.length > 0 ? formattedChartData[formattedChartData.length - 1]!.temp : 0)
 
     const systemHealth = useMemo(() => {
         const total = devices.length

@@ -93,8 +93,6 @@ function AppWrapper({ children }: { children: React.ReactNode }) {
     return <>{children}</>
 }
 
-// Note: 'motion' from dependencies is actually framer-motion
-
 function RoutesWrapper() {
     return (
         <Routes>
@@ -172,32 +170,44 @@ function RoutesWrapper() {
     )
 }
 
+// Combines the app's data/identity providers (everything below ThemeProvider,
+// which stays separate at the App level since <Toaster> also needs it as a
+// sibling) into one named wrapper instead of a 6-level nested pyramid inline
+// in App()'s JSX. Same render tree, same provider order — purely readability.
+function AppProviders({ children }: { children: React.ReactNode }) {
+    return (
+        <AuthProvider>
+            <RoleProvider>
+                <UIProvider>
+                    <AlertProvider>
+                        <NotificationProvider>
+                            <GlassEffectProvider>
+                                {children}
+                            </GlassEffectProvider>
+                        </NotificationProvider>
+                    </AlertProvider>
+                </UIProvider>
+            </RoleProvider>
+        </AuthProvider>
+    )
+}
+
 function App() {
     return (
         <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => window.location.reload()}>
             <QueryClientProvider client={queryClient}>
                 <ThemeProvider>
-                    <AuthProvider>
-                        <RoleProvider>
-                            <UIProvider>
-                                <AlertProvider>
-                                    <NotificationProvider>
-                                        <GlassEffectProvider>
-                                            <BrowserRouter>
-                                                <AppWrapper>
-                                                    <RoutesWrapper />
-                                                    <ReloadPrompt />
-                                                    <NotificationManager />
-                                                    <OfflineBadge />
-                                                    <OnlineIndicator />
-                                                </AppWrapper>
-                                            </BrowserRouter>
-                                        </GlassEffectProvider>
-                                    </NotificationProvider>
-                                </AlertProvider>
-                            </UIProvider>
-                        </RoleProvider>
-                    </AuthProvider>
+                    <AppProviders>
+                        <BrowserRouter>
+                            <AppWrapper>
+                                <RoutesWrapper />
+                                <ReloadPrompt />
+                                <NotificationManager />
+                                <OfflineBadge />
+                                <OnlineIndicator />
+                            </AppWrapper>
+                        </BrowserRouter>
+                    </AppProviders>
                     <Toaster richColors position="top-center" closeButton />
                 </ThemeProvider>
                 {/* Fix #33: Only render devtools in development mode */}
