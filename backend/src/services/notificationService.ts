@@ -1,5 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import pRetry from 'p-retry';
 import { getRedisClient, hset } from '../db/redis';
 import { Device, Alert } from '../types';
 import { logNotificationToSheet } from './sheetsService';
@@ -62,20 +63,6 @@ function formatAlertContext(alertData: any) {
     const ppm = alertData.value_at_time ?? alertData.tds_value ?? 'N/A';
     const time = toIST(alertData.recorded_at || alertData.created_at || new Date().toISOString());
     return { location, ppm, time };
-}
-
-// ─── Retry Helper ─────────────────────────────────────────────────────────────
-
-async function withRetry<T>(operation: () => Promise<T>, retries = 1): Promise<T> {
-    let lastError: unknown;
-    for (let attempt = 0; attempt <= retries; attempt += 1) {
-        try {
-            return await operation();
-        } catch (error) {
-            lastError = error;
-        }
-    }
-    throw lastError;
 }
 
 // ─── Suppression Check ────────────────────────────────────────────────────────
@@ -310,7 +297,10 @@ export async function sendPushNotification(alertId: string, alertData: any, isRe
         };
 
         console.log(`[FCM] 🚀 Sending ${isReminder ? 'REMINDER' : 'ALERT'} to ${tokens.length} token(s) — Alert: ${alertId}`);
-        const response = await withRetry(() => messaging.sendEachForMulticast(message), 1);
+        // Real exponential backoff (2 retries, ~1s/2s) instead of a single
+        // blind immediate retry — gives transient FCM/network errors a real
+        // chance to clear before this send is given up on.
+        const response = await pRetry(() => messaging.sendEachForMulticast(message), { retries: 2 });
 
         await writeDeliveryLog({
             alert_id: alertId,

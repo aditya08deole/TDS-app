@@ -1,5 +1,3 @@
-// @ts-ignore
-import localtunnel from 'localtunnel';
 import { getRemoteConfig } from 'firebase-admin/remote-config';
 import { spawn } from 'child_process';
 import path from 'path';
@@ -137,6 +135,13 @@ export async function startAutoTunnel(port: number = 5000): Promise<string | nul
 async function startLocaltunnelFallback(port: number): Promise<string | null> {
   try {
     console.log(`🚀 [AUTO-TUNNEL] Launching Localtunnel fallback for port ${port}...`);
+    // localtunnel is a dev-only dependency (see package.json devDependencies) —
+    // it's only ever reached when AUTO_TUNNEL=true, which is itself a local-dev
+    // opt-in flag never intended for Railway/production. Loaded lazily here so
+    // production builds (npm ci --only=production) don't need the package
+    // installed at all, since it's never imported at module load time.
+    // @ts-ignore — localtunnel ships no type declarations
+    const { default: localtunnel } = await import('localtunnel');
     const subdomain = 'evaratds-iiith-' + Math.floor(1000 + Math.random() * 9000);
     activeLocaltunnel = await localtunnel({ port, subdomain });
 
