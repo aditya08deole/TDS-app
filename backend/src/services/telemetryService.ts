@@ -3,7 +3,7 @@ import { getRedisClient, hset, hgetall } from '../db/redis';
 import { l1Cache } from '../db/cache';
 import { Device, SensorData } from '../types';
 import { TDS_CONFIG } from '../config/tdsConfig';
-import { processThresholdBreach } from './notificationService';
+import { processThresholdBreach, ACK_COOLDOWN_KEY, RESOLVED_COOLDOWN_KEY } from './notificationService';
 
 // Lazy getters — only called after Firebase/Redis are initialized, never at import time
 function getDb() { return getFirestore(); }
@@ -52,7 +52,8 @@ async function autoResolveDeviceAlerts(deviceId: string): Promise<void> {
         // waiting out a stale 30-min window from before the recovery.
         await Promise.all([
             redis.del(`device:${deviceId}:alerts:open`),
-            redis.del(`notif:suppressed:${deviceId}`),
+            redis.del(ACK_COOLDOWN_KEY(deviceId)),
+            redis.del(RESOLVED_COOLDOWN_KEY(deviceId)),
         ]);
     } catch (e) {
         console.error(`❌ [AUTO-RECOVERY] Failed to auto-resolve alerts for device ${deviceId}:`, e);

@@ -2,6 +2,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { getRedisClient, hgetall } from '../db/redis';
 import { l1Cache } from '../db/cache';
 import { Device, SensorData, SystemHealthLog, UptimeStat } from '../types';
+import { ACK_COOLDOWN_KEY, RESOLVED_COOLDOWN_KEY } from './notificationService';
 
 function getFirestoreDb() {
   return getFirestore();
@@ -297,16 +298,9 @@ export async function deleteDevice(deviceId: string): Promise<void> {
       `device:${deviceId}:alerts`,
       `device:${deviceId}:alerts:open`,
       `device:${deviceId}:uptime_records`,
-      `notif:debounce:${deviceId}`,
-      `notif:last_severity:${deviceId}`,
-      `notif:wa_tier_state:${deviceId}`
+      ACK_COOLDOWN_KEY(deviceId),
+      RESOLVED_COOLDOWN_KEY(deviceId),
     ];
-
-    // Delete channel rate limit keys
-    const channels = ['global', 'push'];
-    channels.forEach(channel => {
-      keysToDelete.push(`notif:rate:${deviceId}:${channel}`);
-    });
 
     await Promise.all(keysToDelete.map(key => redis.del(key)));
 
