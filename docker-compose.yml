@@ -1,5 +1,14 @@
 version: '3.8'
 
+# LOCAL DEV ONLY — this is NOT what's deployed to production.
+# Production (Railway) builds and runs the root ./Dockerfile: a single
+# unified image where the backend serves both the API and the built
+# frontend static files (see the comment at the top of ./Dockerfile).
+# This compose file spins up a separate multi-container stack (Redis,
+# backend, frontend, a Cloudflare tunnel, and Watchtower) purely for
+# local development/testing against something closer to the full
+# production topology — it has its own Redis and its own tunnel, neither
+# of which exist in the actual Railway deployment.
 services:
   # ─── 1. Redis Cache Service ───
   redis:
