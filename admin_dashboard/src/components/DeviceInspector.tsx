@@ -174,7 +174,7 @@ export default function DeviceInspector() {
             </div>
 
             {deviceLoading && !device ? (
-                <div className="flex-1 flex items-center justify-center text-slate-500">
+                <div className="flex-1 flex items-center justify-center text-muted-foreground">
                     <RefreshCw className="h-6 w-6 animate-spin" />
                 </div>
             ) : device ? (
@@ -257,7 +257,7 @@ export default function DeviceInspector() {
                         {/* History */}
                         {activeTab === 'history' && (
                             <div className="space-y-4">
-                                <div className="h-64 w-full bg-white/5 rounded-xl p-2 border border-white/5">
+                                <div className="h-64 w-full bg-accent/5 rounded-xl p-2 border border-border">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <LineChart data={sensorHistory}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="#333" />
@@ -270,9 +270,9 @@ export default function DeviceInspector() {
                                 </div>
                                 <div className="space-y-2">
                                     {sensorHistory.map((reading, i) => (
-                                        <div key={i} className="flex justify-between text-xs py-2 border-b border-white/5">
-                                            <span className="text-slate-400">{new Date(reading.recorded_at).toLocaleTimeString()}</span>
-                                            <span className="text-white font-mono">{reading.tds.toFixed(1)} PPM</span>
+                                        <div key={i} className="flex justify-between text-xs py-2 border-b border-border">
+                                            <span className="text-muted-foreground">{new Date(reading.recorded_at).toLocaleTimeString()}</span>
+                                            <span className="text-foreground font-mono">{reading.tds.toFixed(1)} PPM</span>
                                         </div>
                                     ))}
                                 </div>
@@ -282,16 +282,16 @@ export default function DeviceInspector() {
                         {/* Config */}
                         {activeTab === 'config' && (
                             <div className="space-y-4">
-                                <div className="p-4 bg-white/5 rounded-xl border border-white/5 relative">
+                                <div className="p-4 bg-accent/5 rounded-xl border border-border relative">
                                     <div className="flex justify-between items-center mb-4">
-                                        <h3 className="text-xs font-bold text-slate-500 uppercase">Device Metadata</h3>
+                                        <h3 className="text-xs font-bold text-muted-foreground uppercase">Device Metadata</h3>
                                         {isAtLeast('admin') && (
                                             <button
                                                 onClick={() => {
                                                     if (isEditing) handleSaveConfig()
                                                     else setIsEditing(true)
                                                 }}
-                                                className={`p-1.5 rounded-lg transition-colors ${isEditing ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+                                                className={`p-1.5 rounded-lg transition-colors ${isEditing ? 'bg-emerald-500/20 text-emerald-400' : 'bg-accent/10 text-muted-foreground hover:text-foreground'}`}
                                             >
                                                 {isEditing ? <CheckCircle className="w-4 h-4" /> : <Wrench className="w-4 h-4" />}
                                             </button>
@@ -300,15 +300,15 @@ export default function DeviceInspector() {
 
                                     <div className="space-y-4 text-sm">
                                         <div className="space-y-1">
-                                            <span className="text-slate-400 text-xs">Device Name</span>
+                                            <span className="text-muted-foreground text-xs">Device Name</span>
                                             {isEditing ? (
                                                 <input
-                                                    className="w-full bg-black/50 border border-white/10 rounded px-2 py-1 text-white focus:outline-none focus:border-blue-500"
+                                                    className="w-full bg-background border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:border-primary"
                                                     value={editForm.name}
                                                     onChange={e => setEditForm({ ...editForm, name: e.target.value })}
                                                 />
                                             ) : (
-                                                <div className="text-white font-medium">{device.name}</div>
+                                                <div className="text-foreground font-medium">{device.name}</div>
                                             )}
                                         </div>
 
