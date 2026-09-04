@@ -343,10 +343,10 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                     {activeTab === 'history' && (
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-sm font-medium text-slate-300">TDS Readings (Last 50)</h3>
+                                <h3 className="text-sm font-medium text-foreground">TDS Readings (Last 50)</h3>
                                 <button
                                     onClick={fetchSensorHistory}
-                                    className="p-2 text-slate-400 hover:text-white rounded-lg"
+                                    className="p-2 text-muted-foreground hover:text-foreground rounded-lg"
                                 >
                                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                                 </button>
@@ -378,7 +378,7 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                     </ResponsiveContainer>
                                 </div>
                             ) : (
-                                <div className="text-center py-8 text-slate-500">
+                                <div className="text-center py-8 text-muted-foreground">
                                     No sensor data available
                                 </div>
                             )}
@@ -388,26 +388,26 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                     {/* Maintenance Logs Tab */}
                     {activeTab === 'maintenance' && (
                         <div className="space-y-3">
-                            <h3 className="text-sm font-medium text-slate-300">Maintenance History</h3>
+                            <h3 className="text-sm font-medium text-foreground">Maintenance History</h3>
                             {maintenanceLogs.length > 0 ? (
                                 maintenanceLogs.map((log) => (
-                                    <div key={log.id} className="bg-slate-800/50 rounded-xl p-3">
+                                    <div key={log.id} className="bg-accent/10 border border-border rounded-xl p-3">
                                         <div className="flex items-start justify-between">
                                             <div>
-                                                <p className="text-sm font-medium text-white">{log.action}</p>
-                                                <p className="text-xs text-slate-400 mt-1">By: {log.performed_by}</p>
+                                                <p className="text-sm font-medium text-foreground">{log.action}</p>
+                                                <p className="text-xs text-muted-foreground mt-1">By: {log.performed_by}</p>
                                                 {log.notes && (
-                                                    <p className="text-xs text-slate-500 mt-1">{log.notes}</p>
+                                                    <p className="text-xs text-muted-foreground/80 mt-1">{log.notes}</p>
                                                 )}
                                             </div>
-                                            <p className="text-xs text-slate-500">
+                                            <p className="text-xs text-muted-foreground/80">
                                                 {new Date(log.performed_at).toLocaleDateString()}
                                             </p>
                                         </div>
                                     </div>
                                 ))
                             ) : (
-                                <div className="text-center py-8 text-slate-500">
+                                <div className="text-center py-8 text-muted-foreground">
                                     No maintenance logs
                                 </div>
                             )}
@@ -417,30 +417,30 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                     {/* Config Tab */}
                     {activeTab === 'config' && (
                         <div className="space-y-3">
-                            <h3 className="text-sm font-medium text-slate-300">Device Configuration</h3>
+                            <h3 className="text-sm font-medium text-foreground">Device Configuration</h3>
 
-                            <div className="bg-slate-800/50 rounded-xl divide-y divide-slate-700">
+                            <div className="bg-accent/10 border border-border rounded-xl divide-y divide-border">
                                 <div className="flex items-center justify-between p-3">
-                                    <span className="text-sm text-slate-400">Device ID</span>
-                                    <span className="text-sm text-white font-mono">{device.node_number || device.device_id || device.id.split('-')[0]}</span>
+                                    <span className="text-sm text-muted-foreground">Device ID</span>
+                                    <span className="text-sm text-foreground font-mono">{device.node_number || device.device_id || device.id.split('-')[0]}</span>
                                 </div>
                                 <div className="flex items-center justify-between p-3">
-                                    <span className="text-sm text-slate-400">Firmware</span>
-                                    <span className="text-sm text-white">{(device.metadata as any)?.firmware_version || (device as any).firmware_version || 'v1.0.0'}</span>
+                                    <span className="text-sm text-muted-foreground">Firmware</span>
+                                    <span className="text-sm text-foreground">{(device.metadata as any)?.firmware_version || (device as any).firmware_version || 'v1.0.0'}</span>
                                 </div>
                                 <div className="flex items-center justify-between p-3">
-                                    <span className="text-sm text-slate-400">Installed</span>
-                                    <span className="text-sm text-white">
+                                    <span className="text-sm text-muted-foreground">Installed</span>
+                                    <span className="text-sm text-foreground">
                                         {new Date(device.deployment_date || device.installed_at || device.created_at).toLocaleDateString()}
                                     </span>
                                 </div>
                             </div>
 
                             {/* TDS Threshold Configuration Section */}
-                            <div className="bg-slate-800/50 rounded-xl overflow-hidden">
-                                <div className="p-4 space-y-3 border-b border-slate-700">
+                            <div className="bg-accent/10 border border-border rounded-xl overflow-hidden">
+                                <div className="p-4 space-y-3 border-b border-border">
                                     <div className="flex items-center justify-between">
-                                        <h4 className="text-sm font-medium text-slate-300">Water Quality Thresholds (PPM)</h4>
+                                        <h4 className="text-sm font-medium text-foreground">Water Quality Thresholds (PPM)</h4>
                                         {!isEditingTds && canEditDevice && (
                                             <button
                                                 onClick={() => {
@@ -459,31 +459,31 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                         <div className="space-y-3">
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div>
-                                                    <label className="text-xs text-slate-400 block mb-2">Safe Minimum</label>
+                                                    <label className="text-xs text-muted-foreground block mb-2">Safe Minimum</label>
                                                     <input
                                                         type="number"
                                                         value={editTdsMin}
                                                         onChange={(e) => setEditTdsMin(Number(e.target.value))}
                                                         disabled={updating}
-                                                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-primary disabled:opacity-50"
+                                                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:border-primary disabled:opacity-50"
                                                         placeholder="e.g., 35"
                                                     />
                                                 </div>
 
                                                 <div>
-                                                    <label className="text-xs text-slate-400 block mb-2">Safe Maximum</label>
+                                                    <label className="text-xs text-muted-foreground block mb-2">Safe Maximum</label>
                                                     <input
                                                         type="number"
                                                         value={editTdsMax}
                                                         onChange={(e) => setEditTdsMax(Number(e.target.value))}
                                                         disabled={updating}
-                                                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-primary disabled:opacity-50"
+                                                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:border-primary disabled:opacity-50"
                                                         placeholder="e.g., 175"
                                                     />
                                                 </div>
                                             </div>
 
-                                            <p className="text-xs text-slate-500">
+                                            <p className="text-xs text-muted-foreground/80">
                                                 ℹ️ Readings outside this range will trigger alerts
                                             </p>
 
@@ -498,7 +498,7 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                                 <button
                                                     onClick={() => setIsEditingTds(false)}
                                                     disabled={updating}
-                                                    className="flex-1 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm rounded-lg transition-colors"
+                                                    className="flex-1 px-3 py-2 bg-accent hover:bg-accent/80 text-foreground text-sm rounded-lg transition-colors"
                                                 >
                                                     Cancel
                                                 </button>
@@ -506,22 +506,22 @@ export default function DeviceDetailModal({ device, isOpen, onClose, onRefresh }
                                         </div>
                                     ) : (
                                         <div className="grid grid-cols-2 gap-3">
-                                            <div className="bg-slate-700/50 rounded p-2">
-                                                <p className="text-xs text-slate-500">Minimum</p>
-                                                <p className="text-lg font-bold text-white">{device.safe_tds_min ?? 35}</p>
+                                            <div className="bg-accent/10 rounded p-2">
+                                                <p className="text-xs text-muted-foreground/80">Minimum</p>
+                                                <p className="text-lg font-bold text-foreground">{device.safe_tds_min ?? 35}</p>
                                             </div>
-                                            <div className="bg-slate-700/50 rounded p-2">
-                                                <p className="text-xs text-slate-500">Maximum</p>
-                                                <p className="text-lg font-bold text-white">{device.safe_tds_max ?? 175}</p>
+                                            <div className="bg-accent/10 rounded p-2">
+                                                <p className="text-xs text-muted-foreground/80">Maximum</p>
+                                                <p className="text-lg font-bold text-foreground">{device.safe_tds_max ?? 175}</p>
                                             </div>
                                         </div>
                                     )}
                                 </div>
                             </div>
 
-                            <button className="w-full flex items-center justify-between p-3 bg-slate-800/50 rounded-xl hover:bg-slate-800 transition-colors">
-                                <span className="text-sm text-white">Update Firmware</span>
-                                <ChevronRight className="h-4 w-4 text-slate-400" />
+                            <button className="w-full flex items-center justify-between p-3 bg-accent/10 border border-border rounded-xl hover:bg-accent/20 transition-colors">
+                                <span className="text-sm text-foreground">Update Firmware</span>
+                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
                             </button>
 
                             <button className="w-full flex items-center justify-between p-3 bg-red-500/10 rounded-xl hover:bg-red-500/20 transition-colors border border-red-500/20">
