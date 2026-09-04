@@ -178,14 +178,6 @@ export interface NotificationAlert {
     device_name?: string;
 }
 
-export interface EChartsParams {
-    name: string;
-    value: number | string;
-    percent: number;
-    color: string;
-    data: any;
-}
-
 export interface SystemHealthLog {
     id: string;
     level: 'info' | 'warning' | 'error' | 'critical';

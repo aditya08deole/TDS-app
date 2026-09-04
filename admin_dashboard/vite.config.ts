@@ -185,8 +185,6 @@ export default defineConfig(({ mode }) => {
                         'react-vendor': ['react', 'react-dom', 'react-router-dom'],
                         // Chart library (large dependency)
                         'charts-vendor': ['recharts'],
-                        // ECharts (replaced Plotly)
-                        'echarts-vendor': ['echarts', 'echarts-for-react'],
                         // UI component libraries
                         'ui-vendor': [
                             '@radix-ui/react-tabs',

@@ -20,7 +20,7 @@ import { getTDSStatus, getTDSCategory, getConnectivityStatus, getDeviceDisplayNa
 import { useAlerts } from '../context/AlertContext'
 
 import { GlassCard } from '@/components/GlassCard'
-import { EChartsNestedPieChart } from '@/components/EChartsPieChart'
+import { DualPieChart } from '@/components/DualPieChart'
 import { ActivityPanel } from '@/components/ActivityPanel'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -332,7 +332,7 @@ export default function Dashboard() {
                                 "~h-[250px]/[350px] relative",
                                 isLandscape && "min-h-[300px]"
                             )}>
-                                <EChartsNestedPieChart
+                                <DualPieChart
                                     connectivityData={[
                                         { name: 'Online', value: categorizedStats.online.count, color: '#818cf8' },
                                         { name: 'Offline', value: categorizedStats.offline.count, color: '#1e293b' }

@@ -1,151 +1,134 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
+import { useTheme } from '../context/ThemeContext'
+
+interface PieChartData {
+    name: string
+    value: number
+    color?: string
+    [key: string]: unknown
+}
 
 interface DualPieChartProps {
-    connectivityData: Array<{ name: string; value: number; fill: string }>
-    tdsData: Array<{ name: string; value: number; fill: string }>
+    connectivityData: PieChartData[]
+    tdsData: PieChartData[]
 }
 
 /**
- * Dual Pie Chart Component
- * 
- * Features:
- * - Inner ring: Online/Offline connectivity status
- * - Outer ring: Safe/Critical TDS categorization
- * - Custom tooltips with device counts
- * - Percentage labels
- * - Responsive sizing
+ * Dual/Nested Donut Chart — inner ring: TDS safety status, outer ring:
+ * device connectivity. Ported from an echarts implementation (see git
+ * history) to Recharts so the app only ships one charting library; the
+ * same theme-aware color palette and ring proportions are preserved.
  */
-interface ChartDataItem {
-    name: string;
-    value: number;
-    fill: string;
+const COLOR_PALETTE: Record<string, string | ((isDark: boolean) => string)> = {
+    'Online': '#818cf8',
+    'Offline': (isDark: boolean) => (isDark ? '#475569' : '#94a3b8'),
+    'Safe TDS': '#00df81',
+    'Critical TDS': '#ff0055',
+}
+
+function colorFor(name: string, isDark: boolean, fallback?: string): string {
+    const entry = COLOR_PALETTE[name];
+    if (typeof entry === 'function') return entry(isDark);
+    if (typeof entry === 'string') return entry;
+    return fallback || (isDark ? '#94a3b8' : '#64748b');
 }
 
 interface CustomTooltipProps {
     active?: boolean;
-    payload?: Array<{
-        name: string;
-        value: number;
-        payload: ChartDataItem;
-    }>;
-    connectivityData: ChartDataItem[];
-    tdsData: ChartDataItem[];
+    payload?: Array<{ name: string; value: number; payload: PieChartData }>;
+    allData: PieChartData[];
+    isDark: boolean;
 }
 
-// Custom tooltip (moved outside to prevent unmounts on re-render)
-const CustomTooltip = ({ active, payload, connectivityData, tdsData }: CustomTooltipProps) => {
-    if (active && payload && payload.length) {
-        const data = payload[0]
-        const total = connectivityData.reduce((sum, item) => sum + item.value, 0) +
-            tdsData.reduce((sum, item) => sum + item.value, 0)
-        const percentage = ((data.value / total) * 100).toFixed(1)
+const CustomTooltip = ({ active, payload, allData, isDark }: CustomTooltipProps) => {
+    if (!active || !payload || !payload.length) return null;
 
-        return (
-            <div className="px-3 py-2 rounded-lg border border-white/10 shadow-xl backdrop-blur-xl bg-black/90">
-                <div className="flex items-center gap-2">
-                    <div
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{ backgroundColor: data.payload.fill }}
-                    />
-                    <span className="text-white text-sm font-medium">{data.name}</span>
-                </div>
-                <p className="text-white/80 text-xs mt-1">
-                    {data.value} devices ({percentage}%)
-                </p>
+    const data = payload[0];
+    const total = allData.reduce((sum, item) => sum + item.value, 0);
+    const percentage = total > 0 ? ((data.value / total) * 100).toFixed(1) : '0.0';
+    const color = colorFor(data.name, isDark, data.payload.color);
+
+    return (
+        <div className="px-3 py-2 rounded-xl border border-border shadow-xl backdrop-blur-xl bg-popover">
+            <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                <span className="text-popover-foreground text-sm font-semibold">{data.name}</span>
             </div>
-        )
-    }
-    return null
-}
+            <p className="text-muted-foreground text-xs mt-1">
+                {data.value} device{data.value === 1 ? '' : 's'} ({percentage}%)
+            </p>
+        </div>
+    );
+};
 
 export function DualPieChart({ connectivityData, tdsData }: DualPieChartProps) {
-
-    // Custom label for percentages
-    const renderLabel = (entry: any) => {
-        // Determine which dataset this entry belongs to (Connectivity or TDS)
-        const isConnectivity = connectivityData.some(d => d.name === entry.name)
-        const currentData = isConnectivity ? connectivityData : tdsData
-
-        const total = currentData.reduce((sum, item) => sum + item.value, 0)
-        if (total === 0) return ''
-
-        const percentage = Math.round((entry.value / total) * 100)
-        return percentage > 5 ? `${percentage}%` : '' // Only show if > 5%
-    }
+    const { resolvedTheme } = useTheme();
+    const isDark = resolvedTheme === 'dark';
+    const allData = [...tdsData, ...connectivityData];
 
     return (
         <div className="relative h-full">
             <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                    {/* Inner Ring - Connectivity Status */}
-                    <Pie
-                        data={connectivityData}
-                        dataKey="value"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={70}
-                        paddingAngle={2}
-                        strokeWidth={0}
-                        label={renderLabel}
-                        labelLine={false}
-                    >
-                        {connectivityData.map((entry, index) => (
-                            <Cell key={`connectivity-${index}`} fill={entry.fill} />
-                        ))}
-                    </Pie>
-
-                    {/* Outer Ring - TDS Category */}
+                    {/* Inner Ring — TDS Status */}
                     <Pie
                         data={tdsData}
                         dataKey="value"
+                        nameKey="name"
                         cx="50%"
-                        cy="50%"
-                        innerRadius={80}
-                        outerRadius={100}
+                        cy="45%"
+                        innerRadius="35%"
+                        outerRadius="52%"
                         paddingAngle={2}
-                        strokeWidth={0}
-                        label={renderLabel}
-                        labelLine={false}
+                        cornerRadius={6}
+                        strokeWidth={2}
+                        stroke={isDark ? '#000' : '#fff'}
+                        isAnimationActive
+                        animationDuration={800}
                     >
                         {tdsData.map((entry, index) => (
-                            <Cell key={`tds-${index}`} fill={entry.fill} />
+                            <Cell key={`tds-${index}`} fill={colorFor(entry.name, isDark, entry.color)} />
                         ))}
                     </Pie>
 
-                    <Tooltip content={<CustomTooltip connectivityData={connectivityData} tdsData={tdsData} />} />
+                    {/* Outer Ring — Connectivity Status */}
+                    <Pie
+                        data={connectivityData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="45%"
+                        innerRadius="60%"
+                        outerRadius="78%"
+                        paddingAngle={2}
+                        cornerRadius={6}
+                        strokeWidth={2}
+                        stroke={isDark ? '#000' : '#fff'}
+                        isAnimationActive
+                        animationDuration={800}
+                        animationBegin={200}
+                    >
+                        {connectivityData.map((entry, index) => (
+                            <Cell key={`connectivity-${index}`} fill={colorFor(entry.name, isDark, entry.color)} />
+                        ))}
+                    </Pie>
+
+                    <Tooltip content={<CustomTooltip allData={allData} isDark={isDark} />} />
                 </PieChart>
             </ResponsiveContainer>
 
             {/* Legend */}
-            <div className="absolute bottom-0 left-0 right-0 flex flex-col gap-2 text-xs">
-                {/* Inner Ring Legend */}
-                <div className="flex items-center justify-center gap-3">
-                    <span className="text-white/40 text-[10px]">Inner:</span>
-                    {connectivityData.map((item, index) => (
-                        <div key={`legend-conn-${index}`} className="flex items-center gap-1.5">
-                            <div
-                                className="w-2 h-2 rounded-full"
-                                style={{ backgroundColor: item.fill }}
-                            />
-                            <span className="text-white/60 text-[10px]">{item.name}</span>
-                        </div>
-                    ))}
-                </div>
-
-                {/* Outer Ring Legend */}
-                <div className="flex items-center justify-center gap-3">
-                    <span className="text-white/40 text-[10px]">Outer:</span>
-                    {tdsData.map((item, index) => (
-                        <div key={`legend-tds-${index}`} className="flex items-center gap-1.5">
-                            <div
-                                className="w-2 h-2 rounded-full"
-                                style={{ backgroundColor: item.fill }}
-                            />
-                            <span className="text-white/60 text-[10px]">{item.name}</span>
-                        </div>
-                    ))}
-                </div>
+            <div className="absolute bottom-0 left-0 right-0 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs">
+                {allData.map((item, index) => (
+                    <div key={`legend-${index}`} className="flex items-center gap-1.5">
+                        <div
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: colorFor(item.name, isDark, item.color) }}
+                        />
+                        <span className="text-muted-foreground text-[11px]">{item.name}</span>
+                        <span className="text-foreground text-[11px] font-semibold">({item.value})</span>
+                    </div>
+                ))}
             </div>
         </div>
     )
