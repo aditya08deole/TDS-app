@@ -68,8 +68,8 @@ export function DualPieChart({ connectivityData, tdsData }: DualPieChartProps) {
     const allData = [...tdsData, ...connectivityData];
 
     return (
-        <div className="relative h-full">
-            <ResponsiveContainer width="100%" height="100%">
+        <div className="relative h-full min-h-[220px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={220}>
                 <PieChart>
                     {/* Inner Ring — TDS Status */}
                     <Pie
