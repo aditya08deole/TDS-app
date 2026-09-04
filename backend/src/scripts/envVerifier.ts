@@ -64,14 +64,10 @@ export async function verifyEnvironment(): Promise<{ success: boolean; report: s
   }
 
   // 5. Check Telemetry Ingestion Auth
-  const isProduction = (process.env.NODE_ENV || 'development') === 'production';
   if (process.env.TELEMETRY_API_KEY) {
     report.push('✅ Telemetry Auth: TELEMETRY_API_KEY set — /api/telemetry requires x-telemetry-key');
-  } else if (isProduction) {
-    report.push('❌ Telemetry Auth: TELEMETRY_API_KEY not set — server.ts will refuse to start in production');
-    success = false;
   } else {
-    report.push('⚠️ Telemetry Auth: TELEMETRY_API_KEY not set — /api/telemetry accepts readings for ANY device_id with no auth (dev only; required in production)');
+    report.push('⚠️ Telemetry Auth: TELEMETRY_API_KEY not set — /api/telemetry accepts readings for ANY device_id with no auth. Left open intentionally — devices cannot currently send an auth header.');
   }
 
   // 6. Check Auto-Tunnel (repoints production mobile apps if left on by accident)

@@ -53,14 +53,16 @@ if (NODE_ENV === 'production') {
     process.exit(1);
   }
   if (!process.env.TELEMETRY_API_KEY) {
-    console.error(
-      '❌ Refusing to start: TELEMETRY_API_KEY is not set in production. ' +
-      'Without it, POST /api/telemetry accepts forged sensor readings for ANY ' +
-      'device_id with no authentication — including fake "safe" values that ' +
-      'could mask a real TDS breach. Set TELEMETRY_API_KEY and configure ' +
-      'devices to send it via the x-telemetry-key header.'
+    // Not a hard-fail: the physical devices in the field can't currently be
+    // updated to send an x-telemetry-key header, so requiring the key would
+    // just break real data ingestion. This stays a loud warning instead —
+    // the actual gap (anyone can POST forged readings for any device_id) is
+    // still open until the devices can be updated to send the header.
+    console.warn(
+      '⚠️ TELEMETRY_API_KEY is not set. POST /api/telemetry accepts readings ' +
+      'for ANY device_id with no authentication. Left open intentionally — ' +
+      'devices cannot currently send an auth header. Revisit once they can.'
     );
-    process.exit(1);
   }
 }
 
