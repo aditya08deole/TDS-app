@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getRedisClient } from '../../db/redis';
 
 // ─── Role Hierarchy ────────────────────────────────────────────────────────
 // Canonical roles — MUST match AuthContext.tsx and RoleContext.tsx (Fix #4)
@@ -21,20 +22,57 @@ function normalizeRole(role: unknown): UserRole {
   return 'viewer';
 }
 
+// ─── Role Cache ──────────────────────────────────────────────────────────
+// Without this, requireRole() hit Firestore on every single authenticated
+// request. A 60s TTL trades a little staleness (a just-changed role can take
+// up to 60s to take effect on requests that don't go through the invalidation
+// path below) for removing a network round-trip from the hot path of every
+// API call.
+const ROLE_CACHE_KEY = (uid: string) => `cache:role:${uid}`;
+const ROLE_CACHE_TTL = 60; // seconds
+
+/** Invalidates the cached role for a uid — call after any role write. */
+export async function invalidateRoleCache(uid: string): Promise<void> {
+  try {
+    await getRedisClient().del(ROLE_CACHE_KEY(uid));
+  } catch (err) {
+    console.warn(`[roleGuard] Could not invalidate role cache for uid ${uid}:`, err);
+  }
+}
+
 /**
- * Looks up the user's role from Firestore users/{uid} document.
- * Returns 'viewer' if the document doesn't exist or role is unset.
+ * Looks up the user's role from Firestore users/{uid} document, via a
+ * short-lived Redis cache. Returns 'viewer' if the document doesn't exist,
+ * role is unset, or Redis is unavailable (cache is best-effort — Firestore
+ * remains the source of truth).
  */
 async function getUserRoleFromFirestore(uid: string): Promise<UserRole> {
   try {
+    const redis = getRedisClient();
+    const cached = await redis.get(ROLE_CACHE_KEY(uid));
+    if (cached) return normalizeRole(cached);
+  } catch {
+    // Redis unavailable — fall through to Firestore directly.
+  }
+
+  let role: UserRole = 'viewer';
+  try {
     const snap = await getFirestore().collection('users').doc(uid).get();
     if (snap.exists) {
-      return normalizeRole(snap.data()?.role);
+      role = normalizeRole(snap.data()?.role);
     }
   } catch (err) {
     console.warn(`[roleGuard] Could not read role for uid ${uid}:`, err);
+    return role;
   }
-  return 'viewer';
+
+  try {
+    await getRedisClient().set(ROLE_CACHE_KEY(uid), role, { EX: ROLE_CACHE_TTL });
+  } catch {
+    // Best-effort — a failed cache write shouldn't fail the request.
+  }
+
+  return role;
 }
 
 /**
@@ -79,7 +117,7 @@ export function requireRole(minRole: UserRole) {
       }
 
       // ── 5. Attach verified identity to request ─────────────────────────
-      (req as any).user = { uid: decoded.uid, role, email: decoded.email };
+      req.user = { uid: decoded.uid, role, email: decoded.email };
       next();
     } catch (err: any) {
       // Firebase throws for expired/malformed/revoked tokens, but ALSO for a

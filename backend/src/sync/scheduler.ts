@@ -1,10 +1,16 @@
 import cron from 'node-cron';
+import pLimit from 'p-limit';
 import { syncFromFirebase } from '../services/syncService';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getRedisClient } from '../db/redis';
 import { triggerForceDeviceAlert } from '../services/notificationService';
 import { getAllDevices, updateDevice } from '../services/deviceService';
 import { getLatestThingSpeakReading } from '../services/thingSpeakService';
+
+// Caps how many devices the Ghost Engine polls concurrently — high enough to
+// avoid the old fully-sequential (1-at-a-time) scan taking minutes as the
+// device fleet grows, low enough not to hammer ThingSpeak's rate limits.
+const GHOST_ENGINE_CONCURRENCY = 5;
 
 function getDb() { return getFirestore(); }
 function getRedis() { return getRedisClient(); }
@@ -17,6 +23,11 @@ let heartbeatTask: any = null;
 let thingSpeakTask: any = null;
 let inviteCleanupTask: any = null;
 
+// Guards against a scan still running when the next 10-minute cron tick
+// fires (e.g. a slow ThingSpeak response or a large fleet) — without this,
+// overlapping scans could double-process the same device's breach state.
+let ghostEngineRunning = false;
+
 /**
  * ThingSpeak Autonomous Ghost Engine
  * Polls every 10 minutes for near-real-time detection of threshold breaches.
@@ -25,38 +36,50 @@ let inviteCleanupTask: any = null;
 export function startThingSpeakMonitorJob(): void {
     // Polls ThingSpeak every 10 minutes for threshold breaches
     thingSpeakTask = cron.schedule('*/10 * * * *', async () => {
+        if (ghostEngineRunning) {
+            console.warn('⏭️ [GHOST ENGINE] Previous scan still running — skipping this tick.');
+            return;
+        }
+        ghostEngineRunning = true;
+
         try {
             console.log('👻 [GHOST ENGINE] Starting autonomous ThingSpeak scan...');
             const devices = await getAllDevices();
             let criticalCount = 0;
 
-            for (const device of devices) {
-                if (!device.thingspeak_channel_id) continue;
+            const limit = pLimit(GHOST_ENGINE_CONCURRENCY);
+            const results = await Promise.allSettled(devices
+                .filter(device => !!device.thingspeak_channel_id)
+                .map(device => limit(async () => {
+                    const reading = await getLatestThingSpeakReading(device);
+                    if (!reading) return false;
 
-                const reading = await getLatestThingSpeakReading(device);
-                if (!reading) continue;
+                    const tds = reading.tds;
+                    const maxLimit = device.safe_tds_max ?? 500;
+                    const minLimit = device.safe_tds_min ?? 0;
+                    // Fix: this previously only checked the upper bound, so a
+                    // TDS_LOW breach (tds below safe_tds_min) was never detected
+                    // by ThingSpeak polling — only by direct telemetry ingestion.
+                    const isCritical = tds >= maxLimit || tds < minLimit;
 
-                const tds = reading.tds;
-                const maxLimit = device.safe_tds_max ?? 500;
-                const minLimit = device.safe_tds_min ?? 0;
-                // Fix: this previously only checked the upper bound, so a
-                // TDS_LOW breach (tds below safe_tds_min) was never detected
-                // by ThingSpeak polling — only by direct telemetry ingestion.
-                const isCritical = tds >= maxLimit || tds < minLimit;
+                    await updateDevice(device.id, {
+                        last_tds: tds,
+                        last_reading_at: reading.recorded_at,
+                        status: isCritical ? 'critical' : (device.status === 'offline' ? 'online' : device.status)
+                    });
 
-                await updateDevice(device.id, {
-                    last_tds: tds,
-                    last_reading_at: reading.recorded_at,
-                    status: isCritical ? 'critical' : (device.status === 'offline' ? 'online' : device.status)
-                });
+                    if (isCritical) {
+                        // triggerForceDeviceAlert -> processThresholdBreach owns the
+                        // full state machine internally (new alert / re-notify while
+                        // open / ack-cooldown / reopen), so no pre-check is needed here.
+                        await triggerForceDeviceAlert(device.id, tds, reading.recorded_at);
+                    }
+                    return isCritical;
+                })));
 
-                if (isCritical) {
-                    criticalCount++;
-                    // triggerForceDeviceAlert -> processThresholdBreach owns the
-                    // full state machine internally (new alert / re-notify while
-                    // open / ack-cooldown / reopen), so no pre-check is needed here.
-                    await triggerForceDeviceAlert(device.id, tds, reading.recorded_at);
-                }
+            for (const result of results) {
+                if (result.status === 'fulfilled' && result.value) criticalCount++;
+                if (result.status === 'rejected') console.error('❌ [GHOST ENGINE] Device scan failed:', result.reason);
             }
 
             console.log(criticalCount > 0
@@ -64,6 +87,8 @@ export function startThingSpeakMonitorJob(): void {
                 : '✅ [GHOST ENGINE] Scan complete. All systems healthy.');
         } catch (error) {
             console.error('❌ [GHOST ENGINE] Job failed:', error);
+        } finally {
+            ghostEngineRunning = false;
         }
     });
 

@@ -55,7 +55,7 @@ router.get('/', async (req: Request, res: Response) => {
 // ─── PUT /api/alerts/:id/read — Mark alert as read ───────────────────────────
 router.put('/:id/read', requireRole('viewer'), async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.uid || String(req.headers['x-user-id'] || 'unknown');
+    const userId = req.user?.uid || String(req.headers['x-user-id'] || 'unknown');
     await getDb().collection('alerts').doc(req.params.id).set({
       read_at: new Date().toISOString(),
       read_by: userId,
@@ -72,7 +72,7 @@ router.put('/:id/read', requireRole('viewer'), async (req: Request, res: Respons
 // ─── PUT /api/alerts/:id/ack — Acknowledge alert ─────────────────────────────
 router.put('/:id/ack', requireRole('field_engineer'), async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.uid || String(req.headers['x-user-id'] || 'unknown');
+    const userId = req.user?.uid || String(req.headers['x-user-id'] || 'unknown');
     const alertRef = getDb().collection('alerts').doc(req.params.id);
     const alertSnap = await alertRef.get();
     const acknowledgedAt = new Date().toISOString();
@@ -124,8 +124,8 @@ router.put('/:id/resolve', requireRole('field_engineer'), async (req: Request, r
     const alertId = req.params.id;
     const db = getDb();
     const redis = getRedis();
-    const resolvedBy = (req as any).user?.uid || String(req.headers['x-user-id'] || 'unknown');
-    const resolvedByRole = (req as any).user?.role || 'unknown';
+    const resolvedBy = req.user?.uid || String(req.headers['x-user-id'] || 'unknown');
+    const resolvedByRole = req.user?.role || 'unknown';
     const resolutionNote = req.body?.note?.trim() || 'Manually resolved by operator';
 
     // 1. Fetch the alert to get the device ID

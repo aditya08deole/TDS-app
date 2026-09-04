@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import { requireRole } from '../middleware/roleGuard';
+import { requireRole, invalidateRoleCache } from '../middleware/roleGuard';
 import crypto from 'crypto';
 
 const router = Router();
@@ -27,8 +27,8 @@ const INVITE_EXPIRY_HOURS = 24;
 router.post('/invite', requireRole('admin'), async (req: Request, res: Response) => {
     try {
         const { role } = req.body;
-        const invitedBy = (req as any).user?.uid;
-        const invitedByRole = (req as any).user?.role || 'admin';
+        const invitedBy = req.user?.uid;
+        const invitedByRole = req.user?.role || 'admin';
 
         if (!role) {
             return res.status(400).json({ success: false, error: 'role is required (field_engineer or viewer)' });
@@ -201,6 +201,7 @@ router.post('/redeem-invite', async (req: Request, res: Response) => {
 
         // Mark token as used (prevents reuse)
         await tokenRef.update({ used: true, used_by: uid, used_at: now });
+        await invalidateRoleCache(uid);
 
         // Write audit log
         getDb().collection('audit_log').add({
@@ -370,8 +371,8 @@ router.put('/:uid/role', requireRole('admin'), async (req: Request, res: Respons
     try {
         const { uid } = req.params;
         const { role } = req.body;
-        const changedBy = (req as any).user?.uid;
-        const changedByRole = (req as any).user?.role;
+        const changedBy = req.user?.uid;
+        const changedByRole = req.user?.role;
 
         if (!role || !VALID_ROLES.includes(role)) {
             return res.status(400).json({
@@ -398,6 +399,7 @@ router.put('/:uid/role', requireRole('admin'), async (req: Request, res: Respons
         const now = new Date().toISOString();
 
         await userRef.set({ role, updated_at: now, role_changed_by: changedBy }, { merge: true });
+        await invalidateRoleCache(uid);
 
         getDb().collection('audit_log').add({
             action: 'role_changed',
@@ -425,7 +427,7 @@ router.put('/:uid/role', requireRole('admin'), async (req: Request, res: Respons
 router.delete('/invites/:token', requireRole('admin'), async (req: Request, res: Response) => {
     try {
         const { token } = req.params;
-        const revokedBy = (req as any).user?.uid;
+        const revokedBy = req.user?.uid;
 
         const tokenRef = getDb().collection('invite_tokens').doc(token);
         const tokenSnap = await tokenRef.get();

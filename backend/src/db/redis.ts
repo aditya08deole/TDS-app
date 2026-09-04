@@ -196,8 +196,19 @@ export async function initializeRedis(): Promise<any> {
   try {
     await client.connect();
   } catch (error) {
-    console.warn('⚠️ Redis unavailable, using in-memory fallback for local dev');
     try { await client.disconnect(); } catch {}
+
+    // The in-memory fallback is single-instance, non-persistent, and loses
+    // every cooldown/cache/session key on restart — acceptable for local dev,
+    // but silently running production on it would be a real data-loss risk
+    // that only surfaces days later as "why did this alert re-fire" reports.
+    if ((process.env.NODE_ENV || 'development') === 'production') {
+      console.error('❌ Redis connection failed in production — refusing to fall back to in-memory storage:', error);
+      client = null;
+      throw error;
+    }
+
+    console.warn('⚠️ Redis unavailable, using in-memory fallback for local dev');
     client = createMemoryRedis();
   }
 
