@@ -39,6 +39,31 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
+// ═══ PRODUCTION SAFETY ASSERTIONS ═══
+// These fail the boot outright rather than silently running with a security
+// hole open — a misconfigured production deploy should be loud, not quiet.
+if (NODE_ENV === 'production') {
+  if (process.env.CORS_ALL_ORIGINS === 'true') {
+    console.error(
+      '❌ Refusing to start: CORS_ALL_ORIGINS=true in production would allow ' +
+      'any origin authenticated cross-origin access (credentials: true is also ' +
+      'set). Remove CORS_ALL_ORIGINS or set it to false; use CORS_ORIGINS to ' +
+      'list allowed origins explicitly instead.'
+    );
+    process.exit(1);
+  }
+  if (!process.env.TELEMETRY_API_KEY) {
+    console.error(
+      '❌ Refusing to start: TELEMETRY_API_KEY is not set in production. ' +
+      'Without it, POST /api/telemetry accepts forged sensor readings for ANY ' +
+      'device_id with no authentication — including fake "safe" values that ' +
+      'could mask a real TDS breach. Set TELEMETRY_API_KEY and configure ' +
+      'devices to send it via the x-telemetry-key header.'
+    );
+    process.exit(1);
+  }
+}
+
 // Railway (and most PaaS platforms) terminate TLS at an edge proxy and forward
 // the original scheme via X-Forwarded-Proto. Without trust proxy, req.protocol
 // always reports 'http' even on a real https request — breaks anything that

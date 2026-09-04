@@ -5,6 +5,8 @@ import { getThingSpeakFeedsInRange } from '../../services/thingSpeakService';
 import { getFirestore } from 'firebase-admin/firestore';
 import { ApiResponse, Device } from '../../types';
 import { requireRole } from '../middleware/roleGuard';
+import { validateBody } from '../../lib/validate';
+import { createDeviceSchema, updateDeviceSchema } from '../schemas/deviceSchemas';
 
 const router = Router();
 
@@ -260,17 +262,9 @@ router.get('/telemetry/live', async (req: Request, res: Response) => {
  * POST /api/devices
  * Create a new device (admin+ only — matches the 'add_device' permission)
  */
-router.post('/', requireRole('admin'), async (req: Request, res: Response) => {
+router.post('/', requireRole('admin'), validateBody(createDeviceSchema), async (req: Request, res: Response) => {
   try {
     const deviceData = req.body;
-
-    if (!deviceData.name) {
-      return res.status(400).json({
-        success: false,
-        error: 'Device name is required',
-        timestamp: new Date().toISOString(),
-      });
-    }
 
     const device = await deviceService.createDevice(deviceData);
 
@@ -437,7 +431,7 @@ router.get('/:id/export', requireRole('admin'), async (req: Request, res: Respon
 
     // Audit trail — matches the pattern already used for invites/role changes,
     // so "who exported what, when" is answerable later if it ever matters.
-    const requester = (req as any).user;
+    const requester = req.user;
     getFirestore().collection('audit_log').add({
       action: 'device_data_exported',
       device_id: device.id,
@@ -606,7 +600,7 @@ router.put('/:id/status', requireRole('field_engineer'), async (req: Request, re
  * PATCH /api/devices/:id
  * Update an existing device (field_engineer+ — matches 'edit_device' permission)
  */
-router.patch('/:id', requireRole('field_engineer'), async (req: Request, res: Response) => {
+router.patch('/:id', requireRole('field_engineer'), validateBody(updateDeviceSchema), async (req: Request, res: Response) => {
   try {
     const deviceId = req.params.id;
     const updates = req.body;

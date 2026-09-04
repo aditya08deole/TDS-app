@@ -51,8 +51,12 @@ export async function verifyEnvironment(): Promise<{ success: boolean; report: s
   // 4. Check CORS Flags
   const corsAll = process.env.CORS_ALL_ORIGINS === 'true';
   const corsOrigins = process.env.CORS_ORIGINS;
-  if (corsAll) {
-    report.push('⚠️ CORS Security: CORS_ALL_ORIGINS=true (all origins allowed)');
+  const isProductionEnv = (process.env.NODE_ENV || 'development') === 'production';
+  if (corsAll && isProductionEnv) {
+    report.push('❌ CORS Security: CORS_ALL_ORIGINS=true in production — server.ts will refuse to start');
+    success = false;
+  } else if (corsAll) {
+    report.push('⚠️ CORS Security: CORS_ALL_ORIGINS=true (all origins allowed; dev only, blocked in production)');
   } else if (corsOrigins) {
     report.push(`✅ CORS Security: Restricted to whitelist (${corsOrigins})`);
   } else {
@@ -60,10 +64,14 @@ export async function verifyEnvironment(): Promise<{ success: boolean; report: s
   }
 
   // 5. Check Telemetry Ingestion Auth
+  const isProduction = (process.env.NODE_ENV || 'development') === 'production';
   if (process.env.TELEMETRY_API_KEY) {
     report.push('✅ Telemetry Auth: TELEMETRY_API_KEY set — /api/telemetry requires x-telemetry-key');
+  } else if (isProduction) {
+    report.push('❌ Telemetry Auth: TELEMETRY_API_KEY not set — server.ts will refuse to start in production');
+    success = false;
   } else {
-    report.push('⚠️ Telemetry Auth: TELEMETRY_API_KEY not set — /api/telemetry accepts readings for ANY device_id with no auth');
+    report.push('⚠️ Telemetry Auth: TELEMETRY_API_KEY not set — /api/telemetry accepts readings for ANY device_id with no auth (dev only; required in production)');
   }
 
   // 6. Check Auto-Tunnel (repoints production mobile apps if left on by accident)

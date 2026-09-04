@@ -3,6 +3,8 @@ import * as telemetryService from '../../services/telemetryService';
 import * as deviceService from '../../services/deviceService';
 import { sseService } from '../../services/sseService';
 import { ApiResponse } from '../../types';
+import { validateBody } from '../../lib/validate';
+import { telemetrySchema, telemetryBatchSchema } from '../schemas/telemetrySchemas';
 
 const router = Router();
 
@@ -37,30 +39,22 @@ function requireTelemetryKey(req: Request, res: Response, next: NextFunction) {
  * POST /api/telemetry
  * Submit sensor data from a device
  */
-router.post('/', requireTelemetryKey, async (req: Request, res: Response) => {
+router.post('/', requireTelemetryKey, validateBody(telemetrySchema), async (req: Request, res: Response) => {
   try {
     const { device_id, tds, temperature, voltage, recorded_at } = req.body;
 
-    if (!device_id || tds === undefined) {
-      return res.status(400).json({
-        success: false,
-        error: 'device_id and tds are required',
-        timestamp: new Date().toISOString(),
-      });
-    }
-
     const updatedDevice = await telemetryService.processTelemetry({
       device_id,
-      tds: Number(tds),
-      temperature: temperature !== undefined ? Number(temperature) : undefined,
-      voltage: voltage !== undefined ? Number(voltage) : undefined,
+      tds,
+      temperature,
+      voltage,
       recorded_at
     });
 
     // Broadcast live reading to connected SSE frontend clients
     sseService.broadcast('telemetry', {
       device_id,
-      tds: Number(tds),
+      tds,
       temperature,
       voltage,
       status: updatedDevice.status,
@@ -89,17 +83,9 @@ router.post('/', requireTelemetryKey, async (req: Request, res: Response) => {
  * POST /api/telemetry/batch
  * Submit multiple sensor readings at once (e.g. from a gateway)
  */
-router.post('/batch', requireTelemetryKey, async (req: Request, res: Response) => {
+router.post('/batch', requireTelemetryKey, validateBody(telemetryBatchSchema), async (req: Request, res: Response) => {
   try {
     const { readings } = req.body;
-
-    if (!Array.isArray(readings)) {
-      return res.status(400).json({
-        success: false,
-        error: 'readings must be an array',
-        timestamp: new Date().toISOString(),
-      });
-    }
 
     const results = [];
     for (const data of readings) {
