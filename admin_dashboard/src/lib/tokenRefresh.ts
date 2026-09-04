@@ -254,11 +254,6 @@ export async function clearSession(): Promise<void> {
     const { clearQueryCache } = await import('./queryClient');
     clearQueryCache();
 
-    // Clear in-memory request cache from caching service
-    console.log('[SESSION] Clearing request cache...');
-    const { invalidateCache } = await import('./caching');
-    invalidateCache(); // Invalidate all cached requests
-    
     console.log('✅ [SESSION] Session and all cache completely cleared for logout');
   } catch (error) {
     console.error('❌ [SESSION] Failed to clear session:', error);
