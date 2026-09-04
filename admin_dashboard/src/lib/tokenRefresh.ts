@@ -38,9 +38,9 @@ export async function initTokenRefresh(user: User): Promise<void> {
     await storage.set('auth_token_info', JSON.stringify(tokenInfo));
     
     console.log(`[TOKEN] Token expires at: ${new Date(tokenInfo.expiresAt).toLocaleString()}`);
-    
+
     // Schedule refresh
-    scheduleTokenRefresh(user);
+    await scheduleTokenRefresh(user);
   } catch (error) {
     console.error('[TOKEN] Failed to initialize token refresh:', error);
   }
@@ -64,8 +64,8 @@ export async function refreshAuthToken(user: User): Promise<string> {
     tokenRefreshListeners.forEach(listener => listener(newToken));
     
     // Reschedule next refresh
-    scheduleTokenRefresh(user);
-    
+    await scheduleTokenRefresh(user);
+
     return newToken;
   } catch (error) {
     console.error('❌ [TOKEN-REFRESH] Failed to refresh token:', error);
@@ -76,20 +76,24 @@ export async function refreshAuthToken(user: User): Promise<string> {
 /**
  * Schedule token refresh
  */
-function scheduleTokenRefresh(user: User): void {
+async function scheduleTokenRefresh(user: User): Promise<void> {
   // Clear existing timeout
   if (refreshTimeoutId !== null) {
     clearTimeout(refreshTimeoutId);
   }
 
   try {
-    const tokenInfoJson = localStorage.getItem('auth_token_info');
-    if (!tokenInfoJson) {
+    // Must go through the storage abstraction, not localStorage directly —
+    // on native (Android/iOS) auth_token_info is written via Capacitor
+    // Preferences, not localStorage, so a raw localStorage read here always
+    // returned null on native and refresh never got scheduled, silently
+    // logging users out ~5 minutes before their real token expiry.
+    const tokenInfo = await storage.get<TokenInfo>('auth_token_info');
+    if (!tokenInfo) {
       console.warn('[TOKEN] No token info found, cannot schedule refresh');
       return;
     }
 
-    const tokenInfo: TokenInfo = JSON.parse(tokenInfoJson);
     const now = Date.now();
     const expiresIn = tokenInfo.expiresAt - now;
     
@@ -151,10 +155,12 @@ function decodeToken(token: string): TokenInfo {
  */
 export async function getTokenTimeRemaining(): Promise<number> {
   try {
-    const tokenInfoJson = await storage.get('auth_token_info');
-    if (!tokenInfoJson) return 0;
+    // storage.get<T>() already JSON-parses the stored value — do not
+    // JSON.parse() it again here (that would throw on the already-parsed
+    // object and silently caught below, making this always return 0).
+    const tokenInfo = await storage.get<TokenInfo>('auth_token_info');
+    if (!tokenInfo) return 0;
 
-    const tokenInfo: TokenInfo = JSON.parse(tokenInfoJson);
     const remaining = tokenInfo.expiresAt - Date.now();
     
     return Math.max(0, Math.floor(remaining / 1000));
@@ -279,14 +285,7 @@ export async function debugTokenStatus(): Promise<void> {
   try {
     const remaining = await getTokenTimeRemaining();
     const status = await getSessionStatus();
-    const tokenInfoJson = await storage.get('auth_token_info');
-    
-    let tokenInfo: TokenInfo | null = null;
-    try {
-      if (tokenInfoJson) tokenInfo = JSON.parse(tokenInfoJson);
-    } catch {
-      // Ignore parse errors
-    }
+    const tokenInfo = await storage.get<TokenInfo>('auth_token_info');
 
     console.log('[TOKEN-DEBUG]', {
       remaining_seconds: remaining,
